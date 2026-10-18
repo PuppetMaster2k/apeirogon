@@ -98,13 +98,14 @@ The layout is a 2D canvas on which each machine's whole virtual desktop (all its
 ## 8. Ownership and routing
 
 - `route` is a number that rises with every move. Messages with an older route are ignored.
-- **Take**: owner sends `Focus{target = responder id}` with an optional `Landing`. Responder answers `Accept{route}` or `Refuse{route, reason, other}`.
+- **Take**: owner sends `Focus{target = responder id}` with an optional `Landing`. Responder answers `Accept{route}` or `Refuse{route, reason, other}`. If neither arrives within 1 s, the owner MUST take focus home.
 - **Let go**: `Focus` with another target. The responder releases all held keys and buttons.
 - **Handover**: the responder asks its owner to send input onward or home (`next` = owner id).
 - **Idle takeover**: an owner that has sent nothing for 3 s can be replaced by another peer's `Focus` (someone started typing on a different machine). The old owner learns this through `Handover.taken_over_by`.
 - **Release on end**: whenever ownership ends for any reason (link loss, takeover, let go) the responder MUST synthesise key-up and button-up for everything still held.
 - **Chains**: A drives B; B sends `Handover{next = C}` to A; A takes C directly. There is no relay through B.
-- **Hotkeys** (handled locally by the owner): return home, jump to machine N (a direct take), and lock the cursor to the current machine.
+- **Hotkeys** (handled locally by the owner): return home (double-tap Right Alt / Right Option, or a chord), jump to machine N (a direct take), and lock the cursor to the current machine.
+- **Capture dead-man switch** (local, not on the wire): the platform capture releases the keyboard and mouse by itself when the daemon's keepalive is missing for 1.5 s.
 
 ## 9. Input
 
@@ -166,6 +167,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 | Ping interval | 1 s |
 | Silence drop | 2 s / 2.5 s |
 | Unacked input drop | 1.5 s |
+| Take timeout | 1 s |
 | Idle takeover | 3 s |
 | Pairing code | 6 digits, 60 s, 1 guess |
 | Pairing attempts | 5 per minute per source |
