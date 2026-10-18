@@ -17,7 +17,7 @@ All traffic between two machines uses **one QUIC connection** (RFC 9000) with th
 | Transfer (clipboard data, files) | one unidirectional stream per transfer, opened by the source | reliable | `a7n/1` |
 | Pairing | separate QUIC connection, bidirectional stream 0 | reliable, ordered | `a7n-pair/1` |
 
-Scope is the local network. Default UDP port: to be assigned (check IANA; avoid ports used by other KVM tools).
+Scope is the local network. Default UDP port: **42042** for both `a7n/1` and `a7n-pair/1` (distinguished by ALPN); configurable. If the port is taken, the daemon MAY bind another and advertise it through mDNS and `PeerInfo.listen_port`.
 
 ### 1.1 Discovery
 
@@ -156,6 +156,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 
 | Item | Value |
 |---|---|
+| Default UDP port | 42042 |
 | Handshake timeout | 5 s |
 | Unauthenticated slots | 4 |
 | Control frame max | 128 KiB |
@@ -195,5 +196,4 @@ Large counter values (late in a long session) add up to about 4 bytes per messag
 ## 17. Open questions
 
 1. Wayland drag and drop and clipboard delayed rendering.
-2. Default UDP port.
-3. Whether the machine id should be a hash of the key (as here) or a random id bound to the pin.
+2. Whether the machine id should be a hash of the key (as here) or a random id bound to the pin.

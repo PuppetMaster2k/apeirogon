@@ -82,8 +82,8 @@ crates/
 
 - **Scope:** LAN only. Discovery via mDNS / DNS-SD service `_apeirogon._udp`
   (TXT: machine id, protocol major version); addressing by IP also works.
-  Cross-network use via Tailscale/WireGuard, not built in. Default UDP port to
-  be assigned.
+  Cross-network use via Tailscale/WireGuard, not built in. Default UDP port
+  42042 (configurable).
 - **Encryption:** mandatory. No plaintext mode.
 - **Identity:** each device generates an Ed25519 key (ECDSA P-256 fallback) and
   a long-lived self-signed certificate. Machine id = first 16 bytes of
