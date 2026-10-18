@@ -2,8 +2,6 @@
 
 Schema: [`proto/apeirogon/v1/apeirogon.proto`](../proto/apeirogon/v1/apeirogon.proto) (package `apeirogon.v1`). This document defines everything the schema cannot: transport, identity, pairing, timing and behaviour. Product-level decisions live in [`design.md`](design.md); where this spec and the design disagree, the design wins and this spec is corrected.
 
-Derived from the design of Beamer wire v6.
-
 Keywords MUST / SHOULD / MAY as in RFC 2119.
 
 ## 1. Overview
@@ -19,7 +17,7 @@ All traffic between two machines uses **one QUIC connection** (RFC 9000) with th
 | Transfer (clipboard data, files) | one unidirectional stream per transfer, opened by the source | reliable | `a7n/1` |
 | Pairing | separate QUIC connection, bidirectional stream 0 | reliable, ordered | `a7n-pair/1` |
 
-Scope is the local network. Default UDP port: to be assigned (check IANA; Beamer uses 24820/24821, do not reuse).
+Scope is the local network. Default UDP port: to be assigned (check IANA; avoid ports used by other KVM tools).
 
 ### 1.1 Discovery
 

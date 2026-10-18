@@ -229,5 +229,4 @@ crates/
 
 ## Prior art
 
-Barrier, Input Leap, Deskflow, lan-mouse, ShareMouse. The link protocol is
-derived from the design of Beamer wire v6.
+Barrier, Input Leap, Deskflow, lan-mouse, ShareMouse, Beamer.
