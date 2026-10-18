@@ -42,7 +42,7 @@ name = "a7n-proto"
 version = "0.1.0"
 
 [[package]]
-name = "apeirogon"
+name = "apeirogond"
 version = "0.1.0"
 dependencies = [
  "a7n-core",
