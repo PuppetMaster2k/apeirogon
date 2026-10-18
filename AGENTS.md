@@ -338,7 +338,61 @@ fn validate_manifest_path_unsafe_paths_are_rejected() {
 }
 ```
 
-## 6. Before you commit
+## 6. Workflow
+
+### Branching: scaled trunk-based development
+
+- `main` is the trunk and is always releasable. Nobody pushes to it directly.
+- Work happens on **short-lived branches** (at most 1–2 days) that merge into
+  `main` through a pull request. Branch names: `<type>/<issue>-<slug>`, e.g.
+  `feat/12-quic-handshake`.
+- A PR is small enough to review in one sitting. Split large features into
+  several PRs (sub-issues) rather than keeping a long-running branch.
+- **Unfinished features merge behind a flag** (a Cargo feature or a config
+  switch that defaults to off), so `main` stays shippable.
+- PRs merge by **squash merge** only, once CI is green. The PR title becomes
+  the commit on `main`, so it must be a valid Conventional Commit.
+- **Releases** branch off `main` as `release/vX.Y` when a milestone is
+  complete. Fixes land on `main` first and are cherry-picked to the release
+  branch; nothing is developed on a release branch.
+- Every PR links its issue (`Closes #12`). Features are tracked as GitHub
+  issues grouped by milestone (`v0.1`, `v0.2`, ...).
+
+### Commits: Conventional Commits
+
+Format: `<type>(<scope>): <description>`, imperative, lower case, no period.
+
+| Type | Use for |
+|---|---|
+| `feat` | new user-visible behaviour |
+| `fix` | bug fix |
+| `perf` | performance improvement |
+| `refactor` | code change without behaviour change |
+| `test` | adding or fixing tests |
+| `docs` | documentation only |
+| `build` | Cargo, dependencies, packaging |
+| `ci` | CI configuration |
+| `chore` | anything else that touches no product code |
+
+Scopes: `proto`, `ipc`, `core`, `platform`, `daemon`, `cli`, `gui`, `docs`,
+`ci`. Omit the scope when a change spans many crates.
+
+A change that breaks the wire protocol or the config format adds `!` after
+the scope and a `BREAKING CHANGE:` footer.
+
+```text
+feat(core): take focus on idle takeover after 3 s
+fix(proto): reject control frames above 128 KiB
+refactor(platform): extract key mapping from the macOS backend
+feat(proto)!: replace Arrangement with desk-wide Layout
+
+BREAKING CHANGE: peers running protocol v1 drafts before this change cannot
+exchange layouts.
+```
+
+Every commit is signed off (`git commit -s`, DCO). No CLA.
+
+### Before you open a PR
 
 ```sh
 cargo fmt --all
@@ -346,11 +400,8 @@ cargo clippy --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-- Commits are small and focused, with an imperative subject line
-  ("Add desk revocation merge").
-- Sign off every commit (`git commit -s`, DCO). No CLA.
 - Changing the wire format means changing `apeirogon.proto` **and**
-  `PROTOCOL.md` in the same commit, following the schema's evolution rules
+  `PROTOCOL.md` in the same PR, following the schema's evolution rules
   (never reuse or renumber a field).
 - A change that contradicts `docs/design.md` updates the design first, or is
   not made.
