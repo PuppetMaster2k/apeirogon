@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/PuppetMaster2k/apeirogon"
+rust-version = "1.99.1"
+
+[workspace.dependencies]
+a7n-proto    = { path = "crates/a7n-proto" }
+a7n-ipc      = { path = "crates/a7n-ipc" }
+a7n-core     = { path = "crates/a7n-core" }
+a7n-platform = { path = "crates/a7n-platform" }
+
+[workspace.lints.rust]
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
