@@ -1,0 +1,444 @@
+// Apeirogon link protocol, version 1 (draft).
+//
+// Rules for evolving this file:
+//  - Never reuse or renumber a field. Remove with `reserved`.
+//  - Field numbers 1-15 cost one tag byte: hot-path messages use them.
+//  - Unknown fields and unknown oneof cases MUST be ignored by receivers.
+
+syntax = "proto3";
+
+package apeirogon.v1;
+
+// ---------------------------------------------------------------------------
+// Shared types
+// ---------------------------------------------------------------------------
+
+enum Platform {
+  PLATFORM_UNSPECIFIED = 0;
+  PLATFORM_MACOS = 1;
+  PLATFORM_WINDOWS = 2;
+  PLATFORM_LINUX = 3;
+  PLATFORM_IOS = 4;
+  PLATFORM_ANDROID = 5;
+}
+
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  CAPABILITY_CLIPBOARD_TEXT = 1;
+  CAPABILITY_CLIPBOARD_IMAGE = 2;
+  CAPABILITY_CLIPBOARD_FILES = 3;
+  CAPABILITY_DRAG_DROP = 4;
+  CAPABILITY_GESTURES = 5;
+  CAPABILITY_MEDIA_KEYS = 6;
+  CAPABILITY_TEXT_INPUT = 7;
+  CAPABILITY_SETTINGS_SYNC = 8;
+  CAPABILITY_RTT_PROBE = 9;
+  CAPABILITY_MOTION_DATAGRAM = 10;  // Profile Q: accepts Motion as QUIC datagram
+}
+
+enum Edge {
+  EDGE_UNSPECIFIED = 0;
+  EDGE_LEFT = 1;
+  EDGE_RIGHT = 2;
+  EDGE_TOP = 3;
+  EDGE_BOTTOM = 4;
+}
+
+// Where the pointer lands on the receiving machine.
+message Landing {
+  Edge edge = 1;          // edge of the receiving machine the pointer arrives at
+  float offset = 2;       // 0.0 .. 1.0 along that edge; receiver clamps
+  string display = 3;     // optional display key on the receiving machine
+  Edge display_side = 4;  // side of that display; only meaningful with display
+}
+
+// ---------------------------------------------------------------------------
+// Control link (ALPN "a7n/1"): one ordered, reliable stream of Envelopes,
+// each prefixed by a protobuf varint length.
+// Hot-path messages take field numbers 1-8.
+// ---------------------------------------------------------------------------
+
+message Envelope {
+  oneof body {
+    Motion motion = 1;
+    InputBatch input = 2;
+    Ack ack = 3;
+    Ping ping = 4;
+    Focus focus = 5;
+    Accept accept = 6;
+    Refuse refuse = 7;
+    Handover handover = 8;
+    Hello hello = 9;
+    Welcome welcome = 10;
+    Accepts accepts = 11;
+    Arrangement arrangement = 12;
+    ClipboardAnnounce clipboard_announce = 13;
+    TransferRequest transfer_request = 14;
+    DragOffer drag_offer = 15;
+    DragEnd drag_end = 16;
+    PairedPeers paired = 17;
+    SettingsSync settings = 18;
+    TransferCancel transfer_cancel = 19;
+  }
+}
+
+// ----- Handshake (first messages after TLS) --------------------------------
+
+message PeerInfo {
+  string name = 1;                         // 1..48 Unicode code points
+  Platform platform = 2;
+  string app_version = 3;                  // display only, never compared
+  repeated Capability capabilities = 4;
+  uint32 listen_port = 5;                  // 0 = does not accept links
+  bytes hw_addr = 6;                       // 6 bytes (wake-on-LAN), empty if unknown
+}
+
+message Hello {                            // initiator -> responder
+  uint32 protocol_version = 1;             // 1
+  PeerInfo info = 2;
+}
+
+enum HandshakeError {
+  HANDSHAKE_ERROR_NONE = 0;
+  HANDSHAKE_ERROR_UNSUPPORTED_VERSION = 1;
+  HANDSHAKE_ERROR_INVALID_HELLO = 2;
+}
+
+message Welcome {                          // responder -> initiator
+  uint32 protocol_version = 1;
+  PeerInfo info = 2;
+  bool accepts_drive = 3;                  // may this initiator drive the responder?
+  HandshakeError error = 4;
+}
+
+// ----- Input ----------------------------------------------------------------
+
+// Pointer motion as CUMULATIVE counters since the start of the route.
+// Loss-tolerant: a dropped or reordered datagram is repaired by the next one.
+// x and y wrap modulo 2^32; the receiver applies (new - last) with wrapping
+// arithmetic. Receivers drop a Motion whose motion_seq is not newer.
+message Motion {
+  uint64 route = 1;
+  uint32 motion_seq = 2;
+  sint32 x = 3;
+  sint32 y = 4;
+}
+
+enum Button {
+  BUTTON_UNSPECIFIED = 0;
+  BUTTON_LEFT = 1;
+  BUTTON_RIGHT = 2;
+  BUTTON_MIDDLE = 3;
+  BUTTON_BACK = 4;
+  BUTTON_FORWARD = 5;
+}
+
+enum ScrollUnit {
+  SCROLL_UNIT_UNSPECIFIED = 0;
+  SCROLL_UNIT_PIXEL = 1;   // continuous trackpad delta, in points
+  SCROLL_UNIT_LINE = 2;    // wheel notches
+}
+
+enum Gesture {
+  GESTURE_UNSPECIFIED = 0;
+  GESTURE_SWIPE_UP = 1;
+  GESTURE_SWIPE_DOWN = 2;
+  GESTURE_SWIPE_LEFT = 3;
+  GESTURE_SWIPE_RIGHT = 4;
+  GESTURE_SPREAD = 5;
+  GESTURE_PINCH = 6;
+}
+
+// Physical key as USB HID usage: (usage_page << 16) | usage_id.
+// Keyboard page 0x07, consumer/media page 0x0C.
+message KeyEvent {
+  uint32 usage = 1;
+  bool down = 2;
+  string character = 3;    // optional: the single code point the sender's layout
+                           // produced (unshifted if Ctrl/Alt/Cmd held)
+}
+
+message ButtonEvent {
+  Button button = 1;
+  bool down = 2;
+}
+
+// Positive dy = view moves toward the end of the document, positive dx = toward
+// the right. The sender applies its user's natural-scrolling preference first.
+message ScrollEvent {
+  float dx = 1;
+  float dy = 2;
+  ScrollUnit unit = 3;
+}
+
+message InputEvent {
+  oneof event {
+    KeyEvent key = 1;
+    ButtonEvent button = 2;
+    ScrollEvent scroll = 3;
+    Gesture gesture = 4;
+    string text = 5;       // type as characters; at most 4096 bytes UTF-8
+  }
+}
+
+// Reliable, ordered. The cumulative counters resynchronise the pointer before
+// the events are applied, so a click lands where the sender saw the pointer.
+message InputBatch {
+  uint64 route = 1;
+  uint64 seq = 2;          // per link, +1 per batch, acknowledged by Ack
+  uint32 motion_seq = 3;
+  sint32 motion_x = 4;
+  sint32 motion_y = 5;
+  repeated InputEvent events = 6;
+}
+
+message Ack {
+  uint64 seq = 1;          // highest InputBatch.seq dealt with
+  uint32 held_us = 2;      // microseconds between dealing with it and sending this Ack
+  bool locked = 3;         // responder is on a lock screen and drops input
+}
+
+message Ping {
+  uint32 probe = 1;        // at most one of probe / echo; never echo an echo
+  uint32 echo = 2;
+}
+
+// ----- Ownership and routing ------------------------------------------------
+
+// Owner -> responder. target == responder's own id: take (or re-arm with stay).
+// Any other target: the responder is being let go.
+message Focus {
+  uint64 route = 1;
+  bytes target = 2;                   // 16-byte machine id
+  Landing landing = 3;                // optional (message presence)
+  uint32 resistance_px = 4;           // 0..1000, default 120 when absent on a take
+  repeated bytes reach = 5;           // peers the owner can send to now
+  bool stay = 6;                      // re-arm in place: land nothing, play nothing
+}
+
+message Accept {
+  uint64 route = 1;
+}
+
+enum RefuseReason {
+  REFUSE_REASON_UNSPECIFIED = 0;
+  REFUSE_REASON_OWNED = 1;
+  REFUSE_REASON_NOT_ALLOWED = 2;
+  REFUSE_REASON_BUSY = 3;
+  REFUSE_REASON_SENT_HOME = 4;
+  REFUSE_REASON_MALFORMED = 5;
+}
+
+message Refuse {
+  uint64 route = 1;
+  RefuseReason reason = 2;
+  bytes other = 3;                    // with OWNED/BUSY: the machine in the way
+}
+
+// Responder -> its owner: send input onward (or home).
+message Handover {
+  uint64 route = 1;
+  bytes next = 2;                     // owner's own id = home
+  Landing landing = 3;
+  bytes taken_over_by = 4;            // on a handover home after an idle takeover
+}
+
+message Accepts {                     // responder -> initiator when allow_drive changes
+  bool accepts = 1;
+}
+
+message Arrangement {
+  Edge edge = 1;                      // which of the sender's edges faces the receiver
+  uint64 set_at = 2;                  // unix seconds; newest (set_at, by) wins
+  bytes by = 3;
+  bool way_back = 4;
+  bytes way_back_by = 5;
+}
+
+message PairedPeers {
+  repeated bytes ids = 1;             // ids the sender is paired with, less the receiver
+}
+
+message SettingsSync {
+  bool on = 1;
+  uint64 set_at = 2;
+  bytes by = 3;
+  map<string, string> values = 4;     // each value stands alone; unknown keys ignored
+}
+
+// ----- Clipboard -------------------------------------------------------------
+
+// Well-known MIME types:
+//   text/plain;charset=utf-8, image/png, application/x-apeirogon-files
+message ClipboardItem {
+  string mime = 1;
+  uint64 size = 2;
+  bytes sha256 = 3;
+  bytes inline_data = 4;              // set when size <= 65536; else fetched on paste
+}
+
+// Metadata only for large items. Sent to every connected peer whose policy
+// allows it, whether or not input is on that machine.
+message ClipboardAnnounce {
+  bytes origin = 1;                   // machine that produced this generation
+  uint64 generation = 2;              // Lamport counter; highest wins, tie: larger origin
+  repeated ClipboardItem items = 3;
+  FileManifest files = 4;             // set when an item has the file-list MIME
+}
+
+// ----- Files: manifest, requests, drag and drop -----------------------------
+
+enum FileKind {
+  FILE_KIND_UNSPECIFIED = 0;
+  FILE_KIND_FILE = 1;
+  FILE_KIND_DIRECTORY = 2;
+}
+
+message FileEntry {
+  string path = 1;                    // relative, '/' separated, UTF-8 NFC
+  FileKind kind = 2;
+  uint64 size = 3;
+  int64 mtime_ms = 4;
+  bytes sha256 = 5;                   // files only
+}
+
+message FileManifest {
+  repeated FileEntry entries = 1;
+  uint64 total_size = 2;
+}
+
+message ClipboardRef {
+  bytes origin = 1;
+  uint64 generation = 2;
+}
+
+message FileResume {
+  uint32 file_index = 1;
+  uint64 offset = 2;
+}
+
+// Sink -> source: "start streaming". Data flows on a transfer stream/connection.
+message TransferRequest {
+  uint64 transfer_id = 1;             // chosen by the requester, unique per link
+  oneof source {
+    ClipboardRef clipboard = 2;
+    uint64 drag_id = 3;
+  }
+  uint32 item_index = 4;              // clipboard item to fetch; ignored for drags
+  repeated FileResume resume = 5;
+}
+
+message TransferCancel {
+  uint64 transfer_id = 1;
+}
+
+// Sent by the machine whose OS drag session carries files across the edge.
+message DragOffer {
+  uint64 drag_id = 1;
+  FileManifest files = 2;
+  repeated ClipboardItem items = 3;   // other flavours, e.g. text
+}
+
+enum DragOutcome {
+  DRAG_OUTCOME_UNSPECIFIED = 0;
+  DRAG_OUTCOME_CANCELLED = 1;         // e.g. Esc pressed, or the pointer came back
+  DRAG_OUTCOME_EXPIRED = 2;
+}
+
+// A drop needs no message: the button-up that ends the drag arrives as input
+// on the sink, which then sends TransferRequest{drag_id}.
+message DragEnd {
+  uint64 drag_id = 1;
+  DragOutcome outcome = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Transfer channel (ALPN "a7n-xfer/1" in Profile T, a unidirectional stream
+// opened by the data source in Profile Q). Data flows source -> sink.
+// ---------------------------------------------------------------------------
+
+message TransferFrame {
+  oneof frame {
+    TransferOpen open = 1;
+    FileChunk chunk = 2;
+    FileEnd file_end = 3;
+    TransferDone done = 4;
+    TransferAbort abort = 5;
+  }
+}
+
+message TransferOpen {
+  uint64 transfer_id = 1;
+}
+
+message FileChunk {
+  uint32 file_index = 1;
+  uint64 offset = 2;
+  bytes data = 3;                     // at most 262144 bytes
+}
+
+message FileEnd {
+  uint32 file_index = 1;
+  bytes sha256 = 2;                   // sink verifies against the manifest
+}
+
+message TransferDone {}
+
+enum AbortReason {
+  ABORT_REASON_UNSPECIFIED = 0;
+  ABORT_REASON_CANCELLED = 1;
+  ABORT_REASON_NOT_FOUND = 2;         // clipboard generation or drag no longer current
+  ABORT_REASON_REFUSED = 3;           // policy or user said no
+  ABORT_REASON_IO_ERROR = 4;
+  ABORT_REASON_INTEGRITY = 5;         // hash mismatch
+}
+
+message TransferAbort {
+  AbortReason reason = 1;
+  string detail = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Pairing (ALPN "a7n-pair/1"): CPace over a TLS channel, bound to the TLS
+// exporter value and to both certificate fingerprints. See PROTOCOL.md section 5.
+// ---------------------------------------------------------------------------
+
+message PairingMessage {
+  oneof body {
+    PairStart start = 1;
+    PairAnswer answer = 2;
+    PairConfirm confirm = 3;
+    PairDone done = 4;
+  }
+}
+
+enum PairError {
+  PAIR_ERROR_NONE = 0;
+  PAIR_ERROR_NOT_PAIRING = 1;         // no code up, or expired
+  PAIR_ERROR_REFUSED = 2;             // wrong code, malformed, or any other failure
+  PAIR_ERROR_KNOWN = 3;               // already paired with that machine
+  PAIR_ERROR_FULL = 4;                // peer limit reached
+}
+
+message PairStart {                   // requester -> host
+  bytes share = 1;                    // CPace Ya, 32 bytes
+  PeerInfo info = 2;
+  bool qr = 3;                        // password includes the QR secret
+}
+
+message PairAnswer {                  // host -> requester
+  PairError error = 1;
+  bytes share = 2;                    // CPace Yb, 32 bytes
+  bytes tag = 3;                      // Tb, 64 bytes
+  PeerInfo info = 4;
+}
+
+message PairConfirm {                 // requester -> host
+  bytes tag = 1;                      // Ta, 64 bytes; empty = requester gives up
+  PairError error = 2;
+}
+
+message PairDone {                    // host -> requester
+  PairError error = 1;
+  bytes tag = 2;                      // Td, 64 bytes; proves the host stored the pin
+}
