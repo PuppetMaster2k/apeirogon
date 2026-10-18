@@ -124,6 +124,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 - The machine sends `ClipboardAnnounce` to every connected peer whose policy allows it. Order: higher `generation` wins, tie broken by larger `origin`.
 - **Sensitive content is never announced.** The source MUST check the OS markers (macOS `org.nspasteboard.ConcealedType`, Windows `ExcludeClipboardContentFromMonitorProcessing`, KDE `x-kde-passwordManagerHint`) and the local app deny-list; marked content creates no announce. This check cannot be disabled.
 - Small items are pushed eagerly in `inline_data`, as long as the announce's total inline bytes stay at or below 64 KiB. Other items carry only `size` and `sha256` and are **fetched on paste**: the OS paste request on the receiving machine triggers `TransferRequest{clipboard = (origin, generation), item_index}`. Where the OS cannot delay a paste, the receiver fetches eagerly when the item is below a configurable limit.
+- On Linux, files are delivered on paste as `text/uri-list` pointing into the receive directory: the paste request triggers the transfer, and the paths are handed out once the files are verified. Above a size threshold the receiver shows progress.
 - Text is offered as `text/plain;charset=utf-8` and, when the source has it, `text/html;charset=utf-8`.
 - Limits (defaults): text 256 KiB, image 8 MiB with validation before decode (decompression-bomb checks). Files are limited only by policy.
 - A source that no longer holds the generation answers `ABORT_REASON_NOT_FOUND`.
@@ -144,7 +145,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 2. The sink starts a synthetic OS drag session using promised files (no data yet) and shows the drag.
 3. The owner continues sending input. The drop is the button-up on the sink; the sink resolves the promise by sending `TransferRequest{drag_id}`.
 4. If the pointer returns or the user cancels, the source sends `DragEnd{CANCELLED}`; the sink tears down its drag. An unused offer expires after 60 s (`EXPIRED`).
-5. Platform notes: macOS (NSDraggingSession with file promises), Windows (IDataObject with delay-rendered CFSTR_FILEDESCRIPTOR / FILECONTENTS), Linux X11 (XDND), Wayland (drag via the compositor, limited by portal support). This is the riskiest component; the protocol only fixes the exchange.
+5. Platform notes: macOS (NSDraggingSession with file promises), Windows (IDataObject with delay-rendered CFSTR_FILEDESCRIPTOR / FILECONTENTS), Linux X11 (XDND). Wayland is not supported in v1: starting a drag needs a surface of our own and a real button press on it, which a background daemon does not have; users fall back to the clipboard or `a7n send`. This is the riskiest component; the protocol only fixes the exchange.
 
 ## 13. Settings sync and policy
 
@@ -195,4 +196,4 @@ Large counter values (late in a long session) add up to about 4 bytes per messag
 
 ## 17. Open questions
 
-1. Wayland drag and drop and clipboard delayed rendering.
+None at present.

@@ -41,6 +41,16 @@ scope.
 
 - Wayland: InputCapture portal + libei on GNOME/KDE; wlroots compositors
   best-effort via their own protocols.
+- Wayland clipboard: `ext-data-control-v1`, falling back to
+  `wlr-data-control-unstable-v1` (wlroots, KDE). Wayland is lazy by design:
+  the compositor asks the offering client to write into a pipe on paste, so
+  that request is our "paste happened" signal and needs no key snooping. We
+  implement the offering side ourselves on `wayland-client` /
+  `wayland-protocols`, because `wl-clipboard-rs` and `arboard` only accept
+  data up front; `wl-clipboard-rs` is used for reading and watching.
+- GNOME (Mutter) has no data-control: use the xdg-desktop-portal Clipboard
+  portal, which also delivers on request. **To verify before v0.1:** whether
+  it requires a RemoteDesktop portal session alongside InputCapture.
 - macOS: requires Accessibility and Input Monitoring permissions.
 
 ## Architecture
@@ -180,7 +190,13 @@ crates/
   edge; the receiving machine shows a drag with promised files, and the drop
   (button-up) triggers the transfer. Moving back or pressing Esc cancels;
   unused offers expire after 60 s. Per platform: macOS file promises, Windows
-  delay-rendered `IDataObject`, X11 XDND, Wayland via the compositor (limited).
+  delay-rendered `IDataObject`, X11 XDND. **Wayland: not supported in v1**
+  (a drag needs our own surface and a real click on it); use the clipboard
+  or `a7n send` instead.
+- **Files on Linux paste:** apps expect `text/uri-list` with local paths, so
+  the paste triggers the download into the receive directory and the paths
+  are handed out afterwards; above a size threshold a progress indicator is
+  shown.
 
 ## User interface
 
