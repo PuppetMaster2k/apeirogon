@@ -18,13 +18,13 @@ enum Platform {
   PLATFORM_MACOS = 1;
   PLATFORM_WINDOWS = 2;
   PLATFORM_LINUX = 3;
-  PLATFORM_IOS = 4;
-  PLATFORM_ANDROID = 5;
+  reserved 4, 5;  // mobile platforms: out of scope
 }
 
+// Minor-version features. A feature is used only if both peers list it.
 enum Capability {
   CAPABILITY_UNSPECIFIED = 0;
-  CAPABILITY_CLIPBOARD_TEXT = 1;
+  CAPABILITY_CLIPBOARD_TEXT = 1;      // text/plain and text/html
   CAPABILITY_CLIPBOARD_IMAGE = 2;
   CAPABILITY_CLIPBOARD_FILES = 3;
   CAPABILITY_DRAG_DROP = 4;
@@ -33,7 +33,7 @@ enum Capability {
   CAPABILITY_TEXT_INPUT = 7;
   CAPABILITY_SETTINGS_SYNC = 8;
   CAPABILITY_RTT_PROBE = 9;
-  CAPABILITY_MOTION_DATAGRAM = 10;  // Profile Q: accepts Motion as QUIC datagram
+  reserved 10;  // was MOTION_DATAGRAM; datagrams are always used
 }
 
 enum Edge {
@@ -53,8 +53,10 @@ message Landing {
 }
 
 // ---------------------------------------------------------------------------
-// Control link (ALPN "a7n/1"): one ordered, reliable stream of Envelopes,
-// each prefixed by a protobuf varint length.
+// Control link (ALPN "a7n/1"): QUIC bidirectional stream 0, one ordered,
+// reliable stream of Envelopes, each prefixed by a protobuf varint length.
+// QUIC datagrams on the same connection carry one Envelope each (Motion),
+// without a length prefix.
 // Hot-path messages take field numbers 1-8.
 // ---------------------------------------------------------------------------
 
@@ -71,15 +73,16 @@ message Envelope {
     Hello hello = 9;
     Welcome welcome = 10;
     Accepts accepts = 11;
-    Arrangement arrangement = 12;
     ClipboardAnnounce clipboard_announce = 13;
     TransferRequest transfer_request = 14;
     DragOffer drag_offer = 15;
     DragEnd drag_end = 16;
-    PairedPeers paired = 17;
     SettingsSync settings = 18;
     TransferCancel transfer_cancel = 19;
+    Desk desk = 20;
+    Layout layout = 21;
   }
+  reserved 12, 17;  // was Arrangement, PairedPeers
 }
 
 // ----- Handshake (first messages after TLS) --------------------------------
@@ -89,12 +92,12 @@ message PeerInfo {
   Platform platform = 2;
   string app_version = 3;                  // display only, never compared
   repeated Capability capabilities = 4;
-  uint32 listen_port = 5;                  // 0 = does not accept links
+  uint32 listen_port = 5;                  // UDP port; 0 = does not accept links
   bytes hw_addr = 6;                       // 6 bytes (wake-on-LAN), empty if unknown
 }
 
 message Hello {                            // initiator -> responder
-  uint32 protocol_version = 1;             // 1
+  uint32 protocol_version = 1;             // major version: 1
   PeerInfo info = 2;
 }
 
@@ -114,6 +117,8 @@ message Welcome {                          // responder -> initiator
 // ----- Input ----------------------------------------------------------------
 
 // Pointer motion as CUMULATIVE counters since the start of the route.
+// Values are relative device deltas before the sender's pointer acceleration;
+// the receiver applies its own speed and acceleration.
 // Loss-tolerant: a dropped or reordered datagram is repaired by the next one.
 // x and y wrap modulo 2^32; the receiver applies (new - last) with wrapping
 // arithmetic. Receivers drop a Motion whose motion_seq is not newer.
@@ -150,7 +155,8 @@ enum Gesture {
 }
 
 // Physical key as USB HID usage: (usage_page << 16) | usage_id.
-// Keyboard page 0x07, consumer/media page 0x0C.
+// Keyboard page 0x07, consumer/media page 0x0C. Per-target modifier remaps
+// are applied by the sender before encoding.
 message KeyEvent {
   uint32 usage = 1;
   bool down = 2;
@@ -247,38 +253,76 @@ message Accepts {                     // responder -> initiator when allow_drive
   bool accepts = 1;
 }
 
-message Arrangement {
-  Edge edge = 1;                      // which of the sender's edges faces the receiver
-  uint64 set_at = 2;                  // unix seconds; newest (set_at, by) wins
-  bytes by = 3;
-  bool way_back = 4;
-  bytes way_back_by = 5;
+// ----- Layout ---------------------------------------------------------------
+
+// One machine's whole virtual desktop on the shared 2D canvas, in canvas
+// units (default: the machine's logical pixels). Edges connect where
+// rectangles touch.
+message MachineRect {
+  bytes id = 1;                       // 16-byte machine id
+  sint32 x = 2;
+  sint32 y = 3;
+  uint32 width = 4;
+  uint32 height = 5;
 }
 
-message PairedPeers {
-  repeated bytes ids = 1;             // ids the sender is paired with, less the receiver
+// The whole desk's layout. Newest (version, by) wins; a local edit sets
+// version = max(seen) + 1.
+message Layout {
+  uint64 version = 1;
+  bytes by = 2;
+  repeated MachineRect machines = 3;
+}
+
+// ----- Desk membership ------------------------------------------------------
+
+// A machine admitted to the desk. Signed by the introducer's certificate key
+// over the domain-separated encoding defined in PROTOCOL.md section 6, so any
+// member can forward it.
+message DeskMember {
+  bytes id = 1;                       // 16-byte machine id
+  bytes pin = 2;                      // SHA-256 of the certificate DER
+  string name = 3;
+  bytes introduced_by = 4;            // machine id of the member that paired it
+  uint64 added_at = 5;                // unix seconds
+  bytes signature = 6;
+}
+
+message DeskRevocation {
+  bytes id = 1;                       // revoked machine id
+  bytes revoked_by = 2;
+  uint64 revoked_at = 3;              // unix seconds
+  bytes signature = 4;                // by revoked_by's certificate key
+}
+
+// Sent after the handshake and whenever membership changes. Receivers merge.
+message Desk {
+  repeated DeskMember members = 1;
+  repeated DeskRevocation revocations = 2;
 }
 
 message SettingsSync {
   bool on = 1;
   uint64 set_at = 2;
   bytes by = 3;
-  map<string, string> values = 4;     // each value stands alone; unknown keys ignored
+  map<string, string> values = 4;     // allow-listed keys only; unknown keys ignored
 }
 
 // ----- Clipboard -------------------------------------------------------------
 
 // Well-known MIME types:
-//   text/plain;charset=utf-8, image/png, application/x-apeirogon-files
+//   text/plain;charset=utf-8, text/html;charset=utf-8, image/png,
+//   application/x-apeirogon-files
 message ClipboardItem {
   string mime = 1;
   uint64 size = 2;
   bytes sha256 = 3;
-  bytes inline_data = 4;              // set when size <= 65536; else fetched on paste
+  bytes inline_data = 4;              // pushed eagerly while the announce's total
+                                      // inline bytes stay <= 65536; else fetched on paste
 }
 
-// Metadata only for large items. Sent to every connected peer whose policy
-// allows it, whether or not input is on that machine.
+// Sent to every connected peer whose policy allows it, whether or not input
+// is on that machine. Never sent for content marked sensitive by the OS.
 message ClipboardAnnounce {
   bytes origin = 1;                   // machine that produced this generation
   uint64 generation = 2;              // Lamport counter; highest wins, tie: larger origin
@@ -317,7 +361,7 @@ message FileResume {
   uint64 offset = 2;
 }
 
-// Sink -> source: "start streaming". Data flows on a transfer stream/connection.
+// Sink -> source: "start streaming". Data flows on a transfer stream.
 message TransferRequest {
   uint64 transfer_id = 1;             // chosen by the requester, unique per link
   oneof source {
@@ -353,8 +397,8 @@ message DragEnd {
 }
 
 // ---------------------------------------------------------------------------
-// Transfer channel (ALPN "a7n-xfer/1" in Profile T, a unidirectional stream
-// opened by the data source in Profile Q). Data flows source -> sink.
+// Transfer stream: a QUIC unidirectional stream opened by the data source on
+// the control link's connection, one per transfer. Data flows source -> sink.
 // ---------------------------------------------------------------------------
 
 message TransferFrame {
@@ -399,8 +443,9 @@ message TransferAbort {
 }
 
 // ---------------------------------------------------------------------------
-// Pairing (ALPN "a7n-pair/1"): CPace over a TLS channel, bound to the TLS
-// exporter value and to both certificate fingerprints. See PROTOCOL.md section 5.
+// Pairing (ALPN "a7n-pair/1", separate QUIC connection): SPAKE2 (RFC 9382,
+// edwards25519) bound to the TLS exporter value and to both certificate pins.
+// See PROTOCOL.md section 5.
 // ---------------------------------------------------------------------------
 
 message PairingMessage {
@@ -420,25 +465,25 @@ enum PairError {
   PAIR_ERROR_FULL = 4;                // peer limit reached
 }
 
-message PairStart {                   // requester -> host
-  bytes share = 1;                    // CPace Ya, 32 bytes
+message PairStart {                   // requester (A) -> host (B)
+  bytes share = 1;                    // SPAKE2 pA, 32 bytes
   PeerInfo info = 2;
   bool qr = 3;                        // password includes the QR secret
 }
 
 message PairAnswer {                  // host -> requester
   PairError error = 1;
-  bytes share = 2;                    // CPace Yb, 32 bytes
-  bytes tag = 3;                      // Tb, 64 bytes
+  bytes share = 2;                    // SPAKE2 pB, 32 bytes
+  bytes tag = 3;                      // host confirmation MAC, 32 bytes
   PeerInfo info = 4;
 }
 
 message PairConfirm {                 // requester -> host
-  bytes tag = 1;                      // Ta, 64 bytes; empty = requester gives up
+  bytes tag = 1;                      // requester confirmation MAC, 32 bytes; empty = gives up
   PairError error = 2;
 }
 
 message PairDone {                    // host -> requester
   PairError error = 1;
-  bytes tag = 2;                      // Td, 64 bytes; proves the host stored the pin
+  bytes tag = 2;                      // 32 bytes; proves the host stored the pin
 }
