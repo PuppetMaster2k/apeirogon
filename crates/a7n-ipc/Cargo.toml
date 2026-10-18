@@ -1,0 +1,13 @@
+[package]
+name = "a7n-ipc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+a7n-core.workspace = true
+
+[lints]
+workspace = true
