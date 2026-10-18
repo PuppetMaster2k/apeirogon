@@ -24,10 +24,18 @@ crates.io (optionally npm/PyPI) before the repo goes public.
 
 ## Positioning
 
-- **Wedge:** zero-config, secure-by-default pairing **plus** clipboard and file
-  transfer done properly everywhere (images, files, drag-and-drop). Input
-  sharing alone is a solved problem (Deskflow, Input Leap, lan-mouse).
-- **Wayland is table stakes**, not the pitch.
+- **Wedge:** input sharing alone is a solved problem (Deskflow, Input Leap,
+  lan-mouse), and TwinDesk already pairs two machines with clipboard, files
+  and drag-and-drop. Apeirogon differs on:
+  - **A desk, not a pair:** any number of machines in a full mesh, admitted
+    once through desk membership.
+  - **Native and lean:** one Rust binary per role (daemon, CLI, GUI) instead
+    of an Electron app, scriptable through `a7n`.
+  - **Secure by default:** mutual TLS with pinned keys, SPAKE2 pairing,
+    sensitive clipboard content that can never be synced.
+  - **Wayland without root:** portals and libei only.
+- Clipboard and file transfer done properly everywhere (images, files,
+  drag-and-drop) are expected, not the pitch. So is Wayland support.
 - **No wire compatibility** with Synergy/Deskflow/Input Leap.
 - **Open source only.** License **GPL-3.0-or-later**; reusable library crates
   (e.g. `a7n-proto`) may be MIT/Apache-2.0. Contributions under **DCO**
@@ -40,7 +48,9 @@ v1 supports **Windows, macOS, Linux/X11, and Linux/Wayland**. Mobile is out of
 scope.
 
 - Wayland: InputCapture portal + libei on GNOME/KDE; wlroots compositors
-  best-effort via their own protocols.
+  best-effort via their own protocols. **No evdev/uinput fallback:** read
+  access to `/dev/input` lets a process log every keystroke system-wide, and
+  granting it needs root.
 - Wayland clipboard: `ext-data-control-v1`, falling back to
   `wlr-data-control-unstable-v1` (wlroots, KDE). Wayland is lazy by design:
   the compositor asks the offering client to write into a pipe on paste, so
@@ -64,6 +74,8 @@ scope.
   - Ownership moves with `Focus` / `Accept` / `Refuse` / `Handover`, ordered by
     a rising route number. Chains go direct (A drives B, B hands over to C, A
     takes C itself; no relaying through B).
+  - **Take timeout:** if the target answers a take with neither accept nor
+    refuse within 1 s, the owner takes focus home.
   - **Idle takeover:** if the owner has sent nothing for 3 s, typing on
     another machine takes focus.
   - **Release on end:** whenever ownership ends (link loss, takeover, let go),
@@ -151,10 +163,14 @@ crates/
   edits resolve by last-writer-wins with a version counter (ties by machine
   id) and a notice to the loser.
 - **Safety hotkeys** (all rebindable):
-  - Return to the local machine: Scroll Lock / `Ctrl+Alt+Shift+Home`
+  - Return to the local machine: double-tap Right Alt / Right Option (within
+    400 ms), or Scroll Lock / `Ctrl+Alt+Shift+Home`
   - Lock cursor to the current machine: `Ctrl+Alt+Shift+L`
   - Jump to machine N: `Ctrl+Alt+Shift+1…9`
   - Peer disconnect auto-releases all held keys and buttons on it.
+- **Capture dead-man switch:** the platform capture releases the local
+  keyboard and mouse by itself when the daemon's keepalive (every 500 ms) is
+  missing for 1.5 s, so a hung daemon can never lock the user out.
 
 ## Clipboard
 
@@ -245,4 +261,6 @@ crates/
 
 ## Prior art
 
-Barrier, Input Leap, Deskflow, lan-mouse, ShareMouse, Beamer.
+Barrier, Input Leap, Deskflow, lan-mouse, ShareMouse, Beamer, TwinDesk
+(GPL-3.0; source of the take timeout, double-tap hotkey and capture
+dead-man switch ideas).
