@@ -41,7 +41,7 @@ Encryption is mandatory. There is no plaintext mode.
 QUIC uses TLS 1.3 with **mutual authentication and self-signed per-device certificates**. No CA exists or is needed.
 
 - On first start each device generates a key pair (Ed25519, or ECDSA P-256 where Ed25519 is unavailable) and a self-signed X.509 certificate. Validity: long (for example 100 years). Expiry is not a security mechanism here.
-- The **machine id** is the first 16 bytes of the SHA-256 of the certificate's SubjectPublicKeyInfo. It is stable across certificate re-issue with the same key.
+- The **machine id** is the first 16 bytes of the SHA-256 of the certificate's SubjectPublicKeyInfo. It is stable across certificate re-issue with the same key. Being derived from the key, it cannot be claimed by another device and needs no separate binding to the pin; a new key means a new id and pairing again.
 - The **pin** is the SHA-256 of the full certificate DER. Pairing and desk membership store the peer's pin.
 - Both sides present certificates. Each side accepts a peer only if the certificate's pin equals a stored pin. Hostname, validity dates and chain are ignored. No 0-RTT.
 - Revoking a peer = deleting its pin (and announcing a `DeskRevocation`, section 6). Replacing a device = pair again.
@@ -196,4 +196,3 @@ Large counter values (late in a long session) add up to about 4 bytes per messag
 ## 17. Open questions
 
 1. Wayland drag and drop and clipboard delayed rendering.
-2. Whether the machine id should be a hash of the key (as here) or a random id bound to the pin.
