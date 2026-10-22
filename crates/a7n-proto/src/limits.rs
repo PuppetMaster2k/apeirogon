@@ -41,6 +41,8 @@ pub const PAIRING_CODE_LENGTH: usize = 6;
 pub const PAIRING_CODE_DURATION: Duration = Duration::from_secs(60);
 /// Guesses allowed per pairing code (section 14).
 pub const PAIRING_CODE_GUESSES: usize = 1;
+/// Rolling pairing-attempt window (PROTOCOL.md section 14).
+pub const PAIRING_ATTEMPT_WINDOW: Duration = Duration::from_secs(60);
 /// Pairing attempts per minute from one source (section 14).
 pub const PAIRING_ATTEMPTS_PER_MINUTE_PER_SOURCE: usize = 5;
 /// Concurrent transfers per link (section 14).

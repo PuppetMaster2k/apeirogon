@@ -22,6 +22,7 @@ thiserror.workspace = true
 quinn.workspace = true
 rustls.workspace = true
 tokio.workspace = true
+rand_core.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

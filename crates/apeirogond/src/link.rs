@@ -71,16 +71,22 @@ pub(crate) struct Link {
     pub(crate) role: Role,
 }
 
-/// Machine id of the certificate the peer authenticated with.
-pub(crate) fn peer_machine_id(connection: &Connection) -> Result<MachineId, LinkError> {
+/// Leaf certificate the peer proved possession of during TLS.
+pub(crate) fn peer_certificate(
+    connection: &Connection,
+) -> Result<CertificateDer<'static>, LinkError> {
     let identity = connection
         .peer_identity()
         .ok_or(LinkError::NoPeerCertificate)?;
     let chain = identity
         .downcast::<Vec<CertificateDer<'static>>>()
         .map_err(|_| LinkError::NoPeerCertificate)?;
-    let leaf = chain.first().ok_or(LinkError::NoPeerCertificate)?;
-    Ok(identity::machine_id_of(leaf)?)
+    chain.into_iter().next().ok_or(LinkError::NoPeerCertificate)
+}
+
+/// Machine id of the certificate the peer authenticated with.
+pub(crate) fn peer_machine_id(connection: &Connection) -> Result<MachineId, LinkError> {
+    Ok(identity::machine_id_of(&peer_certificate(connection)?)?)
 }
 
 /// The initiator that wins a simultaneous dial: the larger machine id.
