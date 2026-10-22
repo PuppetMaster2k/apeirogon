@@ -5,7 +5,9 @@ use std::io::{self, Write};
 use std::net::{IpAddr, SocketAddr};
 use std::process::ExitCode;
 
-use a7n_ipc::{DEFAULT_UDP_PORT, IpcClient, IpcError, MachineId, PairingCode, Request, Response};
+use a7n_ipc::{
+    DEFAULT_UDP_PORT, IpcClient, IpcError, MachineId, NearbyMachine, PairingCode, Request, Response,
+};
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
@@ -18,20 +20,16 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Show this machine and its paired peers.
+    /// Show this machine, its paired peers and nearby unpaired machines.
     Status,
-    /// Show a pairing code, or join an address using a code read from stdin.
+    /// Show a pairing code, or join a target using a code read from stdin.
     Pair {
-        /// Peer IP or IP:port; IPv6 ports use [IP]:port.
-        #[arg(value_parser = parse_addr)]
-        addr: Option<SocketAddr>,
+        /// Peer IP, IP:port, or nearby machine id / unique hex prefix (at least 4 digits).
+        target: Option<String>,
     },
     /// Remove a paired machine by its 32-hex machine id.
-    Unpair {
-        #[arg(value_parser = parse_machine)]
-        machine: MachineId,
-    },
-    /// Dial a paired peer; temporary until automatic discovery (#9).
+    Unpair { machine: MachineId },
+    /// Dial a paired peer by address when automatic discovery is unavailable.
     Connect {
         /// Peer IP or IP:port; IPv6 ports use [IP]:port.
         #[arg(value_parser = parse_addr)]
@@ -53,20 +51,64 @@ async fn main() -> ExitCode {
 async fn run(command: Command) -> Result<()> {
     let request = match command {
         Command::Status => Request::Status,
-        Command::Pair { addr: None } => Request::PairHost,
-        Command::Pair { addr: Some(addr) } => Request::PairJoin {
-            addr,
+        Command::Pair { target: None } => Request::PairHost,
+        Command::Pair {
+            target: Some(target),
+        } => Request::PairJoin {
+            addr: resolve_pair_addr(&target).await?,
             code: read_code()?,
         },
         Command::Unpair { machine } => Request::Unpair { machine },
         Command::Connect { addr } => Request::Connect { addr },
     };
-    let mut client = IpcClient::connect().await.map_err(|error| match error {
-        IpcError::Socket(_) => anyhow::anyhow!("apeirogond is not running"),
-        error => error.into(),
-    })?;
+    let mut client = connect_client().await?;
     let response = client.request(&request).await?;
     write_response(&mut io::stdout().lock(), &response)
+}
+
+async fn connect_client() -> Result<IpcClient> {
+    IpcClient::connect().await.map_err(|error| match error {
+        IpcError::Socket(_) => anyhow::anyhow!("apeirogond is not running"),
+        error => error.into(),
+    })
+}
+
+async fn resolve_pair_addr(target: &str) -> Result<SocketAddr> {
+    if let Ok(addr) = parse_addr(target) {
+        return Ok(addr);
+    }
+    let mut client = connect_client().await?;
+    match client.request(&Request::Status).await? {
+        Response::Status(status) => {
+            resolve_target(target, &status.nearby).map_err(anyhow::Error::msg)
+        }
+        Response::Error { message, .. } => bail!("{message}"),
+        _ => bail!("expected status from daemon"),
+    }
+}
+
+fn resolve_target(target: &str, nearby: &[NearbyMachine]) -> Result<SocketAddr, &'static str> {
+    const MIN_PREFIX_LENGTH: usize = 4;
+    if let Ok(addr) = parse_addr(target) {
+        return Ok(addr);
+    }
+    if target.len() < MIN_PREFIX_LENGTH
+        || target.len() > MachineId::LEN * 2
+        || !target.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err("expected an IP address, IP:port, or machine id prefix of 4 to 32 hex digits");
+    }
+    let target = target.to_ascii_lowercase();
+    let mut matches = nearby
+        .iter()
+        .filter(|machine| machine.id.to_string().starts_with(&target));
+    let machine = matches
+        .next()
+        .ok_or("no nearby machine matches that id prefix")?;
+    if matches.next().is_some() {
+        return Err("ambiguous nearby machine id prefix; use more hex digits");
+    }
+    Ok(machine.addr)
 }
 
 fn read_code() -> Result<PairingCode> {
@@ -93,40 +135,23 @@ fn parse_addr(input: &str) -> Result<SocketAddr, &'static str> {
         .map_err(|_| "expected an IP address or IP:port (use [IPv6]:port for IPv6)")
 }
 
-fn parse_machine(input: &str) -> Result<MachineId, &'static str> {
-    const INVALID_ID: &str = "machine id must contain 32 hex digits";
-    if input.len() != MachineId::LEN * 2 || !input.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(INVALID_ID);
-    }
-    let mut bytes = [0; MachineId::LEN];
-    for (index, byte) in bytes.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&input[index * 2..index * 2 + 2], 16).map_err(|_| INVALID_ID)?;
-    }
-    MachineId::try_from(bytes.as_slice()).map_err(|_| INVALID_ID)
-}
-
-fn write_machine(output: &mut impl Write, machine: MachineId) -> io::Result<()> {
-    for byte in machine.as_bytes() {
-        write!(output, "{byte:02x}")?;
-    }
-    Ok(())
-}
-
 fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
     match response {
         Response::Status(status) => {
-            write!(output, "{} ", status.name)?;
-            write_machine(output, status.machine)?;
-            writeln!(output, " (this machine)")?;
+            writeln!(output, "{} {} (this machine)", status.name, status.machine)?;
             for peer in &status.peers {
-                write!(output, "{} ", peer.name)?;
-                write_machine(output, peer.id)?;
                 let state = if peer.connected {
                     "connected"
                 } else {
                     "offline"
                 };
-                writeln!(output, " {state}")?;
+                writeln!(output, "{} {} {state}", peer.name, peer.id)?;
+            }
+            if !status.nearby.is_empty() {
+                writeln!(output, "nearby")?;
+                for machine in &status.nearby {
+                    writeln!(output, "{} {}", machine.id, machine.addr)?;
+                }
             }
         }
         Response::PairCode {
@@ -136,9 +161,7 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
             writeln!(output, "{code} (valid for {expires_in_secs} s)")?;
         }
         Response::Paired { machine, name } => {
-            write!(output, "Paired with {name} (")?;
-            write_machine(output, *machine)?;
-            writeln!(output, ")")?;
+            writeln!(output, "Paired with {name} ({machine})")?;
         }
         Response::Done => {}
         Response::Error { message, .. } => bail!("{message}"),

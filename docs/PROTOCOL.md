@@ -22,6 +22,7 @@ Scope is the local network. Default UDP port: **42042** for both `a7n/1` and `a7
 ### 1.1 Discovery
 
 Machines advertise over mDNS / DNS-SD as service `_apeirogon._udp` with TXT keys `id` (hex machine id) and `v` (protocol major version). Paired machines are found by id; unpaired ones are listed for `a7n pair`. A machine may also be addressed by IP.
+The instance and host names are the hex machine id (the OS hostname is never announced), and the port is the actual listen port.
 
 ## 2. Framing
 

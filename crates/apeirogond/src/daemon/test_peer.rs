@@ -14,6 +14,7 @@ pub(super) const TEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(crate) struct Peer {
     pub(super) sender: Option<mpsc::Sender<Command>>,
+    pub(super) discoveries: mpsc::Sender<crate::discovery::Event>,
     task: JoinHandle<Result<(), DaemonError>>,
     pub(crate) machine: MachineId,
     pub(crate) addr: SocketAddr,
@@ -32,9 +33,11 @@ impl Peer {
         let machine = daemon.identity.machine_id;
         let addr = daemon.endpoint.local_addr().unwrap();
         let (sender, receiver) = mpsc::channel(MAILBOX_CAPACITY);
-        let task = tokio::spawn(daemon.run(receiver));
+        let (discoveries, discovery_rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let task = tokio::spawn(daemon.run(receiver, discovery_rx));
         Self {
             sender: Some(sender),
+            discoveries,
             task,
             machine,
             addr,

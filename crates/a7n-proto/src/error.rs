@@ -7,6 +7,9 @@ pub enum ProtoError {
     /// A machine id was not 16 bytes.
     #[error("machine id must be 16 bytes, got {0}")]
     BadMachineId(usize),
+    /// A machine id string was not exactly 32 hexadecimal digits.
+    #[error("machine id must contain 32 hex digits")]
+    BadMachineIdHex,
     /// A pin was not 32 bytes.
     #[error("pin must be 32 bytes, got {0}")]
     BadPin(usize),

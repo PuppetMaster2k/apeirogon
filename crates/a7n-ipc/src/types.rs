@@ -68,6 +68,16 @@ pub struct StatusInfo {
     pub machine: MachineId,
     pub name: String,
     pub peers: Vec<PeerInfo>,
+    pub nearby: Vec<NearbyMachine>,
+}
+
+/// An unpaired machine discovered on the local network.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NearbyMachine {
+    #[serde(with = "machine_id")]
+    pub id: MachineId,
+    pub addr: SocketAddr,
 }
 
 /// One known peer, whether connected or offline.
@@ -82,8 +92,6 @@ pub struct PeerInfo {
 }
 
 mod machine_id {
-    use std::fmt::Write;
-
     use a7n_proto::MachineId;
     use serde::{Deserialize, Deserializer, Serializer, de::Error};
 
@@ -91,26 +99,15 @@ mod machine_id {
         id: &MachineId,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
-        let mut hex = String::with_capacity(MachineId::LEN * 2);
-        for byte in id.as_bytes() {
-            write!(hex, "{byte:02x}").map_err(serde::ser::Error::custom)?;
-        }
-        serializer.serialize_str(&hex)
+        serializer.collect_str(id)
     }
 
     pub(super) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<MachineId, D::Error> {
-        let hex = String::deserialize(deserializer)?;
-        if hex.len() != MachineId::LEN * 2 || !hex.is_ascii() {
-            return Err(D::Error::custom("machine id must contain 32 hex digits"));
-        }
-        let mut bytes = [0; MachineId::LEN];
-        for (index, byte) in bytes.iter_mut().enumerate() {
-            *byte = u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16)
-                .map_err(|_| D::Error::custom("machine id must contain 32 hex digits"))?;
-        }
-        MachineId::try_from(bytes.as_slice()).map_err(D::Error::custom)
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(D::Error::custom)
     }
 }
 

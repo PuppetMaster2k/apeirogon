@@ -20,7 +20,7 @@ pub use a7n_proto::MachineId;
 pub use a7n_proto::limits::DEFAULT_UDP_PORT;
 pub use connection::{IpcClient, IpcConnection, IpcServer};
 pub use error::IpcError;
-pub use types::{ErrorKind, PeerInfo, Request, Response, StatusInfo};
+pub use types::{ErrorKind, NearbyMachine, PeerInfo, Request, Response, StatusInfo};
 
 /// Local API major version, independent of the peer protobuf protocol.
 pub const IPC_VERSION: u32 = 1;

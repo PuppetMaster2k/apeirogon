@@ -17,6 +17,12 @@ pub mod v1 {
 pub const ALPN_LINK: &[u8] = b"a7n/1";
 /// ALPN of the pairing connection (PROTOCOL.md 1).
 pub const ALPN_PAIR: &[u8] = b"a7n-pair/1";
+/// DNS-SD service type and domain (PROTOCOL.md 1.1).
+pub const MDNS_SERVICE_TYPE: &str = "_apeirogon._udp.local.";
+/// TXT key for the hex machine id (PROTOCOL.md 1.1).
+pub const MDNS_ID_KEY: &str = "id";
+/// TXT key for the protocol major version (PROTOCOL.md 1.1).
+pub const MDNS_VERSION_KEY: &str = "v";
 /// Protocol major version sent in `Hello` and `Welcome` (PROTOCOL.md 4).
 pub const PROTOCOL_VERSION: u32 = 1;
 

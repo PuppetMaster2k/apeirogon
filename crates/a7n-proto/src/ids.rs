@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+use std::fmt;
+use std::str::FromStr;
+
 use crate::ProtoError;
 
 /// First 16 bytes of the SHA-256 of a device's public key (PROTOCOL.md 3.1).
@@ -25,6 +28,31 @@ impl TryFrom<&[u8]> for MachineId {
             .try_into()
             .map_err(|_| ProtoError::BadMachineId(bytes.len()))?;
         Ok(Self(array))
+    }
+}
+
+impl fmt::Display for MachineId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in self.0 {
+            write!(formatter, "{byte:02x}")?;
+        }
+        Ok(())
+    }
+}
+
+impl FromStr for MachineId {
+    type Err = ProtoError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        if text.len() != Self::LEN * 2 || !text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(ProtoError::BadMachineIdHex);
+        }
+        let mut bytes = [0; Self::LEN];
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&text[index * 2..index * 2 + 2], 16)
+                .map_err(|_| ProtoError::BadMachineIdHex)?;
+        }
+        Ok(Self(bytes))
     }
 }
 
@@ -63,6 +91,35 @@ pub struct Generation(pub u64);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn machine_id_from_str_hex_input_validates_and_formats_lowercase() {
+        // Arrange
+        let cases = [
+            ("0123456789abcdef0123456789abcdef", true),
+            ("0123456789ABCDEF0123456789ABCDEF", true),
+            ("00000000000000000000000000000000", true),
+            ("", false),
+            ("0123456789abcdef", false),
+            ("0123456789abcdef0123456789abcdef00", false),
+            ("g123456789abcdef0123456789abcdef", false),
+            ("éééééééééééééééé", false),
+        ];
+        for (input, valid) in cases {
+            // Act
+            let result = input.parse::<MachineId>();
+
+            // Assert
+            if valid {
+                assert_eq!(result.unwrap().to_string(), input.to_ascii_lowercase());
+            } else {
+                assert!(
+                    matches!(result, Err(ProtoError::BadMachineIdHex)),
+                    "{input}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn machine_id_try_from_wrong_length_returns_bad_machine_id() {
