@@ -3,10 +3,11 @@
 use crate::ProtoError;
 
 /// First 16 bytes of the SHA-256 of a device's public key (PROTOCOL.md 3.1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MachineId([u8; 16]);
 
 impl MachineId {
+    /// The raw 16 bytes.
     #[must_use]
     pub fn as_bytes(&self) -> &[u8; 16] {
         &self.0
@@ -29,6 +30,7 @@ impl TryFrom<&[u8]> for MachineId {
 pub struct Pin([u8; 32]);
 
 impl Pin {
+    /// The raw 32 bytes.
     #[must_use]
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
@@ -45,6 +47,15 @@ impl TryFrom<&[u8]> for Pin {
         Ok(Self(array))
     }
 }
+
+/// Number that rises with every move; older routes are ignored (section 8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Route(pub u64);
+
+/// Clipboard Lamport counter (section 10). Compare `(Generation, origin
+/// MachineId)` tuples: higher generation wins, a tie goes to the larger origin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Generation(pub u64);
 
 #[cfg(test)]
 mod tests {
@@ -72,5 +83,18 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(ProtoError::BadPin(31))));
+    }
+
+    #[test]
+    fn generation_max_equal_generation_larger_origin_wins() {
+        // Arrange
+        let low = MachineId::try_from(&[1u8; 16][..]).unwrap();
+        let high = MachineId::try_from(&[2u8; 16][..]).unwrap();
+
+        // Act
+        let winner = (Generation(5), low).max((Generation(5), high));
+
+        // Assert
+        assert_eq!(winner.1, high);
     }
 }

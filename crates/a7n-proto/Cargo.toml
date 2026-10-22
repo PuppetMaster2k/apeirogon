@@ -8,11 +8,11 @@ rust-version.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+prost.workspace = true
 
 [lints]
 workspace = true
 
 [build-dependencies]
-prost-build = "0.14.4"
-protoc-bin-vendored = "3.3.0"
-
+prost-build.workspace = true
+protoc-bin-vendored.workspace = true

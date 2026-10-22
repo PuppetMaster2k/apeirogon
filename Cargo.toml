@@ -4,7 +4,7 @@ members = ["crates/*"]
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/PuppetMaster2k/apeirogon"
 rust-version = "1.85"
@@ -14,7 +14,10 @@ a7n-proto    = { path = "crates/a7n-proto" }
 a7n-ipc      = { path = "crates/a7n-ipc" }
 a7n-core     = { path = "crates/a7n-core" }
 a7n-platform = { path = "crates/a7n-platform" }
-thiserror = "2"
+thiserror           = "2"
+prost               = "0.14"
+prost-build         = "0.14"
+protoc-bin-vendored = "3.3"
 
 [workspace.lints.rust]
 missing_debug_implementations = "warn"
