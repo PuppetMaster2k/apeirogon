@@ -7,6 +7,7 @@ mod desk_store;
 mod endpoint;
 mod handshake;
 mod identity;
+mod ipc_server;
 mod link;
 mod link_driver;
 mod pairing;
@@ -26,8 +27,11 @@ async fn main() -> Result<()> {
         dirs.data_local_dir(),
         SocketAddr::from((Ipv4Addr::UNSPECIFIED, a7n_proto::limits::DEFAULT_UDP_PORT)),
     )?;
-    #[allow(unused_variables, reason = "#23 IPC owns this sender in the next PR")]
     let (commands, receiver) = mpsc::channel(1);
+    let server = a7n_ipc::IpcServer::bind()
+        .await
+        .context("cannot open the control socket; is apeirogond already running?")?;
+    tokio::spawn(ipc_server::serve(server, commands));
     tokio::select! {
         result = daemon.run(receiver) => result?,
         result = tokio::signal::ctrl_c() => result.context("cannot listen for ctrl-c")?,

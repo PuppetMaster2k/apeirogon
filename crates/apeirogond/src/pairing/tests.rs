@@ -41,8 +41,8 @@ async fn pair_join_expired_code_stores_nothing() {
 
     // Assert
     assert!(result.is_err());
-    assert_eq!(host.status().await.paired, []);
-    assert_eq!(requester.status().await.paired, []);
+    assert_eq!(host.status().await.peers, []);
+    assert_eq!(requester.status().await.peers, []);
     host.stop().await;
     requester.stop().await;
 }
@@ -67,8 +67,8 @@ async fn pair_host_pin_write_failure_refuses_without_storing_requester() {
 
     // Assert
     assert!(result.is_err());
-    assert_eq!(host.status().await.paired, []);
-    assert_eq!(requester.status().await.paired, []);
+    assert_eq!(host.status().await.peers, []);
+    assert_eq!(requester.status().await.peers, []);
     host.stop().await;
     requester.stop().await;
 }
@@ -106,7 +106,14 @@ async fn pair_join_pin_write_failure_preserves_previous_trust() {
     assert!(result.is_err());
     assert!(trust.read().unwrap().pins.contains(&previous));
     assert!(!trust.read().unwrap().pins.contains(&host_identity.pin));
-    assert!(requester.status().await.linked.is_empty());
+    assert!(
+        requester
+            .status()
+            .await
+            .peers
+            .iter()
+            .all(|peer| !peer.connected)
+    );
     host.stop().await;
     requester.stop().await;
 }
@@ -174,8 +181,8 @@ async fn pair_join_terminating_relay_stores_nothing() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(host.status().await.paired, []);
-    assert_eq!(requester.status().await.paired, []);
+    assert_eq!(host.status().await.peers, []);
+    assert_eq!(requester.status().await.peers, []);
     accept_task.abort();
     host.stop().await;
     requester.stop().await;
@@ -229,7 +236,7 @@ async fn pair_host_stalled_requester_keeps_commands_responsive_and_refuses_secon
     .expect("stalled host exchange blocked the owner");
 
     // Assert
-    assert_eq!(status.paired, []);
+    assert_eq!(status.peers, []);
     assert!(matches!(reopen, Err(DaemonError::PairingBusy)));
     assert!(second_result.is_err());
     connection.close(0u32.into(), b"");
@@ -267,8 +274,8 @@ async fn pair_join_stalled_host_keeps_commands_responsive_without_storing_pin() 
         .expect("stalled requester exchange blocked the owner");
 
     // Assert
-    assert_eq!(status.paired, []);
-    assert!(status.linked.is_empty());
+    assert_eq!(status.peers, []);
+    assert!(status.peers.iter().all(|peer| !peer.connected));
     connection.close(0u32.into(), b"");
     assert!(result.await.unwrap().is_err());
     accept_task.abort();

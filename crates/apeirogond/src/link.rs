@@ -69,7 +69,12 @@ pub(crate) struct Link {
     /// Bytes read from stream 0 after the handshake frame, not yet decoded.
     pub(crate) control_buf: Vec<u8>,
     pub(crate) peer_id: MachineId,
+    #[allow(
+        dead_code,
+        reason = "handshake metadata for capability-gated input (#12)"
+    )]
     pub(crate) peer_info: PeerInfo,
+    #[allow(dead_code, reason = "negotiated capabilities for input dispatch (#12)")]
     pub(crate) capabilities: Vec<Capability>,
     pub(crate) role: Role,
 }
@@ -112,8 +117,6 @@ fn new_link_wins(own: MachineId, peer: MachineId, new: Role, existing: Role) -> 
 #[derive(Debug)]
 pub(crate) struct LinkHandle {
     pub(crate) sender: mpsc::Sender<Envelope>,
-    pub(crate) peer_info: PeerInfo,
-    pub(crate) capabilities: Vec<Capability>,
     pub(crate) connection: Connection,
     pub(crate) role: Role,
 }

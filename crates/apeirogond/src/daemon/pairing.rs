@@ -91,7 +91,7 @@ impl Daemon {
         Ok(paired.done())
     }
 
-    pub(super) fn join(&mut self, addr: SocketAddr, code: PairingCode, reply: Reply<()>) {
+    pub(super) fn join(&mut self, addr: SocketAddr, code: PairingCode, reply: Reply<Entry>) {
         let config = match tls::pair_client_config(&self.identity) {
             Ok(config) => config,
             Err(error) => {

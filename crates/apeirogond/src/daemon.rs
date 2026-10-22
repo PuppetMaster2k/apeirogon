@@ -15,7 +15,7 @@ use rand_core::OsRng;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
 
-use crate::command::{Command, LinkStatus, Reply, Status};
+use crate::command::{Command, Reply, Status};
 use crate::desk_store::{DeskStore, DeskStoreError};
 use crate::endpoint;
 use crate::identity::{self, Identity, IdentityError};
@@ -61,6 +61,8 @@ pub(crate) enum DaemonError {
     Clock(#[from] std::time::SystemTimeError),
     #[error("pairing exchange already active")]
     PairingBusy,
+    #[error("machine is not paired")]
+    NotPaired,
     #[error("trust snapshot lock poisoned")]
     TrustPoisoned,
 }
@@ -78,7 +80,7 @@ enum Event {
     Joined {
         result: Result<Entry, PairingError>,
         addr: SocketAddr,
-        reply: Reply<()>,
+        reply: Reply<Entry>,
     },
 }
 
@@ -178,7 +180,7 @@ impl Daemon {
     fn command(&mut self, command: Command) -> Result<(), DaemonError> {
         match command {
             Command::Status(reply) => {
-                let _ = reply.send(self.status());
+                let _ = reply.send(Ok(self.status()));
             }
             Command::PairHost(reply) => {
                 let _ = reply.send(self.open_pairing());
@@ -199,23 +201,25 @@ impl Daemon {
         Ok(())
     }
 
-    fn status(&self) -> Result<Status, DaemonError> {
-        Ok(Status {
+    fn status(&self) -> Status {
+        Status {
             machine: self.identity.machine_id,
-            addr: self.endpoint.local_addr()?,
-            paired: self.pins.machine_ids().collect(),
-            linked: self
-                .links
-                .by_peer
-                .iter()
-                .map(|(&machine, handle)| LinkStatus {
-                    machine,
-                    info: handle.peer_info.clone(),
-                    capabilities: handle.capabilities.clone(),
-                    role: handle.role,
+            name: self.info.name.clone(),
+            peers: self
+                .pins
+                .machine_ids()
+                .filter_map(|id| {
+                    self.pins.get(&id).map(|entry| a7n_ipc::PeerInfo {
+                        id,
+                        name: entry.name.clone(),
+                        connected: self.links.by_peer.get(&id).is_some_and(|handle| {
+                            handle.connection.close_reason().is_none() && !handle.sender.is_closed()
+                        }),
+                        rtt_ms: None,
+                    })
                 })
                 .collect(),
-        })
+        }
     }
 
     fn open_pairing(&mut self) -> Result<PairingCode, DaemonError> {
@@ -243,6 +247,9 @@ impl Daemon {
     }
 
     fn unpair(&mut self, machine: MachineId) -> Result<(), DaemonError> {
+        if machine == self.identity.machine_id || self.pins.get(&machine).is_none() {
+            return Err(DaemonError::NotPaired);
+        }
         self.desk
             .revoke(&self.identity, &mut self.pins, machine, unix_seconds()?)?;
         self.sync_trust()?;

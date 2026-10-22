@@ -8,6 +8,9 @@ rust-version.workspace = true
 
 [dependencies]
 a7n-ipc.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
 workspace = true

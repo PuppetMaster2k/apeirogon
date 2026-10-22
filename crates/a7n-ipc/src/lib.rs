@@ -17,6 +17,7 @@ mod types;
 pub use a7n_core::pairing::{InvalidPairingCode, PairingCode};
 pub use a7n_platform::local_socket::{SocketLocation, default_location};
 pub use a7n_proto::MachineId;
+pub use a7n_proto::limits::DEFAULT_UDP_PORT;
 pub use connection::{IpcClient, IpcConnection, IpcServer};
 pub use error::IpcError;
 pub use types::{ErrorKind, PeerInfo, Request, Response, StatusInfo};

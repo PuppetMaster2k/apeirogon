@@ -74,9 +74,9 @@ impl Peer {
         .expect("daemon did not reach expected state")
     }
 
-    pub(crate) async fn pair(&self, requester: &Self) {
+    pub(crate) async fn pair(&self, requester: &Self) -> Entry {
         let code = self.command(Command::PairHost).await.unwrap();
-        timeout(
+        let entry = timeout(
             TEST_TIMEOUT,
             requester.command(|reply| Command::PairJoin {
                 addr: self.addr,
@@ -89,6 +89,7 @@ impl Peer {
         .unwrap();
         self.wait(|status| linked(status, requester.machine)).await;
         requester.wait(|status| linked(status, self.machine)).await;
+        entry
     }
 
     pub(crate) async fn stop(mut self) {
@@ -108,5 +109,12 @@ impl Drop for Peer {
 }
 
 pub(super) fn linked(status: &Status, machine: MachineId) -> bool {
-    status.linked.iter().any(|peer| peer.machine == machine)
+    status
+        .peers
+        .iter()
+        .any(|peer| peer.id == machine && peer.connected)
+}
+
+pub(super) fn paired(status: &Status, machine: MachineId) -> bool {
+    status.peers.iter().any(|peer| peer.id == machine)
 }

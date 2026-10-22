@@ -2,10 +2,9 @@
 
 use std::net::Ipv4Addr;
 
-use a7n_proto::v1::Capability;
 use tokio::time::timeout;
 
-use super::test_peer::{Peer, linked};
+use super::test_peer::{Peer, linked, paired};
 use super::*;
 
 #[tokio::test]
@@ -14,29 +13,18 @@ async fn pair_join_two_daemons_stores_pins_and_links_both_sides() {
     let a_dir = tempfile::tempdir().unwrap();
     let b_dir = tempfile::tempdir().unwrap();
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
-    let mut a_daemon = Daemon::load(a_dir.path(), addr).unwrap();
-    let mut b_daemon = Daemon::load(b_dir.path(), addr).unwrap();
-    a_daemon.info.capabilities = vec![
-        Capability::ClipboardText as i32,
-        Capability::Gestures as i32,
-    ];
-    b_daemon.info.capabilities = vec![Capability::ClipboardText as i32];
+    let a_daemon = Daemon::load(a_dir.path(), addr).unwrap();
+    let b_daemon = Daemon::load(b_dir.path(), addr).unwrap();
     let (a, b) = (Peer::run(a_daemon, a_dir), Peer::run(b_daemon, b_dir));
 
     // Act
-    a.pair(&b).await;
+    let entry = a.pair(&b).await;
 
     // Assert
-    assert!(a.status().await.paired.contains(&b.machine));
-    assert!(b.status().await.paired.contains(&a.machine));
-    assert_eq!(
-        a.status().await.linked[0].capabilities,
-        vec![Capability::ClipboardText]
-    );
-    assert_eq!(
-        b.status().await.linked[0].capabilities,
-        vec![Capability::ClipboardText]
-    );
+    assert_eq!(entry.machine_id, a.machine);
+    assert_eq!(entry.name, a.status().await.name);
+    assert!(paired(&a.status().await, b.machine));
+    assert!(paired(&b.status().await, a.machine));
     let a_pins = PinStore::load(&a.dir.path().join("pins.toml")).unwrap();
     let b_pins = PinStore::load(&b.dir.path().join("pins.toml")).unwrap();
     assert!(a_pins.get(&b.machine).unwrap().spki_der.is_some());
@@ -55,8 +43,8 @@ async fn pair_host_three_daemons_propagates_membership_and_trust() {
     a.pair(&c).await;
 
     // Assert
-    b.wait(|status| status.paired.contains(&c.machine)).await;
-    c.wait(|status| status.paired.contains(&b.machine)).await;
+    b.wait(|status| paired(status, c.machine)).await;
+    c.wait(|status| paired(status, b.machine)).await;
     // Membership received through A is sufficient for a pinned B-C handshake.
     b.command(|reply| Command::Connect {
         addr: c.addr,
@@ -76,8 +64,8 @@ async fn unpair_linked_member_removes_remote_pin_and_closes_links() {
     let (a, b, c) = (Peer::start(), Peer::start(), Peer::start());
     a.pair(&b).await;
     a.pair(&c).await;
-    b.wait(|status| status.paired.contains(&c.machine)).await;
-    c.wait(|status| status.paired.contains(&b.machine)).await;
+    b.wait(|status| paired(status, c.machine)).await;
+    c.wait(|status| paired(status, b.machine)).await;
     c.command(|reply| Command::Connect {
         addr: b.addr,
         reply,
@@ -96,9 +84,9 @@ async fn unpair_linked_member_removes_remote_pin_and_closes_links() {
 
     // Assert
     let a_status = a.status().await;
-    assert!(!a_status.paired.contains(&b.machine));
+    assert!(!paired(&a_status, b.machine));
     assert!(!linked(&a_status, b.machine));
-    c.wait(|status| !status.paired.contains(&b.machine) && !linked(status, b.machine))
+    c.wait(|status| !paired(status, b.machine) && !linked(status, b.machine))
         .await;
     b.wait(|status| !linked(status, a.machine)).await;
     let pins = PinStore::load(&c.dir.path().join("pins.toml")).unwrap();
@@ -142,13 +130,13 @@ async fn accept_unknown_control_pin_during_pairing_window_closes_before_hello() 
         closed,
         quinn::ConnectionError::ApplicationClosed(_)
     ));
-    assert!(a.status().await.linked.is_empty());
-    assert_eq!(a.status().await.paired, []);
+    assert!(a.status().await.peers.iter().all(|peer| !peer.connected));
+    assert_eq!(a.status().await.peers, []);
     a.stop().await;
 }
 
 #[tokio::test]
-async fn connect_simultaneous_dials_keeps_larger_initiator_and_live_registry() {
+async fn connect_simultaneous_dials_keeps_live_registry() {
     // Arrange
     let a_dir = tempfile::tempdir().unwrap();
     let b_dir = tempfile::tempdir().unwrap();
@@ -185,20 +173,8 @@ async fn connect_simultaneous_dials_keeps_larger_initiator_and_live_registry() {
     a_result.unwrap();
     b_result.unwrap();
     for (local, remote) in [(&a, &b), (&b, &a)] {
-        let expected = if local.machine > remote.machine {
-            crate::link::Role::Initiator
-        } else {
-            crate::link::Role::Responder
-        };
-        let status = local
-            .wait(|status| {
-                status
-                    .linked
-                    .iter()
-                    .any(|peer| peer.machine == remote.machine && peer.role == expected)
-            })
-            .await;
-        assert_eq!(status.linked.len(), 1);
+        let status = local.wait(|status| linked(status, remote.machine)).await;
+        assert_eq!(status.peers.iter().filter(|peer| peer.connected).count(), 1);
     }
     a.stop().await;
     b.stop().await;
@@ -230,8 +206,98 @@ async fn pair_join_wrong_code_closes_listener_window_without_storing_pins() {
     // Assert
     assert!(result.is_err());
     assert!(!trust.read().unwrap().pairing_open());
-    assert_eq!(a.status().await.paired, []);
-    assert_eq!(b.status().await.paired, []);
+    assert_eq!(a.status().await.peers, []);
+    assert_eq!(b.status().await.peers, []);
     a.stop().await;
     b.stop().await;
+}
+
+#[tokio::test]
+async fn status_ipc_round_trip_returns_own_machine() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let mut daemon = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+    daemon.info.name = "own machine".into();
+    let offline = MachineId::try_from(&[1; MachineId::LEN][..]).unwrap();
+    daemon.pins.add(Entry {
+        machine_id: offline,
+        pin: daemon.identity.pin,
+        name: "offline peer".into(),
+        spki_der: None,
+    });
+    let peer = Peer::run(daemon, dir);
+    let socket_dir = tempfile::tempdir().unwrap();
+    let location = a7n_ipc::SocketLocation::new(socket_dir.path().join("private/control.sock"));
+    let server = a7n_ipc::IpcServer::bind_at(&location).await.unwrap();
+    let server_task = tokio::spawn(crate::ipc_server::serve(
+        server,
+        peer.sender.as_ref().unwrap().clone(),
+    ));
+    let mut client = a7n_ipc::IpcClient::connect_at(&location).await.unwrap();
+
+    // Act
+    let response = client.request(&a7n_ipc::Request::Status).await.unwrap();
+
+    // Assert
+    let a7n_ipc::Response::Status(info) = response else {
+        panic!("expected status")
+    };
+    assert_eq!(
+        info,
+        a7n_ipc::StatusInfo {
+            machine: peer.machine,
+            name: "own machine".into(),
+            peers: vec![a7n_ipc::PeerInfo {
+                id: offline,
+                name: "offline peer".into(),
+                connected: false,
+                rtt_ms: None,
+            }],
+        }
+    );
+    drop(client);
+    server_task.abort();
+    let _ = server_task.await;
+    peer.stop().await;
+}
+
+#[tokio::test]
+async fn unpair_unknown_machine_returns_not_paired_without_revocation() {
+    // Arrange
+    let peer = Peer::start();
+    let unknown = MachineId::try_from(&[0; MachineId::LEN][..]).unwrap();
+    let socket_dir = tempfile::tempdir().unwrap();
+    let location = a7n_ipc::SocketLocation::new(socket_dir.path().join("private/control.sock"));
+    let server = a7n_ipc::IpcServer::bind_at(&location).await.unwrap();
+    let server_task = tokio::spawn(crate::ipc_server::serve(
+        server,
+        peer.sender.as_ref().unwrap().clone(),
+    ));
+    let mut client = a7n_ipc::IpcClient::connect_at(&location).await.unwrap();
+
+    for machine in [unknown, peer.machine] {
+        // Act
+        let response = client
+            .request(&a7n_ipc::Request::Unpair { machine })
+            .await
+            .unwrap();
+
+        // Assert
+        assert!(matches!(
+            response,
+            a7n_ipc::Response::Error {
+                kind: a7n_ipc::ErrorKind::NotPaired,
+                ..
+            }
+        ));
+        let mut pins = PinStore::load(&peer.dir.path().join("pins.toml")).unwrap();
+        let desk =
+            DeskStore::load(&peer.dir.path().join("desk.pb"), peer.machine, &mut pins).unwrap();
+        assert_eq!(desk.to_desk().revocations, []);
+        assert!(!peer.dir.path().join("desk.pb").exists());
+    }
+    drop(client);
+    server_task.abort();
+    let _ = server_task.await;
+    peer.stop().await;
 }
