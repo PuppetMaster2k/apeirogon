@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 use a7n_proto::v1::InputEvent;
 use tokio::sync::mpsc;
 
+#[cfg(all(unix, not(target_os = "macos")))]
+mod x11;
+
 pub const KEEPALIVE_INTERVAL: Duration = Duration::from_millis(500);
 pub const DEADMAN_TIMEOUT: Duration = Duration::from_millis(1500);
 
@@ -57,12 +60,61 @@ pub struct Injector {
 pub enum InputError {
     #[error("input capture and injection are not supported on this platform")]
     Unsupported,
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[error("cannot connect to the X server: {0}")]
+    X11Connect(#[from] x11rb::errors::ConnectError),
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[error("X connection failed: {0}")]
+    X11Connection(#[from] x11rb::errors::ConnectionError),
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[error("X request failed: {0}")]
+    X11Reply(#[from] x11rb::errors::ReplyError),
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[error("the X server lacks the {0} extension")]
+    MissingX11Extension(&'static str),
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[error("cannot start an input thread: {0}")]
+    Thread(std::io::Error),
 }
 
 /// # Errors
-/// Returns [`InputError::Unsupported`] until platform backends are implemented.
+/// Returns [`InputError::Unsupported`] when no backend fits the session
+/// (Wayland, no display, other platforms), or the backend's own error when it
+/// cannot start.
 pub fn start() -> Result<(Capture, Injector), InputError> {
+    start_platform()
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn start_platform() -> Result<(Capture, Injector), InputError> {
+    let session_type = std::env::var("XDG_SESSION_TYPE").ok();
+    let display_set = std::env::var_os("DISPLAY").is_some_and(|display| !display.is_empty());
+    match select_backend(session_type.as_deref(), display_set) {
+        Backend::X11 => x11::start(),
+        Backend::None => Err(InputError::Unsupported),
+    }
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn start_platform() -> Result<(Capture, Injector), InputError> {
     Err(InputError::Unsupported)
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+#[derive(Debug, PartialEq, Eq)]
+enum Backend {
+    X11,
+    None,
+}
+
+/// `XWayland` cannot capture global input, so a Wayland session never gets the
+/// X11 backend even when `DISPLAY` is set.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn select_backend(session_type: Option<&str>, display_set: bool) -> Backend {
+    if session_type == Some("wayland") || !display_set {
+        return Backend::None;
+    }
+    Backend::X11
 }
 
 /// Backends check this independently so a stalled daemon cannot keep input grabbed.
@@ -90,6 +142,26 @@ impl DeadMan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn select_backend_wayland_or_no_display_is_unsupported() {
+        // Arrange
+        let cases = [
+            (Some("wayland"), true, Backend::None),
+            (Some("x11"), false, Backend::None),
+            (Some("x11"), true, Backend::X11),
+            (None, true, Backend::X11),
+        ];
+
+        for (session_type, display_set, expected) in cases {
+            // Act
+            let backend = select_backend(session_type, display_set);
+
+            // Assert
+            assert_eq!(backend, expected, "{session_type:?} display={display_set}");
+        }
+    }
 
     #[test]
     fn expired_keepalive_missing_releases_at_timeout() {
