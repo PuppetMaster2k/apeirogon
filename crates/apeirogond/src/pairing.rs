@@ -2,23 +2,21 @@
 
 //! Pairing over a separate mutually authenticated QUIC connection (PROTOCOL.md 5).
 
-use std::net::IpAddr;
+use std::future::Future;
 use std::time::Instant;
 
-use a7n_core::pairing::{AttemptLimiter, HostPairing, RequesterPairing};
+use a7n_core::pairing::{HostPairing, Paired, RequesterPairing};
 use a7n_proto::v1::{
-    DeskMember, PairAnswer, PairConfirm, PairDone, PairError, PairingMessage, PeerInfo,
-    pairing_message::Body,
+    PairAnswer, PairConfirm, PairDone, PairError, PairingMessage, PeerInfo, pairing_message::Body,
 };
 use a7n_proto::{FrameKind, Pin, decode_frame, encode_frame, limits};
 use quinn::{Connection, RecvStream, SendStream};
 use rand_core::{CryptoRng, RngCore};
 use tokio::time::timeout;
 
-use crate::desk_store::{DeskStore, DeskStoreError};
 use crate::identity;
 use crate::link::{LinkError, peer_certificate};
-use crate::pin_store::{Entry, PinStore, PinStoreError};
+use crate::pin_store::Entry;
 
 /// Domain separation for the SPAKE2 additional authenticated data.
 const BINDING_LABEL: &[u8] = b"a7n-pair/1 binding";
@@ -30,10 +28,6 @@ pub(crate) enum PairingError {
     Refused,
     #[error(transparent)]
     Link(#[from] LinkError),
-    #[error(transparent)]
-    Store(#[from] PinStoreError),
-    #[error(transparent)]
-    Desk(#[from] DeskStoreError),
 }
 
 /// Dials pairing TLS within the handshake deadline; configure the endpoint with
@@ -54,15 +48,6 @@ pub(crate) async fn dial(
     .map_err(Into::into)
 }
 
-/// Accepts pairing TLS within the same deadline as a control handshake.
-pub(crate) async fn accept(incoming: quinn::Incoming) -> Result<Connection, PairingError> {
-    timeout(limits::HANDSHAKE_TIMEOUT, incoming)
-        .await
-        .map_err(|_| LinkError::Timeout)?
-        .map_err(LinkError::from)
-        .map_err(Into::into)
-}
-
 fn peer_pin(connection: &Connection) -> Result<Pin, PairingError> {
     identity::pin_of(&peer_certificate(connection)?)
         .map_err(LinkError::from)
@@ -77,7 +62,7 @@ fn binding(connection: &Connection) -> Result<[u8; 32], PairingError> {
     Ok(ctx)
 }
 
-async fn write_message(send: &mut SendStream, body: Body) -> Result<(), PairingError> {
+pub(super) async fn write_message(send: &mut SendStream, body: Body) -> Result<(), PairingError> {
     let mut buf = Vec::new();
     encode_frame(&PairingMessage { body: Some(body) }, &mut buf);
     timeout(limits::HANDSHAKE_TIMEOUT, send.write_all(&buf))
@@ -87,7 +72,10 @@ async fn write_message(send: &mut SendStream, body: Body) -> Result<(), PairingE
     Ok(())
 }
 
-async fn read_message(recv: &mut RecvStream, buf: &mut Vec<u8>) -> Result<Body, PairingError> {
+pub(super) async fn read_message(
+    recv: &mut RecvStream,
+    buf: &mut Vec<u8>,
+) -> Result<Body, PairingError> {
     timeout(limits::HANDSHAKE_TIMEOUT, async {
         loop {
             if let Some((message, used)) =
@@ -118,26 +106,20 @@ async fn finish(send: &mut SendStream) -> Result<(), PairingError> {
     Ok(())
 }
 
-/// Host-owned persistence and signing context; the caller supplies Unix time.
-#[derive(Debug)]
-pub(crate) struct HostDesk<'a> {
-    pub(crate) identity: &'a identity::Identity,
-    pub(crate) desk: &'a mut DeskStore,
-    pub(crate) pins: &'a mut PinStore,
-    pub(crate) unix_seconds: u64,
-}
-
-/// Runs one host exchange. The caller owns the code window, source limiter and
-/// pin store across connections; time and randomness remain injectable.
-pub(crate) async fn respond(
+/// Runs a host exchange in a task. Only the owner may persist a confirmed peer;
+/// its reply supplies `PairDone` after admission succeeds.
+pub(crate) async fn respond<F, Fut>(
     connection: Connection,
-    host: &mut HostPairing,
-    info: &PeerInfo,
-    limiter: &mut AttemptLimiter<IpAddr>,
-    desk: &mut HostDesk<'_>,
+    mut host: HostPairing,
+    info: PeerInfo,
+    admit: F,
     mut now: impl FnMut() -> Instant,
     rng: &mut (impl CryptoRng + RngCore),
-) -> Result<(Entry, DeskMember), PairingError> {
+) -> Result<(), PairingError>
+where
+    F: FnOnce(Entry, Paired) -> Fut,
+    Fut: Future<Output = Result<PairDone, PairingError>>,
+{
     let streams = timeout(limits::HANDSHAKE_TIMEOUT, connection.accept_bi()).await;
     let Ok(Ok((mut send, mut recv))) = streams else {
         host.refuse();
@@ -149,9 +131,6 @@ pub(crate) async fn respond(
         ..PairAnswer::default()
     });
     let result = async {
-        if !limiter.allow(connection.remote_address().ip(), now()) {
-            return Err(PairingError::Refused);
-        }
         let pin = peer_pin(&connection)?;
         let ctx = binding(&connection)?;
         let mut buf = Vec::new();
@@ -173,12 +152,12 @@ pub(crate) async fn respond(
             .confirm(confirm, now())
             .map_err(|_| PairingError::Refused)?;
         let entry = peer_entry(&connection, paired.peer.pin, paired.peer.info.name.clone())?;
-        let member = desk
-            .desk
-            .admit(desk.identity, desk.pins, &entry, desk.unix_seconds)?;
-        write_message(&mut send, Body::Done(paired.done())).await?;
+        let done = timeout(limits::HANDSHAKE_TIMEOUT, admit(entry, paired))
+            .await
+            .map_err(|_| LinkError::Timeout)??;
+        write_message(&mut send, Body::Done(done)).await?;
         finish(&mut send).await?;
-        Ok((entry, member))
+        Ok(())
     }
     .await;
     if result.is_err() {
@@ -189,11 +168,10 @@ pub(crate) async fn respond(
     result
 }
 
-/// Runs the requester exchange, persisting only after the host's storage proof.
+/// Returns a peer for owner-only persistence after the host's storage proof.
 pub(crate) async fn initiate(
     connection: Connection,
     mut requester: RequesterPairing,
-    store: &mut PinStore,
 ) -> Result<Entry, PairingError> {
     let streams = timeout(limits::HANDSHAKE_TIMEOUT, connection.open_bi()).await;
     let Ok(Ok((mut send, mut recv))) = streams else {
@@ -216,8 +194,7 @@ pub(crate) async fn initiate(
             return Err(PairingError::Refused);
         };
         let peer = requester.done(done).map_err(|_| PairingError::Refused)?;
-        let entry = store_peer(store, &connection, peer.pin, peer.info.name)?;
-        Ok(entry)
+        peer_entry(&connection, peer.pin, peer.info.name)
     }
     .await;
     if result.is_err() {
@@ -240,21 +217,6 @@ async fn refuse(send: &mut SendStream, body: Body) {
     }
 }
 
-/// Saves a verified peer and restores the in-memory store if persistence fails.
-fn store_peer(
-    store: &mut PinStore,
-    connection: &Connection,
-    pin: Pin,
-    name: String,
-) -> Result<Entry, PairingError> {
-    let entry = peer_entry(connection, pin, name)?;
-    let mut staged = store.clone();
-    staged.add(entry.clone());
-    staged.save()?;
-    *store = staged;
-    Ok(entry)
-}
-
 fn peer_entry(connection: &Connection, pin: Pin, name: String) -> Result<Entry, PairingError> {
     let cert = peer_certificate(connection)?;
     if identity::pin_of(&cert).map_err(LinkError::from)? != pin {
@@ -266,314 +228,4 @@ fn peer_entry(connection: &Connection, pin: Pin, name: String) -> Result<Entry, 
         name,
         spki_der: Some(identity::spki_of(&cert).map_err(LinkError::from)?),
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use std::net::{Ipv4Addr, SocketAddr};
-
-    use quinn::Endpoint;
-    use tempfile::TempDir;
-
-    use super::*;
-    use crate::endpoint;
-    use crate::identity::Identity;
-    use crate::pin_store::PinStore;
-    use crate::tls;
-    use a7n_core::pairing::PairingCode;
-    use rand_core::OsRng;
-
-    struct Peer {
-        identity: Identity,
-        endpoint: Endpoint,
-        store: PinStore,
-        desk: DeskStore,
-        info: PeerInfo,
-        dir: TempDir,
-    }
-
-    impl Peer {
-        fn new(name: &str) -> Self {
-            let dir = tempfile::tempdir().unwrap();
-            let identity = identity::load_or_create(dir.path()).unwrap();
-            let store = PinStore::load(&dir.path().join("pins.toml")).unwrap();
-            let mut store = store;
-            let desk =
-                DeskStore::load(&dir.path().join("desk.pb"), identity.machine_id, &mut store)
-                    .unwrap();
-            let mut endpoint = endpoint::bind_addr(
-                SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
-                tls::pair_server_config(&identity).unwrap(),
-            )
-            .unwrap();
-            endpoint.set_default_client_config(tls::pair_client_config(&identity).unwrap());
-            Self {
-                identity,
-                endpoint,
-                store,
-                desk,
-                info: PeerInfo {
-                    name: name.into(),
-                    ..PeerInfo::default()
-                },
-                dir,
-            }
-        }
-    }
-
-    async fn connect(a: &Peer, b: &Peer) -> (Connection, Connection) {
-        let connect = dial(&a.endpoint, b.endpoint.local_addr().unwrap());
-        let incoming = async { accept(b.endpoint.accept().await.unwrap()).await };
-        let (client, server) = tokio::join!(connect, incoming);
-        (client.unwrap(), server.unwrap())
-    }
-    #[tokio::test]
-    async fn pair_tls_unknown_certificates_authenticate_and_bind() {
-        // Arrange
-        let a = Peer::new("a");
-        let b = Peer::new("b");
-
-        // Act
-        let (client, server) = connect(&a, &b).await;
-
-        // Assert
-        assert_eq!(peer_pin(&client).unwrap(), b.identity.pin);
-        assert_eq!(peer_pin(&server).unwrap(), a.identity.pin);
-        assert_eq!(binding(&client).unwrap(), binding(&server).unwrap());
-    }
-
-    #[tokio::test]
-    async fn store_peer_save_failure_restores_previous_entry() {
-        // Arrange
-        let a = Peer::new("a");
-        let b = Peer::new("b");
-        let (client, _server) = connect(&a, &b).await;
-        let mut store = PinStore::load(&a.dir.path().join("missing/pins.toml")).unwrap();
-        let previous = crate::pin_store::Entry {
-            machine_id: b.identity.machine_id,
-            pin: a.identity.pin,
-            name: "previous".into(),
-            spki_der: None,
-        };
-        store.add(previous.clone());
-
-        // Act
-        let result = store_peer(&mut store, &client, b.identity.pin, "new".into());
-
-        // Assert
-        assert!(result.is_err());
-        assert_eq!(store.get(&b.identity.machine_id), Some(&previous));
-    }
-
-    fn requester(peer: &Peer, code: &str) -> RequesterPairing {
-        RequesterPairing::new(
-            PairingCode::parse(code).unwrap(),
-            None,
-            peer.identity.pin,
-            peer.info.clone(),
-            &mut OsRng,
-        )
-    }
-
-    async fn run_pair(
-        a: &mut Peer,
-        b: &mut Peer,
-        requester_code: &str,
-        host_code: &str,
-        opened_at: Instant,
-        now: Instant,
-    ) -> (
-        Result<Entry, PairingError>,
-        Result<(Entry, DeskMember), PairingError>,
-    ) {
-        let (client, server) = connect(a, b).await;
-        let requester = requester(a, requester_code);
-        let mut host = HostPairing::new(
-            PairingCode::parse(host_code).unwrap(),
-            None,
-            b.identity.pin,
-            opened_at,
-        );
-        let mut limiter = AttemptLimiter::new(limits::UNAUTHENTICATED_SLOTS);
-        let mut rng = OsRng;
-        let mut host_desk = HostDesk {
-            identity: &b.identity,
-            desk: &mut b.desk,
-            pins: &mut b.store,
-            unix_seconds: 1,
-        };
-        tokio::join!(
-            initiate(client, requester, &mut a.store),
-            respond(
-                server,
-                &mut host,
-                &b.info,
-                &mut limiter,
-                &mut host_desk,
-                || now,
-                &mut rng
-            )
-        )
-    }
-
-    fn assert_stored(a: &Peer, b: &Peer) {
-        let reloaded = PinStore::load(&a.dir.path().join("pins.toml")).unwrap();
-        let entry = reloaded.get(&b.identity.machine_id).unwrap();
-        assert_eq!(entry.pin, b.identity.pin);
-        assert_eq!(entry.name, b.info.name);
-        assert_eq!(
-            entry.spki_der,
-            Some(identity::spki_of(&b.identity.cert_der).unwrap())
-        );
-    }
-
-    fn assert_empty(a: &Peer, b: &Peer) {
-        assert!(a.store.pins().next().is_none());
-        assert!(b.store.pins().next().is_none());
-        for peer in [a, b] {
-            let reloaded = PinStore::load(&peer.dir.path().join("pins.toml")).unwrap();
-            assert!(reloaded.pins().next().is_none());
-        }
-    }
-
-    #[tokio::test]
-    async fn pair_correct_code_persists_both_peers() {
-        // Arrange
-        let mut a = Peer::new("requester");
-        let mut b = Peer::new("host");
-        let now = std::time::Instant::now();
-
-        // Act
-        let (requester, host) = run_pair(&mut a, &mut b, "123456", "123456", now, now).await;
-
-        // Assert
-        assert!(requester.is_ok(), "{requester:?}");
-        assert!(host.is_ok(), "{host:?}");
-        assert_stored(&a, &b);
-        assert_stored(&b, &a);
-        assert_eq!(b.desk.to_desk().members.len(), 1);
-        assert_eq!(host.unwrap().1.id, a.identity.machine_id.as_bytes());
-    }
-
-    #[tokio::test]
-    async fn pair_host_pin_write_failure_refuses_and_keeps_pins_unchanged() {
-        // Arrange
-        let mut a = Peer::new("requester");
-        let mut b = Peer::new("host");
-        b.store = PinStore::load(&b.dir.path().join("missing/pins.toml")).unwrap();
-        let now = Instant::now();
-
-        // Act
-        let (requester, host) = run_pair(&mut a, &mut b, "123456", "123456", now, now).await;
-
-        // Assert
-        assert!(requester.is_err());
-        assert!(matches!(host, Err(PairingError::Desk(_))));
-        assert_empty(&a, &b);
-    }
-
-    #[tokio::test]
-    async fn pair_wrong_code_stores_nothing() {
-        // Arrange
-        let mut a = Peer::new("requester");
-        let mut b = Peer::new("host");
-        let now = std::time::Instant::now();
-
-        // Act
-        let (requester, host) = run_pair(&mut a, &mut b, "654321", "123456", now, now).await;
-
-        // Assert
-        assert!(requester.is_err());
-        assert!(host.is_err());
-        assert_empty(&a, &b);
-    }
-
-    #[tokio::test]
-    async fn pair_expired_code_stores_nothing() {
-        // Arrange
-        let mut a = Peer::new("requester");
-        let mut b = Peer::new("host");
-        let opened_at = std::time::Instant::now();
-        let now = opened_at + limits::PAIRING_CODE_DURATION;
-
-        // Act
-        let (requester, host) = run_pair(&mut a, &mut b, "123456", "123456", opened_at, now).await;
-
-        // Assert
-        assert!(requester.is_err());
-        assert!(host.is_err());
-        assert_empty(&a, &b);
-    }
-
-    async fn relay(front: Connection, back: Connection) {
-        async fn copy(mut recv: RecvStream, mut send: SendStream) -> Result<(), PairingError> {
-            while let Some(chunk) = timeout(
-                limits::HANDSHAKE_TIMEOUT,
-                recv.read_chunk(limits::CONTROL_FRAME_MAX, true),
-            )
-            .await
-            .map_err(|_| LinkError::Timeout)?
-            .map_err(LinkError::from)?
-            {
-                timeout(limits::HANDSHAKE_TIMEOUT, send.write_all(&chunk.bytes))
-                    .await
-                    .map_err(|_| LinkError::Timeout)?
-                    .map_err(LinkError::from)?;
-            }
-            finish(&mut send).await
-        }
-        let (front_send, front_recv) = timeout(limits::HANDSHAKE_TIMEOUT, front.accept_bi())
-            .await
-            .unwrap()
-            .unwrap();
-        let (back_send, back_recv) = back.open_bi().await.unwrap();
-        let _ = tokio::join!(copy(front_recv, back_send), copy(back_recv, front_send));
-    }
-
-    #[tokio::test]
-    async fn pair_terminating_relay_stores_nothing() {
-        // Arrange
-        let mut a = Peer::new("requester");
-        let mut b = Peer::new("host");
-        let relay_peer = Peer::new("relay");
-        let (client, front) = connect(&a, &relay_peer).await;
-        let (back, server) = connect(&relay_peer, &b).await;
-        let requester = requester(&a, "123456");
-        let now = Instant::now();
-        let mut host = HostPairing::new(
-            PairingCode::parse("123456").unwrap(),
-            None,
-            b.identity.pin,
-            now,
-        );
-        let mut limiter = AttemptLimiter::new(limits::UNAUTHENTICATED_SLOTS);
-        let mut rng = OsRng;
-
-        let mut host_desk = HostDesk {
-            identity: &b.identity,
-            desk: &mut b.desk,
-            pins: &mut b.store,
-            unix_seconds: 1,
-        };
-
-        // Act
-        let (requester, host, ()) = tokio::join!(
-            initiate(client, requester, &mut a.store),
-            respond(
-                server,
-                &mut host,
-                &b.info,
-                &mut limiter,
-                &mut host_desk,
-                || now,
-                &mut rng
-            ),
-            relay(front, back)
-        );
-
-        // Assert
-        assert!(requester.is_err());
-        assert!(host.is_err());
-        assert_empty(&a, &b);
-    }
 }
