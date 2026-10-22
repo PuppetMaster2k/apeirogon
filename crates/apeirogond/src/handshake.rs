@@ -55,14 +55,24 @@ pub(crate) fn common_capabilities(local: &[i32], remote: &[i32]) -> Vec<Capabili
         .collect()
 }
 
-async fn send_message(send: &mut SendStream, body: Body) -> Result<(), LinkError> {
-    let mut buf = Vec::new();
-    encode_frame(&Envelope { body: Some(body) }, &mut buf);
-    send.write_all(&buf).await?;
+/// Frames `body` into `buf` (cleared first, so one buffer serves a whole
+/// link) and writes it to `send`.
+pub(crate) async fn send_envelope(
+    send: &mut SendStream,
+    buf: &mut Vec<u8>,
+    body: Body,
+) -> Result<(), LinkError> {
+    buf.clear();
+    encode_frame(&Envelope { body: Some(body) }, buf);
+    send.write_all(buf).await?;
     Ok(())
 }
 
 /// Reads one frame of `kind` from `recv`, keeping surplus bytes in `buf`.
+///
+/// Cancel-safe: `RecvStream::read_chunk` is (quinn `recv_stream.rs`), and
+/// bytes reach `buf` only after it completes, so dropping the future loses
+/// nothing and the next call resumes from `buf`.
 ///
 /// The frame must finish within `FRAME_READ_TIMEOUT` once its first byte
 /// arrived (PROTOCOL.md 2).
@@ -116,7 +126,7 @@ pub(crate) async fn initiate(connection: Connection, local: &PeerInfo) -> Result
         protocol_version: PROTOCOL_VERSION,
         info: Some(local.clone()),
     };
-    send_message(&mut send, Body::Hello(hello)).await?;
+    send_envelope(&mut send, &mut Vec::new(), Body::Hello(hello)).await?;
     let mut buf = Vec::new();
     let Some(Body::Welcome(welcome)) = read_frame(&mut recv, &mut buf, FrameKind::Control)
         .await?
@@ -165,7 +175,7 @@ pub(crate) async fn respond(
         accepts_drive,
         error: HandshakeError::None.into(),
     };
-    send_message(&mut send, Body::Welcome(welcome)).await?;
+    send_envelope(&mut send, &mut Vec::new(), Body::Welcome(welcome)).await?;
     into_link(connection, (send, recv), buf, info, local, Role::Responder)
 }
 
@@ -183,7 +193,7 @@ async fn reject(
         accepts_drive: false,
         error: code.into(),
     };
-    send_message(send, Body::Welcome(welcome)).await?;
+    send_envelope(send, &mut Vec::new(), Body::Welcome(welcome)).await?;
     // Best effort: without this the close could overtake the Welcome.
     let _ = send.finish();
     let _ = send.stopped().await;
