@@ -53,7 +53,7 @@ Initial packets reveal the ALPN; with TLS 1.3 both certificates are encrypted. T
 ## 4. Connection and handshake
 
 1. Initiator opens a QUIC connection with ALPN `a7n/1`, presents its certificate.
-2. Responder checks the pin; unknown pin: close with TLS alert `bad_certificate`. No further information is given.
+2. Responder checks the pin; unknown pin: close with TLS alert `bad_certificate`. While a pairing window is open, the shared listener accepts unknown certificates at TLS (still verifying the TLS 1.3 signature) so `a7n-pair/1` can pair on the same port. After ALPN dispatch, an unknown pin on `a7n/1` is immediately closed before the control handshake; no further information is given.
 3. Initiator opens stream 0 and sends `Hello{protocol_version=1, info}`.
 4. Responder replies `Welcome{protocol_version, info, accepts_drive}`. On a major-version mismatch it sets `error = UNSUPPORTED_VERSION`; both sides then close and tell the user which machine runs the older version (by `info.name`) and needs updating.
 5. Both sides compute the capability intersection from `PeerInfo.capabilities`. Capabilities are the minor-version features: one is used only if both sides list it.

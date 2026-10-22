@@ -5,10 +5,11 @@
 
 use std::collections::HashMap;
 
-use a7n_proto::v1::{Capability, PeerInfo};
+use a7n_proto::v1::{Capability, Envelope, PeerInfo};
 use a7n_proto::{MachineId, ProtoError};
 use quinn::{Connection, ConnectionError, RecvStream, SendStream, VarInt};
 use rustls::pki_types::CertificateDer;
+use tokio::sync::mpsc;
 
 use crate::identity::{self, IdentityError};
 
@@ -31,6 +32,8 @@ pub(crate) enum LinkError {
     Read(#[from] quinn::ReadError),
     #[error("cannot write the control stream: {0}")]
     Write(#[from] quinn::WriteError),
+    #[error("dial superseded before a link to the peer was established")]
+    Superseded(MachineId),
     #[error("handshake timed out")]
     Timeout,
     #[error("the control stream ended early")]
@@ -105,17 +108,31 @@ fn new_link_wins(own: MachineId, peer: MachineId, new: Role, existing: Role) -> 
     initiator(new) == survivor || initiator(existing) != survivor
 }
 
+/// A task owns the streams; the state owner holds only its mailbox and close handle.
+#[derive(Debug)]
+pub(crate) struct LinkHandle {
+    pub(crate) sender: mpsc::Sender<Envelope>,
+    pub(crate) peer_info: PeerInfo,
+    pub(crate) capabilities: Vec<Capability>,
+    pub(crate) connection: Connection,
+    pub(crate) role: Role,
+}
+
 /// Live links by peer machine id; owned by the task that routes between them.
 #[derive(Debug, Default)]
 pub(crate) struct Links {
-    by_peer: HashMap<MachineId, Link>,
+    pub(crate) by_peer: HashMap<MachineId, LinkHandle>,
 }
 
 impl Links {
     /// Stores `link` and returns the link that must now be closed with
     /// [`CLOSE_SUPERSEDED`]: the loser of a simultaneous dial or a stale link.
-    pub(crate) fn insert(&mut self, link: Link, own_id: MachineId) -> Option<Link> {
-        let peer = link.peer_id;
+    pub(crate) fn insert(
+        &mut self,
+        peer: MachineId,
+        link: LinkHandle,
+        own_id: MachineId,
+    ) -> Option<LinkHandle> {
         let Some(existing) = self.by_peer.get(&peer) else {
             self.by_peer.insert(peer, link);
             return None;

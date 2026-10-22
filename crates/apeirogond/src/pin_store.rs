@@ -107,6 +107,10 @@ impl PinStore {
         Ok(())
     }
 
+    pub(crate) fn machine_ids(&self) -> impl Iterator<Item = MachineId> + '_ {
+        self.entries.keys().copied()
+    }
+
     /// Every paired peer's pin.
     pub(crate) fn pins(&self) -> impl Iterator<Item = Pin> + '_ {
         self.entries.values().map(|entry| entry.pin)

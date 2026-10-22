@@ -23,6 +23,7 @@ enum Event {
     Frame(Envelope),
     Datagram(Envelope),
     Timer,
+    Outbound(Option<Envelope>),
 }
 
 /// Drives `link` until liveness drops it (`Ok`) or it fails (`Err`).
@@ -30,12 +31,13 @@ enum Event {
 /// One task owns the link and its [`Liveness`]; received messages other than
 /// `Ping` and `Ack` go to `inbound` tagged with the peer.
 ///
-/// All three `select!` branches are cancel-safe: `read_frame` keeps partial
+/// All `select!` branches are cancel-safe: `read_frame` keeps partial
 /// frames in `link.control_buf`, `read_datagram` and `sleep_until` hold no
-/// state.
+/// state. Mailbox receive is cancel-safe; writes complete outside `select!`.
 pub(crate) async fn drive(
     mut link: Link,
-    inbound: mpsc::Sender<(MachineId, Envelope)>,
+    inbound: mpsc::Sender<(MachineId, usize, Envelope)>,
+    mut outbound: mpsc::Receiver<Envelope>,
 ) -> Result<DropReason, LinkError> {
     let mut liveness = Liveness::new(core_role(link.role), std::time::Instant::now());
     let mut send_buf = Vec::new();
@@ -51,6 +53,7 @@ pub(crate) async fn drive(
         let event = tokio::select! {
             frame = read_frame(&mut link.control_recv, &mut link.control_buf, FrameKind::Control) => Event::Frame(frame?),
             datagram = link.connection.read_datagram() => motion_event(&datagram?)?,
+            envelope = outbound.recv() => Event::Outbound(envelope),
             () = sleep_until(deadline) => Event::Timer,
         };
         let now = std::time::Instant::now();
@@ -72,8 +75,17 @@ pub(crate) async fn drive(
             }
             Event::Datagram(envelope) => {
                 liveness.on_received(now);
-                forward(&inbound, link.peer_id, envelope).await?;
+                forward(&inbound, &link, envelope).await?;
             }
+            Event::Outbound(Some(envelope)) => {
+                if let Some(Body::Input(batch)) = &envelope.body {
+                    liveness.on_input_sent(batch.seq, now);
+                }
+                if let Some(body) = envelope.body {
+                    send_envelope(&mut link.control_send, &mut send_buf, body).await?;
+                }
+            }
+            Event::Outbound(None) => return Err(LinkError::InboundClosed),
             Event::Timer => {}
         }
         partial_since = if link.control_buf.is_empty() {
@@ -108,7 +120,7 @@ async fn handle_frame(
     link: &mut Link,
     liveness: &mut Liveness,
     send_buf: &mut Vec<u8>,
-    inbound: &mpsc::Sender<(MachineId, Envelope)>,
+    inbound: &mpsc::Sender<(MachineId, usize, Envelope)>,
     envelope: Envelope,
     now: std::time::Instant,
 ) -> Result<(), LinkError> {
@@ -132,19 +144,19 @@ async fn handle_frame(
                 locked: false,
             };
             send_envelope(&mut link.control_send, send_buf, Body::Ack(ack)).await?;
-            forward(inbound, link.peer_id, envelope).await
+            forward(inbound, link, envelope).await
         }
-        _ => forward(inbound, link.peer_id, envelope).await,
+        _ => forward(inbound, link, envelope).await,
     }
 }
 
 async fn forward(
-    inbound: &mpsc::Sender<(MachineId, Envelope)>,
-    peer: MachineId,
+    inbound: &mpsc::Sender<(MachineId, usize, Envelope)>,
+    link: &Link,
     envelope: Envelope,
 ) -> Result<(), LinkError> {
     inbound
-        .send((peer, envelope))
+        .send((link.peer_id, link.connection.stable_id(), envelope))
         .await
         .map_err(|_| LinkError::InboundClosed)
 }

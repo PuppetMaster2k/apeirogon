@@ -24,7 +24,20 @@ const DATAGRAM_BUFFER_BYTES: usize = 64 * 1024;
 
 /// Pins of all paired peers. Locked only for short synchronous lookups, never
 /// across an await.
-pub(crate) type TrustedPins = Arc<RwLock<HashSet<Pin>>>;
+pub(crate) type TrustedPins = Arc<RwLock<TrustSnapshot>>;
+
+#[derive(Debug, Default)]
+pub(crate) struct TrustSnapshot {
+    pub(crate) pins: HashSet<Pin>,
+    pub(crate) pairing_until: Option<std::time::Instant>,
+}
+
+impl TrustSnapshot {
+    pub(crate) fn pairing_open(&self) -> bool {
+        self.pairing_until
+            .is_some_and(|until| std::time::Instant::now() < until)
+    }
+}
 
 /// Why building a TLS configuration failed.
 #[derive(Debug, thiserror::Error)]
@@ -38,6 +51,7 @@ pub(crate) enum TlsError {
 #[derive(Debug)]
 enum Trust {
     Pinned(TrustedPins),
+    Listener(TrustedPins),
     AnyKey,
 }
 
@@ -58,11 +72,16 @@ impl PinVerifier {
     }
 
     fn check_pin(&self, end_entity: &CertificateDer<'_>) -> Result<(), rustls::Error> {
-        let Trust::Pinned(pins) = &self.trust else {
-            return Ok(());
+        let (pins, allow_pairing) = match &self.trust {
+            Trust::Pinned(pins) => (pins, false),
+            Trust::Listener(pins) => (pins, true),
+            Trust::AnyKey => return Ok(()),
         };
-        let trusted = identity::pin_of(end_entity)
-            .is_ok_and(|pin| pins.read().is_ok_and(|pins| pins.contains(&pin)));
+        let trusted = identity::pin_of(end_entity).is_ok_and(|pin| {
+            pins.read().is_ok_and(|snapshot| {
+                snapshot.pins.contains(&pin) || (allow_pairing && snapshot.pairing_open())
+            })
+        });
         if trusted {
             return Ok(());
         }
@@ -186,13 +205,20 @@ fn transport_config() -> Arc<quinn::TransportConfig> {
     Arc::new(transport)
 }
 
-/// Server side: TLS 1.3, mandatory pinned client certificate, ALPN `a7n/1`,
-/// no early data.
+/// Shared listener: TLS 1.3, mandatory client certificate, both ALPNs.
+/// Unknown pins require an unexpired pairing window; no early data.
 pub(crate) fn server_config(
     identity: &Identity,
     pins: TrustedPins,
 ) -> Result<quinn::ServerConfig, TlsError> {
-    build_server_config(identity, Arc::new(PinVerifier::new(pins)), ALPN_LINK)
+    build_server_config(
+        identity,
+        Arc::new(PinVerifier {
+            trust: Trust::Listener(pins),
+            algorithms: ring::default_provider().signature_verification_algorithms,
+        }),
+        &[ALPN_LINK, ALPN_PAIR],
+    )
 }
 
 /// Client side: TLS 1.3, pinned server certificate, our certificate for
@@ -207,13 +233,13 @@ pub(crate) fn client_config(
 fn build_server_config(
     identity: &Identity,
     verifier: Arc<dyn ClientCertVerifier>,
-    alpn: &[u8],
+    alpn: &[&[u8]],
 ) -> Result<quinn::ServerConfig, TlsError> {
     let mut tls = rustls::ServerConfig::builder_with_provider(provider())
         .with_protocol_versions(&[&rustls::version::TLS13])?
         .with_client_cert_verifier(verifier)
         .with_single_cert(certificate_chain(identity), private_key(identity))?;
-    tls.alpn_protocols = vec![alpn.to_vec()];
+    tls.alpn_protocols = alpn.iter().map(|protocol| protocol.to_vec()).collect();
     tls.max_early_data_size = 0;
     let mut config = quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(tls)?));
     config.transport_config(transport_config());
@@ -244,11 +270,6 @@ fn pairing_verifier() -> Arc<PinVerifier> {
         trust: Trust::AnyKey,
         algorithms: ring::default_provider().signature_verification_algorithms,
     })
-}
-
-/// Pairing listener: mandatory client certificate, TLS 1.3, no early data.
-pub(crate) fn pair_server_config(identity: &Identity) -> Result<quinn::ServerConfig, TlsError> {
-    build_server_config(identity, pairing_verifier(), ALPN_PAIR)
 }
 
 /// Pairing dialer: our certificate, TLS 1.3, no early data.
