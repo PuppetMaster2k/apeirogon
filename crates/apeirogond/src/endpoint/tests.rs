@@ -41,6 +41,6 @@ async fn dial_unknown_pin_outside_pairing_window_receives_bad_certificate() {
         panic!("expected TLS close");
     };
     assert_eq!(u64::from(close.error_code), BAD_CERTIFICATE_CLOSE);
-    assert!(host.status().await.linked.is_empty());
+    assert!(host.status().await.peers.iter().all(|peer| !peer.connected));
     host.stop().await;
 }

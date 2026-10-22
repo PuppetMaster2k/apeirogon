@@ -3,7 +3,7 @@
 use a7n_proto::v1::{Envelope, envelope::Body};
 use a7n_proto::{ALPN_LINK, ALPN_PAIR, MachineId, limits};
 use quinn::Connection;
-use tokio::sync::{OwnedSemaphorePermit, mpsc};
+use tokio::sync::{OwnedSemaphorePermit, mpsc, oneshot};
 use tokio::time::{Instant, timeout_at};
 
 use super::{Daemon, DaemonError, Event};
@@ -104,11 +104,21 @@ impl Daemon {
                 addr,
                 reply,
             } => {
-                let result = result
-                    .map_err(DaemonError::from)
-                    .and_then(|entry| self.store_peer(entry));
+                let result = result.map_err(DaemonError::from).and_then(|entry| {
+                    self.store_peer(entry.clone())?;
+                    Ok(entry)
+                });
                 match result {
-                    Ok(()) => self.connect(addr, reply),
+                    Ok(entry) => {
+                        let (connected, receiver) = oneshot::channel();
+                        self.connect(addr, connected);
+                        self.tasks.spawn(async move {
+                            if !matches!(receiver.await, Ok(Ok(()))) {
+                                eprintln!("kind=post_pair_connect_failed");
+                            }
+                            let _ = reply.send(Ok(entry));
+                        });
+                    }
                     Err(error) => {
                         let _ = reply.send(Err(error));
                     }
@@ -153,8 +163,6 @@ impl Daemon {
         let (sender, outbound) = mpsc::channel(super::MAILBOX_CAPACITY);
         let handle = LinkHandle {
             sender: sender.clone(),
-            peer_info: link.peer_info.clone(),
-            capabilities: link.capabilities.clone(),
             connection: link.connection.clone(),
             role: link.role,
         };
@@ -211,5 +219,43 @@ mod tests {
             matches!(receiver.try_recv().unwrap(), Err(DaemonError::Link(LinkError::Superseded(id))) if id == peer)
         );
         assert!(daemon.pending_connects.is_empty());
+    }
+
+    #[tokio::test]
+    async fn event_joined_follow_up_connect_fails_returns_stored_peer() {
+        // Arrange
+        let dir = tempfile::tempdir().unwrap();
+        let remote_dir = tempfile::tempdir().unwrap();
+        let mut daemon =
+            Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+        let remote = identity::load_or_create(remote_dir.path()).unwrap();
+        let entry = crate::pin_store::Entry {
+            machine_id: remote.machine_id,
+            pin: remote.pin,
+            name: "paired peer".into(),
+            spki_der: None,
+        };
+        let (reply, mut receiver) = oneshot::channel();
+
+        // Act
+        daemon.event(Event::Joined {
+            result: Ok(entry.clone()),
+            addr: SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)),
+            reply,
+        });
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+        let failed = daemon.event_rx.recv().await.unwrap();
+        assert!(matches!(&failed, Event::Link(Err(_), Some(_))));
+        daemon.event(failed);
+        let result = receiver.await.unwrap();
+
+        // Assert
+        assert_eq!(result.unwrap(), entry);
+        let pins = crate::pin_store::PinStore::load(&dir.path().join("pins.toml")).unwrap();
+        assert_eq!(pins.get(&entry.machine_id), Some(&entry));
+        assert!(!daemon.links.by_peer.contains_key(&entry.machine_id));
     }
 }
