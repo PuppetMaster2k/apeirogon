@@ -3,11 +3,31 @@
 
 #[allow(
     dead_code,
-    reason = "key, cert and pin are consumed by TLS, which lands later"
+    reason = "wired into the daemon loop by the liveness part of #6 and by #7"
+)]
+mod endpoint;
+#[allow(
+    dead_code,
+    reason = "wired into the daemon loop by the liveness part of #6 and by #7"
+)]
+mod handshake;
+#[allow(
+    dead_code,
+    reason = "wired into the daemon loop by the liveness part of #6 and by #7"
 )]
 mod identity;
-#[allow(dead_code, reason = "consumed by pairing and TLS, which land later")]
+#[allow(
+    dead_code,
+    reason = "wired into the daemon loop by the liveness part of #6 and by #7"
+)]
+mod link;
+#[allow(dead_code, reason = "consumed by pairing (#7) and the daemon loop")]
 mod pin_store;
+#[allow(
+    dead_code,
+    reason = "wired into the daemon loop by the liveness part of #6 and by #7"
+)]
+mod tls;
 
 use anyhow::{Context, Result};
 use directories::ProjectDirs;

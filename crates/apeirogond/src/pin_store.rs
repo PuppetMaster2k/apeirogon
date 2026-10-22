@@ -85,6 +85,11 @@ impl PinStore {
         self.entries.get(machine_id)
     }
 
+    /// Every paired peer's pin.
+    pub(crate) fn pins(&self) -> impl Iterator<Item = Pin> + '_ {
+        self.entries.values().map(|entry| entry.pin)
+    }
+
     /// Removes and returns the entry for `machine_id` (revocation).
     pub(crate) fn remove(&mut self, machine_id: &MachineId) -> Option<Entry> {
         self.entries.remove(machine_id)
