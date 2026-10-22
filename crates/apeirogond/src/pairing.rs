@@ -7,13 +7,15 @@ use std::time::Instant;
 
 use a7n_core::pairing::{AttemptLimiter, HostPairing, RequesterPairing};
 use a7n_proto::v1::{
-    PairAnswer, PairConfirm, PairDone, PairError, PairingMessage, PeerInfo, pairing_message::Body,
+    DeskMember, PairAnswer, PairConfirm, PairDone, PairError, PairingMessage, PeerInfo,
+    pairing_message::Body,
 };
 use a7n_proto::{FrameKind, Pin, decode_frame, encode_frame, limits};
 use quinn::{Connection, RecvStream, SendStream};
 use rand_core::{CryptoRng, RngCore};
 use tokio::time::timeout;
 
+use crate::desk_store::{DeskStore, DeskStoreError};
 use crate::identity;
 use crate::link::{LinkError, peer_certificate};
 use crate::pin_store::{Entry, PinStore, PinStoreError};
@@ -30,6 +32,8 @@ pub(crate) enum PairingError {
     Link(#[from] LinkError),
     #[error(transparent)]
     Store(#[from] PinStoreError),
+    #[error(transparent)]
+    Desk(#[from] DeskStoreError),
 }
 
 /// Dials pairing TLS within the handshake deadline; configure the endpoint with
@@ -114,6 +118,15 @@ async fn finish(send: &mut SendStream) -> Result<(), PairingError> {
     Ok(())
 }
 
+/// Host-owned persistence and signing context; the caller supplies Unix time.
+#[derive(Debug)]
+pub(crate) struct HostDesk<'a> {
+    pub(crate) identity: &'a identity::Identity,
+    pub(crate) desk: &'a mut DeskStore,
+    pub(crate) pins: &'a mut PinStore,
+    pub(crate) unix_seconds: u64,
+}
+
 /// Runs one host exchange. The caller owns the code window, source limiter and
 /// pin store across connections; time and randomness remain injectable.
 pub(crate) async fn respond(
@@ -121,10 +134,10 @@ pub(crate) async fn respond(
     host: &mut HostPairing,
     info: &PeerInfo,
     limiter: &mut AttemptLimiter<IpAddr>,
-    store: &mut PinStore,
+    desk: &mut HostDesk<'_>,
     mut now: impl FnMut() -> Instant,
     rng: &mut (impl CryptoRng + RngCore),
-) -> Result<Entry, PairingError> {
+) -> Result<(Entry, DeskMember), PairingError> {
     let streams = timeout(limits::HANDSHAKE_TIMEOUT, connection.accept_bi()).await;
     let Ok(Ok((mut send, mut recv))) = streams else {
         host.refuse();
@@ -159,15 +172,13 @@ pub(crate) async fn respond(
         let paired = host
             .confirm(confirm, now())
             .map_err(|_| PairingError::Refused)?;
-        let entry = store_peer(
-            store,
-            &connection,
-            paired.peer.pin,
-            paired.peer.info.name.clone(),
-        )?;
+        let entry = peer_entry(&connection, paired.peer.pin, paired.peer.info.name.clone())?;
+        let member = desk
+            .desk
+            .admit(desk.identity, desk.pins, &entry, desk.unix_seconds)?;
         write_message(&mut send, Body::Done(paired.done())).await?;
         finish(&mut send).await?;
-        Ok(entry)
+        Ok((entry, member))
     }
     .await;
     if result.is_err() {
@@ -236,22 +247,25 @@ fn store_peer(
     pin: Pin,
     name: String,
 ) -> Result<Entry, PairingError> {
-    let machine_id = crate::link::peer_machine_id(connection)?;
-    let entry = Entry {
-        machine_id,
+    let entry = peer_entry(connection, pin, name)?;
+    let mut staged = store.clone();
+    staged.add(entry.clone());
+    staged.save()?;
+    *store = staged;
+    Ok(entry)
+}
+
+fn peer_entry(connection: &Connection, pin: Pin, name: String) -> Result<Entry, PairingError> {
+    let cert = peer_certificate(connection)?;
+    if identity::pin_of(&cert).map_err(LinkError::from)? != pin {
+        return Err(PairingError::Refused);
+    }
+    Ok(Entry {
+        machine_id: identity::machine_id_of(&cert).map_err(LinkError::from)?,
         pin,
         name,
-    };
-    let previous = store.get(&machine_id).cloned();
-    store.add(entry.clone());
-    if let Err(error) = store.save() {
-        store.remove(&machine_id);
-        if let Some(previous) = previous {
-            store.add(previous);
-        }
-        return Err(error.into());
-    }
-    Ok(entry)
+        spki_der: Some(identity::spki_of(&cert).map_err(LinkError::from)?),
+    })
 }
 
 #[cfg(test)]
@@ -273,6 +287,7 @@ mod tests {
         identity: Identity,
         endpoint: Endpoint,
         store: PinStore,
+        desk: DeskStore,
         info: PeerInfo,
         dir: TempDir,
     }
@@ -282,6 +297,10 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let identity = identity::load_or_create(dir.path()).unwrap();
             let store = PinStore::load(&dir.path().join("pins.toml")).unwrap();
+            let mut store = store;
+            let desk =
+                DeskStore::load(&dir.path().join("desk.pb"), identity.machine_id, &mut store)
+                    .unwrap();
             let mut endpoint = endpoint::bind_addr(
                 SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
                 tls::pair_server_config(&identity).unwrap(),
@@ -292,6 +311,7 @@ mod tests {
                 identity,
                 endpoint,
                 store,
+                desk,
                 info: PeerInfo {
                     name: name.into(),
                     ..PeerInfo::default()
@@ -333,6 +353,7 @@ mod tests {
             machine_id: b.identity.machine_id,
             pin: a.identity.pin,
             name: "previous".into(),
+            spki_der: None,
         };
         store.add(previous.clone());
 
@@ -361,7 +382,10 @@ mod tests {
         host_code: &str,
         opened_at: Instant,
         now: Instant,
-    ) -> (Result<Entry, PairingError>, Result<Entry, PairingError>) {
+    ) -> (
+        Result<Entry, PairingError>,
+        Result<(Entry, DeskMember), PairingError>,
+    ) {
         let (client, server) = connect(a, b).await;
         let requester = requester(a, requester_code);
         let mut host = HostPairing::new(
@@ -372,6 +396,12 @@ mod tests {
         );
         let mut limiter = AttemptLimiter::new(limits::UNAUTHENTICATED_SLOTS);
         let mut rng = OsRng;
+        let mut host_desk = HostDesk {
+            identity: &b.identity,
+            desk: &mut b.desk,
+            pins: &mut b.store,
+            unix_seconds: 1,
+        };
         tokio::join!(
             initiate(client, requester, &mut a.store),
             respond(
@@ -379,7 +409,7 @@ mod tests {
                 &mut host,
                 &b.info,
                 &mut limiter,
-                &mut b.store,
+                &mut host_desk,
                 || now,
                 &mut rng
             )
@@ -391,6 +421,10 @@ mod tests {
         let entry = reloaded.get(&b.identity.machine_id).unwrap();
         assert_eq!(entry.pin, b.identity.pin);
         assert_eq!(entry.name, b.info.name);
+        assert_eq!(
+            entry.spki_der,
+            Some(identity::spki_of(&b.identity.cert_der).unwrap())
+        );
     }
 
     fn assert_empty(a: &Peer, b: &Peer) {
@@ -417,10 +451,12 @@ mod tests {
         assert!(host.is_ok(), "{host:?}");
         assert_stored(&a, &b);
         assert_stored(&b, &a);
+        assert_eq!(b.desk.to_desk().members.len(), 1);
+        assert_eq!(host.unwrap().1.id, a.identity.machine_id.as_bytes());
     }
 
     #[tokio::test]
-    async fn pair_host_save_failure_stores_nothing() {
+    async fn pair_host_pin_write_failure_refuses_and_keeps_pins_unchanged() {
         // Arrange
         let mut a = Peer::new("requester");
         let mut b = Peer::new("host");
@@ -432,7 +468,7 @@ mod tests {
 
         // Assert
         assert!(requester.is_err());
-        assert!(matches!(host, Err(PairingError::Store(_))));
+        assert!(matches!(host, Err(PairingError::Desk(_))));
         assert_empty(&a, &b);
     }
 
@@ -513,6 +549,13 @@ mod tests {
         let mut limiter = AttemptLimiter::new(limits::UNAUTHENTICATED_SLOTS);
         let mut rng = OsRng;
 
+        let mut host_desk = HostDesk {
+            identity: &b.identity,
+            desk: &mut b.desk,
+            pins: &mut b.store,
+            unix_seconds: 1,
+        };
+
         // Act
         let (requester, host, ()) = tokio::join!(
             initiate(client, requester, &mut a.store),
@@ -521,7 +564,7 @@ mod tests {
                 &mut host,
                 &b.info,
                 &mut limiter,
-                &mut b.store,
+                &mut host_desk,
                 || now,
                 &mut rng
             ),

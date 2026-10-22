@@ -15,6 +15,8 @@ pub const UNAUTHENTICATED_SLOTS: usize = 4;
 pub const FIRST_HELLO_MAX: usize = 4096;
 /// Largest control or pairing frame in bytes (section 2).
 pub const CONTROL_FRAME_MAX: usize = 128 * 1024;
+/// Largest peer name in Unicode code points (`PeerInfo` wire schema).
+pub const PEER_NAME_MAX: usize = 48;
 /// Largest transfer frame in bytes (section 2).
 pub const TRANSFER_FRAME_MAX: usize = 512 * 1024;
 /// Largest file chunk payload in bytes (section 2).
