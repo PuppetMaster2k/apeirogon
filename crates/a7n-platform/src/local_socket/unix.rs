@@ -4,7 +4,7 @@ use std::{
     fs, io,
     os::unix::{
         ffi::OsStrExt,
-        fs::{DirBuilderExt, FileTypeExt, MetadataExt, PermissionsExt},
+        fs::{DirBuilderExt, FileTypeExt, MetadataExt},
     },
     path::Path,
 };
@@ -14,7 +14,10 @@ use interprocess::{
     local_socket::{GenericFilePath, ListenerOptions, tokio::prelude::*},
     os::unix::local_socket::ListenerOptionsExt,
 };
-use rustix::{fs::RawMode, process::geteuid};
+use rustix::{
+    fs::{Mode, RawMode},
+    process::geteuid,
+};
 
 use super::{Listener, SocketError, SocketLocation, Stream};
 
@@ -122,8 +125,7 @@ pub(super) async fn bind_user_only(location: &SocketLocation) -> Result<Listener
         }
         Err(error) => return Err(error.into()),
     };
-    // RawMode varies by OS; std's permission API always takes u32.
-    fs::set_permissions(path, fs::Permissions::from_mode(SOCKET_MODE as _))?;
+    rustix::fs::chmod(path, Mode::from_raw_mode(SOCKET_MODE)).map_err(io::Error::from)?;
     Ok(listener)
 }
 

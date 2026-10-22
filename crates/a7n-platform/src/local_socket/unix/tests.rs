@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::os::unix::{fs::symlink, net::UnixListener};
+use std::os::unix::{
+    fs::{PermissionsExt, symlink},
+    net::UnixListener,
+};
 
 use super::*;
 
@@ -54,8 +57,8 @@ async fn bind_user_only_private_directory_sets_socket_permissions() {
         DIRECTORY_MODE
     );
     assert_eq!(
-        fs::symlink_metadata(location.as_path()).unwrap().mode() & PERMISSION_BITS,
-        0o600
+        Mode::from_raw_mode(rustix::fs::stat(location.as_path()).unwrap().st_mode).as_raw_mode(),
+        SOCKET_MODE
     );
     drop(listener);
 }
