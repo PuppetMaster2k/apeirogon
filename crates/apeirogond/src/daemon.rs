@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use a7n_core::layout::LayoutError;
 use a7n_core::pairing::{AttemptLimiter, HostPairing, Paired, PairingCode};
 use a7n_proto::v1::{Envelope, PairDone, PeerInfo, envelope::Body};
 use a7n_proto::{MachineId, limits};
@@ -20,12 +21,14 @@ use crate::command::{Command, Reply, Status};
 use crate::desk_store::{DeskStore, DeskStoreError};
 use crate::endpoint;
 use crate::identity::{self, Identity, IdentityError};
+use crate::layout_store::LayoutStore;
 use crate::link::{Link, LinkError, Links};
 use crate::pairing::PairingError;
 use crate::pin_store::{Entry, PinStore, PinStoreError};
 use crate::tls::{self, TlsError, TrustSnapshot, TrustedPins};
 
 mod connections;
+mod layout;
 mod nearby;
 mod pairing;
 #[cfg(test)]
@@ -53,6 +56,8 @@ pub(crate) enum DaemonError {
     Pins(#[from] PinStoreError),
     #[error(transparent)]
     Desk(#[from] DeskStoreError),
+    #[error(transparent)]
+    Layout(#[from] LayoutError),
     #[error(transparent)]
     Tls(#[from] TlsError),
     #[error(transparent)]
@@ -91,6 +96,7 @@ pub(crate) struct Daemon {
     identity: Identity,
     pins: PinStore,
     desk: DeskStore,
+    layout: LayoutStore,
     endpoint: Endpoint,
     info: PeerInfo,
     trust: TrustedPins,
@@ -114,6 +120,7 @@ impl Daemon {
         let identity = identity::load_or_create(path)?;
         let mut pins = PinStore::load(&path.join("pins.toml"))?;
         let desk = DeskStore::load(&path.join("desk.pb"), identity.machine_id, &mut pins)?;
+        let layout = LayoutStore::load(&path.join("layout.pb"), identity.machine_id);
         let trust = Arc::new(RwLock::new(TrustSnapshot {
             pins: pins.pins().collect(),
             pairing_until: None,
@@ -136,6 +143,7 @@ impl Daemon {
             identity,
             pins,
             desk,
+            layout,
             endpoint,
             info,
             trust,
@@ -193,6 +201,12 @@ impl Daemon {
         match command {
             Command::Status(reply) => {
                 let _ = reply.send(Ok(self.status()));
+            }
+            Command::GetLayout(reply) => {
+                let _ = reply.send(Ok(self.layout_info()));
+            }
+            Command::SetLayout { placed, reply } => {
+                let _ = reply.send(self.set_layout(placed));
             }
             Command::PairHost(reply) => {
                 let _ = reply.send(self.open_pairing());
@@ -267,7 +281,9 @@ impl Daemon {
             .revoke(&self.identity, &mut self.pins, machine, unix_seconds()?)?;
         self.sync_trust()?;
         self.drop_untrusted();
-        self.broadcast();
+        self.broadcast(&Envelope {
+            body: Some(Body::Desk(self.desk.to_desk())),
+        });
         Ok(())
     }
 
@@ -280,6 +296,9 @@ impl Daemon {
     }
 
     fn receive(&mut self, envelope: Envelope) -> Result<(), DaemonError> {
+        if let Some(Body::Layout(layout)) = &envelope.body {
+            return self.receive_layout(layout);
+        }
         if let Some(Body::Desk(desk)) = envelope.body {
             let before = self.desk.to_desk();
             let result = self.desk.merge(&self.identity, &mut self.pins, &desk);
@@ -291,21 +310,20 @@ impl Daemon {
                 eprintln!("kind=self_revoked");
             }
             if before != self.desk.to_desk() {
-                self.broadcast();
+                self.broadcast(&Envelope {
+                    body: Some(Body::Desk(self.desk.to_desk())),
+                });
             }
         }
         Ok(())
     }
 
-    fn broadcast(&mut self) {
-        let envelope = Envelope {
-            body: Some(Body::Desk(self.desk.to_desk())),
-        };
+    fn broadcast(&mut self, envelope: &Envelope) {
         self.links.by_peer.retain(|_, handle| {
             if handle.sender.try_send(envelope.clone()).is_ok() {
                 return true;
             }
-            // A slow peer catches up from persistent Desk on its next handshake.
+            // A slow peer catches up from persistent state on its next handshake.
             handle.connection.close(0u32.into(), b"");
             false
         });

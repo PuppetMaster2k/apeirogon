@@ -6,6 +6,10 @@ use super::*;
 fn error_response_daemon_failures_maps_safe_categories() {
     // Arrange
     let cases = [
+        (
+            DaemonError::Layout(a7n_core::layout::LayoutError::Overlap),
+            ErrorKind::InvalidLayout,
+        ),
         (DaemonError::PairingBusy, ErrorKind::Busy),
         (DaemonError::NotPaired, ErrorKind::NotPaired),
         (

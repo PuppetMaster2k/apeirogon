@@ -11,6 +11,10 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
     Status,
+    GetLayout,
+    SetLayout {
+        placed: Vec<LayoutPlacement>,
+    },
     PairHost,
     PairJoin {
         addr: SocketAddr,
@@ -31,6 +35,7 @@ pub enum Request {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Response {
     Status(StatusInfo),
+    Layout(LayoutInfo),
     PairCode {
         #[serde(with = "pairing_code")]
         code: PairingCode,
@@ -54,6 +59,7 @@ pub enum Response {
 pub enum ErrorKind {
     UnsupportedVersion,
     InvalidRequest,
+    InvalidLayout,
     NotPaired,
     PairingRefused,
     Busy,
@@ -69,6 +75,49 @@ pub struct StatusInfo {
     pub name: String,
     pub peers: Vec<PeerInfo>,
     pub nearby: Vec<NearbyMachine>,
+}
+
+/// Desk canvas and known machines that have not been placed yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LayoutInfo {
+    pub placed: Vec<PlacedMachine>,
+    pub unplaced: Vec<UnplacedMachine>,
+    pub lost_edit: bool,
+}
+
+/// One rectangle submitted by the layout editor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LayoutPlacement {
+    #[serde(with = "machine_id")]
+    pub machine: MachineId,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// A placed rectangle with its display name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlacedMachine {
+    #[serde(with = "machine_id")]
+    pub machine: MachineId,
+    pub name: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// A known machine without a canvas rectangle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UnplacedMachine {
+    #[serde(with = "machine_id")]
+    pub machine: MachineId,
+    pub name: String,
 }
 
 /// An unpaired machine discovered on the local network.

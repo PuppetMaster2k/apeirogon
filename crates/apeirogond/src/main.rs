@@ -9,6 +9,7 @@ mod endpoint;
 mod handshake;
 mod identity;
 mod ipc_server;
+mod layout_store;
 mod link;
 mod link_driver;
 mod pairing;

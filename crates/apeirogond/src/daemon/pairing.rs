@@ -83,7 +83,9 @@ impl Daemon {
         });
         let trust = self.sync_trust();
         self.drop_untrusted();
-        self.broadcast();
+        self.broadcast(&a7n_proto::v1::Envelope {
+            body: Some(a7n_proto::v1::envelope::Body::Desk(self.desk.to_desk())),
+        });
         if result.is_err() || trust.is_err() {
             eprintln!("kind=pairing_store_failed");
             return Err(PairingError::Refused);
