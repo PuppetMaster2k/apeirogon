@@ -3,5 +3,6 @@
 
 pub mod desk;
 pub mod focus;
+pub mod layout;
 pub mod liveness;
 pub mod pairing;

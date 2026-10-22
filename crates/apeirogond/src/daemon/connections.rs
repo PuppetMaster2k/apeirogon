@@ -180,6 +180,9 @@ impl Daemon {
         let _ = sender.try_send(Envelope {
             body: Some(Body::Desk(self.desk.to_desk())),
         });
+        let _ = sender.try_send(Envelope {
+            body: Some(Body::Layout(self.layout.state.to_proto())),
+        });
         let inbound = self.inbound.clone();
         let events = self.events.clone();
         self.tasks.spawn(async move {

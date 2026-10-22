@@ -93,6 +93,7 @@ A paired machine is trusted to inject input; any member can admit or revoke othe
 The layout is a 2D canvas on which each machine's whole virtual desktop (all its monitors) is one rectangle (`MachineRect`). Edges connect only where rectangles touch, so offsets and partial overlaps work. Individual monitors are not placed separately.
 
 - One `Layout` describes the whole desk and is sent to every member.
+- A layout contains at most 64 machines (section 14), with unique 16-byte ids and a 16-byte `by`. Rectangles MUST have nonzero dimensions, fit signed 32-bit canvas coordinates, and have disjoint interiors (touching edges are allowed). Invalid layouts are ignored without closing the link.
 - A local edit sets `version = max(seen) + 1`, `by = own id`. The newest `(version, by)` wins; a machine whose unsent edit loses shows a notice.
 - When the pointer leaves the owner's current machine across a shared edge segment, the owner computes `Landing` (edge and offset) on the target from the layout.
 
@@ -177,6 +178,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 | Text clipboard | 256 KiB |
 | Image clipboard | 8 MiB |
 | Inline clipboard total per announce | 64 KiB |
+| Machines per layout | 64 |
 
 ## 15. Security notes
 

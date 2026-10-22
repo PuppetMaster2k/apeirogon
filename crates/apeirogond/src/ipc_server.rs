@@ -29,6 +29,15 @@ async fn serve_connection(mut connection: IpcConnection, commands: mpsc::Sender<
 
 async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Response {
     match request {
+        Request::GetLayout => execute(commands, Command::GetLayout, Response::Layout).await,
+        Request::SetLayout { placed } => {
+            execute(
+                commands,
+                |reply| Command::SetLayout { placed, reply },
+                |()| Response::Done,
+            )
+            .await
+        }
         Request::Status => execute(commands, Command::Status, Response::Status).await,
         Request::PairHost => {
             execute(commands, Command::PairHost, |code| Response::PairCode {
@@ -92,6 +101,7 @@ fn unavailable() -> Response {
 
 fn error_response(error: &DaemonError) -> Response {
     let kind = match error {
+        DaemonError::Layout(_) => ErrorKind::InvalidLayout,
         DaemonError::PairingBusy => ErrorKind::Busy,
         DaemonError::NotPaired => ErrorKind::NotPaired,
         DaemonError::Pairing(_) => ErrorKind::PairingRefused,

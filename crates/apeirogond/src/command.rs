@@ -17,6 +17,11 @@ pub(crate) type Reply<T> = oneshot::Sender<Result<T, DaemonError>>;
 #[derive(Debug)]
 pub(crate) enum Command {
     Status(Reply<Status>),
+    GetLayout(Reply<a7n_ipc::LayoutInfo>),
+    SetLayout {
+        placed: Vec<a7n_ipc::LayoutPlacement>,
+        reply: Reply<()>,
+    },
     PairHost(Reply<PairingCode>),
     PairJoin {
         addr: SocketAddr,

@@ -11,6 +11,8 @@ use a7n_ipc::{
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
+mod layout;
+
 #[derive(Debug, Parser)]
 #[command(version, about = "Control the apeirogon daemon")]
 struct Cli {
@@ -20,6 +22,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Arrange the desk's machines on an interactive canvas.
+    Layout,
     /// Show this machine, its paired peers and nearby unpaired machines.
     Status,
     /// Show a pairing code, or join a target using a code read from stdin.
@@ -50,6 +54,7 @@ async fn main() -> ExitCode {
 
 async fn run(command: Command) -> Result<()> {
     let request = match command {
+        Command::Layout => return layout::run().await,
         Command::Status => Request::Status,
         Command::Pair { target: None } => Request::PairHost,
         Command::Pair {
@@ -164,6 +169,7 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
             writeln!(output, "Paired with {name} ({machine})")?;
         }
         Response::Done => {}
+        Response::Layout(_) => bail!("unexpected layout response from daemon"),
         Response::Error { message, .. } => bail!("{message}"),
     }
     Ok(())

@@ -59,3 +59,5 @@ pub const TEXT_CLIPBOARD_MAX: usize = 256 * 1024;
 pub const IMAGE_CLIPBOARD_MAX: usize = 8 * 1024 * 1024;
 /// Inline clipboard bytes per announce, summed over items (section 14).
 pub const INLINE_CLIPBOARD_TOTAL_PER_ANNOUNCE: usize = 64 * 1024;
+/// Largest number of machines in a desk layout (section 14).
+pub const LAYOUT_MACHINES_MAX: usize = 64;

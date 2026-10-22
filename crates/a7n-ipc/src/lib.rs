@@ -14,13 +14,17 @@ mod error;
 mod framing;
 mod types;
 
+pub use a7n_core::layout::{Edge, Placement, SharedEdge, shared_edges, validate};
 pub use a7n_core::pairing::{InvalidPairingCode, PairingCode};
 pub use a7n_platform::local_socket::{SocketLocation, default_location};
 pub use a7n_proto::MachineId;
 pub use a7n_proto::limits::DEFAULT_UDP_PORT;
 pub use connection::{IpcClient, IpcConnection, IpcServer};
 pub use error::IpcError;
-pub use types::{ErrorKind, NearbyMachine, PeerInfo, Request, Response, StatusInfo};
+pub use types::{
+    ErrorKind, LayoutInfo, LayoutPlacement, NearbyMachine, PeerInfo, PlacedMachine, Request,
+    Response, StatusInfo, UnplacedMachine,
+};
 
 /// Local API major version, independent of the peer protobuf protocol.
 pub const IPC_VERSION: u32 = 1;
