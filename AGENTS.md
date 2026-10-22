@@ -25,6 +25,7 @@ Dependency direction is one way. Never add an arrow that points back up.
 
 ```
 a7n, a7n-gui ──► a7n-ipc ──► a7n-core ──► a7n-proto
+a7n-ipc ──► a7n-platform
 apeirogond ──► a7n-core, a7n-platform, a7n-proto, a7n-ipc
 a7n-platform ──► a7n-core (traits/types only)
 ```

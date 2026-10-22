@@ -1,3 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 pub mod fs;
+pub mod local_socket;
