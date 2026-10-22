@@ -2,5 +2,6 @@
 #![forbid(unsafe_code)]
 
 pub mod desk;
+pub mod focus;
 pub mod liveness;
 pub mod pairing;
