@@ -15,6 +15,11 @@ use crate::identity::{self, IdentityError};
 /// Application close code for the link that lost a simultaneous dial.
 pub(crate) const CLOSE_SUPERSEDED: VarInt = VarInt::from_u32(1);
 
+/// Application close code for a link the peer stopped talking to.
+pub(crate) const CLOSE_SILENT: VarInt = VarInt::from_u32(2);
+/// Application close code for a link whose input went unacknowledged.
+pub(crate) const CLOSE_UNACKED: VarInt = VarInt::from_u32(3);
+
 /// Why a link could not be established or kept.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum LinkError {
@@ -34,6 +39,8 @@ pub(crate) enum LinkError {
     Proto(#[from] ProtoError),
     #[error("update {name} to protocol v{version}")]
     UpdateRequired { name: String, version: u32 },
+    #[error("the daemon loop stopped receiving from this link")]
+    InboundClosed,
     #[error("peer sent an invalid handshake message")]
     InvalidHello,
     #[error("peer presented no certificate")]

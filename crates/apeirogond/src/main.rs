@@ -3,29 +3,31 @@
 
 #[allow(
     dead_code,
-    reason = "wired into the daemon loop by the liveness part of #6 and by #7"
+    reason = "consumed by pairing (#7) and the daemon loop (#23)"
 )]
 mod endpoint;
 #[allow(
     dead_code,
-    reason = "wired into the daemon loop by the liveness part of #6 and by #7"
+    reason = "consumed by pairing (#7) and the daemon loop (#23)"
 )]
 mod handshake;
 #[allow(
     dead_code,
-    reason = "wired into the daemon loop by the liveness part of #6 and by #7"
+    reason = "consumed by pairing (#7) and the daemon loop (#23)"
 )]
 mod identity;
 #[allow(
     dead_code,
-    reason = "wired into the daemon loop by the liveness part of #6 and by #7"
+    reason = "consumed by pairing (#7) and the daemon loop (#23)"
 )]
 mod link;
+#[allow(dead_code, reason = "spawned per link by the daemon loop (#23)")]
+mod link_driver;
 #[allow(dead_code, reason = "consumed by pairing (#7) and the daemon loop")]
 mod pin_store;
 #[allow(
     dead_code,
-    reason = "wired into the daemon loop by the liveness part of #6 and by #7"
+    reason = "consumed by pairing (#7) and the daemon loop (#23)"
 )]
 mod tls;
 
