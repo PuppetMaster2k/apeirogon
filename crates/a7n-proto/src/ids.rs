@@ -4,12 +4,15 @@ use crate::ProtoError;
 
 /// First 16 bytes of the SHA-256 of a device's public key (PROTOCOL.md 3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct MachineId([u8; 16]);
+pub struct MachineId([u8; MachineId::LEN]);
 
 impl MachineId {
+    /// Length in bytes: the SHA-256 prefix kept from the key (PROTOCOL.md 3.1).
+    pub const LEN: usize = 16;
+
     /// The raw 16 bytes.
     #[must_use]
-    pub fn as_bytes(&self) -> &[u8; 16] {
+    pub fn as_bytes(&self) -> &[u8; Self::LEN] {
         &self.0
     }
 }
@@ -18,7 +21,7 @@ impl TryFrom<&[u8]> for MachineId {
     type Error = ProtoError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let array: [u8; 16] = bytes
+        let array: [u8; Self::LEN] = bytes
             .try_into()
             .map_err(|_| ProtoError::BadMachineId(bytes.len()))?;
         Ok(Self(array))
