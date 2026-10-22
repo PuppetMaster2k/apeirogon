@@ -113,6 +113,22 @@ impl Focus {
         }
     }
 
+    /// The active owner's route, including the previous route during a take.
+    #[must_use]
+    pub fn driving_route(&self) -> Option<Route> {
+        match &self.owner {
+            Owner::Home => None,
+            Owner::Driving(session) => Some(session.route),
+            Owner::Taking { previous, .. } => previous.as_ref().map(|s| s.route),
+        }
+    }
+
+    /// Whether physical input is currently suppressed by a remote owner.
+    #[must_use]
+    pub fn is_driven(&self) -> bool {
+        self.driven.is_some()
+    }
+
     /// None when there is no take awaiting an answer.
     #[must_use]
     pub fn next_deadline(&self) -> Option<Instant> {

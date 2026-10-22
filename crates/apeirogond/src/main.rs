@@ -25,10 +25,18 @@ use tokio::sync::mpsc;
 #[tokio::main]
 async fn main() -> Result<()> {
     let dirs = ProjectDirs::from("", "", "apeirogon").context("no home directory found")?;
+    let input = a7n_platform::input::start().map_or_else(
+        |_| {
+            eprintln!("kind=input_unavailable");
+            None
+        },
+        Some,
+    );
     let daemon = daemon::Daemon::load(
         dirs.data_local_dir(),
         SocketAddr::from((Ipv4Addr::UNSPECIFIED, a7n_proto::limits::DEFAULT_UDP_PORT)),
-    )?;
+    )?
+    .with_input(input);
     let (discoveries, discovery_rx) = mpsc::channel(discovery::CHANNEL_CAPACITY);
     let (machine, port) = daemon.discovery_identity()?;
     let discovery_task = tokio::spawn(discovery::run(machine, port, discoveries));
