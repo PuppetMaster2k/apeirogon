@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
-use a7n_proto::{ALPN_LINK, Pin};
+use a7n_proto::{ALPN_LINK, ALPN_PAIR, Pin};
 use quinn::crypto::rustls::{NoInitialCipherSuite, QuicClientConfig, QuicServerConfig};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerifier};
 use rustls::crypto::{CryptoProvider, WebPkiSupportedAlgorithms, ring};
@@ -35,25 +35,34 @@ pub(crate) enum TlsError {
     Quic(#[from] NoInitialCipherSuite),
 }
 
-/// Accepts a certificate only if its pin is trusted; ignores name, dates and
-/// chain (PROTOCOL.md 3.1). The handshake signature is still verified.
+#[derive(Debug)]
+enum Trust {
+    Pinned(TrustedPins),
+    AnyKey,
+}
+
+/// Checks pinned trust for links or key possession for pairing; ignores name,
+/// dates and chain. The handshake signature is always verified.
 #[derive(Debug)]
 pub(crate) struct PinVerifier {
-    pins: TrustedPins,
+    trust: Trust,
     algorithms: WebPkiSupportedAlgorithms,
 }
 
 impl PinVerifier {
     pub(crate) fn new(pins: TrustedPins) -> Self {
         Self {
-            pins,
+            trust: Trust::Pinned(pins),
             algorithms: ring::default_provider().signature_verification_algorithms,
         }
     }
 
     fn check_pin(&self, end_entity: &CertificateDer<'_>) -> Result<(), rustls::Error> {
+        let Trust::Pinned(pins) = &self.trust else {
+            return Ok(());
+        };
         let trusted = identity::pin_of(end_entity)
-            .is_ok_and(|pin| self.pins.read().is_ok_and(|pins| pins.contains(&pin)));
+            .is_ok_and(|pin| pins.read().is_ok_and(|pins| pins.contains(&pin)));
         if trusted {
             return Ok(());
         }
@@ -183,15 +192,7 @@ pub(crate) fn server_config(
     identity: &Identity,
     pins: TrustedPins,
 ) -> Result<quinn::ServerConfig, TlsError> {
-    let mut tls = rustls::ServerConfig::builder_with_provider(provider())
-        .with_protocol_versions(&[&rustls::version::TLS13])?
-        .with_client_cert_verifier(Arc::new(PinVerifier::new(pins)))
-        .with_single_cert(certificate_chain(identity), private_key(identity))?;
-    tls.alpn_protocols = vec![ALPN_LINK.to_vec()];
-    tls.max_early_data_size = 0;
-    let mut config = quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(tls)?));
-    config.transport_config(transport_config());
-    Ok(config)
+    build_server_config(identity, Arc::new(PinVerifier::new(pins)), ALPN_LINK)
 }
 
 /// Client side: TLS 1.3, pinned server certificate, our certificate for
@@ -200,14 +201,57 @@ pub(crate) fn client_config(
     identity: &Identity,
     pins: TrustedPins,
 ) -> Result<quinn::ClientConfig, TlsError> {
+    build_client_config(identity, Arc::new(PinVerifier::new(pins)), ALPN_LINK)
+}
+
+fn build_server_config(
+    identity: &Identity,
+    verifier: Arc<dyn ClientCertVerifier>,
+    alpn: &[u8],
+) -> Result<quinn::ServerConfig, TlsError> {
+    let mut tls = rustls::ServerConfig::builder_with_provider(provider())
+        .with_protocol_versions(&[&rustls::version::TLS13])?
+        .with_client_cert_verifier(verifier)
+        .with_single_cert(certificate_chain(identity), private_key(identity))?;
+    tls.alpn_protocols = vec![alpn.to_vec()];
+    tls.max_early_data_size = 0;
+    let mut config = quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(tls)?));
+    config.transport_config(transport_config());
+    Ok(config)
+}
+
+fn build_client_config(
+    identity: &Identity,
+    verifier: Arc<dyn ServerCertVerifier>,
+    alpn: &[u8],
+) -> Result<quinn::ClientConfig, TlsError> {
     let mut tls = rustls::ClientConfig::builder_with_provider(provider())
         .with_protocol_versions(&[&rustls::version::TLS13])?
         .dangerous()
-        .with_custom_certificate_verifier(Arc::new(PinVerifier::new(pins)))
+        .with_custom_certificate_verifier(verifier)
         .with_client_auth_cert(certificate_chain(identity), private_key(identity))?;
-    tls.alpn_protocols = vec![ALPN_LINK.to_vec()];
+    tls.alpn_protocols = vec![alpn.to_vec()];
     tls.enable_early_data = false;
     let mut config = quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(tls)?));
     config.transport_config(transport_config());
     Ok(config)
+}
+
+/// Pairing accepts unknown certificates but still verifies possession of their
+/// keys through the same TLS 1.3 signature checks as pinned links.
+fn pairing_verifier() -> Arc<PinVerifier> {
+    Arc::new(PinVerifier {
+        trust: Trust::AnyKey,
+        algorithms: ring::default_provider().signature_verification_algorithms,
+    })
+}
+
+/// Pairing listener: mandatory client certificate, TLS 1.3, no early data.
+pub(crate) fn pair_server_config(identity: &Identity) -> Result<quinn::ServerConfig, TlsError> {
+    build_server_config(identity, pairing_verifier(), ALPN_PAIR)
+}
+
+/// Pairing dialer: our certificate, TLS 1.3, no early data.
+pub(crate) fn pair_client_config(identity: &Identity) -> Result<quinn::ClientConfig, TlsError> {
+    build_client_config(identity, pairing_verifier(), ALPN_PAIR)
 }
