@@ -12,6 +12,8 @@ use a7n_platform::fs::write_user_only;
 use a7n_proto::{MachineId, Pin, ProtoError};
 use serde::{Deserialize, Serialize};
 
+use crate::identity::{self, IdentityError};
+
 /// Why reading or writing the pin store failed.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum PinStoreError {
@@ -24,6 +26,10 @@ pub(crate) enum PinStoreError {
     #[error("pin store holds a malformed hex value")]
     BadHex,
     #[error(transparent)]
+    Identity(#[from] IdentityError),
+    #[error("certificate does not match the stored peer pin")]
+    CertificateMismatch,
+    #[error(transparent)]
     Proto(#[from] ProtoError),
 }
 
@@ -33,6 +39,7 @@ pub(crate) struct Entry {
     pub(crate) machine_id: MachineId,
     pub(crate) pin: Pin,
     pub(crate) name: String,
+    pub(crate) spki_der: Option<Vec<u8>>,
 }
 
 /// On-disk form of an [`Entry`]: ids and pins as lowercase hex.
@@ -41,6 +48,8 @@ struct EntryRecord {
     machine_id: String,
     pin: String,
     name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    spki_der: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -50,7 +59,7 @@ struct FileRecord {
 }
 
 /// Paired peers keyed by machine id, saved to one TOML file.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct PinStore {
     path: PathBuf,
     entries: BTreeMap<MachineId, Entry>,
@@ -85,6 +94,19 @@ impl PinStore {
         self.entries.get(machine_id)
     }
 
+    /// Caches a public key only after checking the pinned certificate and id.
+    pub(crate) fn record_certificate(&mut self, cert_der: &[u8]) -> Result<(), PinStoreError> {
+        let machine_id = identity::machine_id_of(cert_der)?;
+        let pin = identity::pin_of(cert_der)?;
+        let entry = self
+            .entries
+            .get_mut(&machine_id)
+            .filter(|entry| entry.pin == pin)
+            .ok_or(PinStoreError::CertificateMismatch)?;
+        entry.spki_der = Some(identity::spki_of(cert_der)?);
+        Ok(())
+    }
+
     /// Every paired peer's pin.
     pub(crate) fn pins(&self) -> impl Iterator<Item = Pin> + '_ {
         self.entries.values().map(|entry| entry.pin)
@@ -111,6 +133,7 @@ impl From<&Entry> for EntryRecord {
             machine_id: hex_encode(entry.machine_id.as_bytes()),
             pin: hex_encode(entry.pin.as_bytes()),
             name: entry.name.clone(),
+            spki_der: entry.spki_der.as_deref().map(hex_encode),
         }
     }
 }
@@ -123,6 +146,7 @@ impl TryFrom<EntryRecord> for Entry {
             machine_id: MachineId::try_from(&hex_decode(&record.machine_id)?[..])?,
             pin: Pin::try_from(&hex_decode(&record.pin)?[..])?,
             name: record.name,
+            spki_der: record.spki_der.as_deref().map(hex_decode).transpose()?,
         })
     }
 }
@@ -155,6 +179,7 @@ mod tests {
             machine_id: MachineId::try_from(&[seed; 16][..]).unwrap(),
             pin: Pin::try_from(&[seed; 32][..]).unwrap(),
             name: format!("peer-{seed}"),
+            spki_der: None,
         }
     }
 
@@ -211,5 +236,47 @@ mod tests {
             result,
             Err(PinStoreError::Proto(ProtoError::BadPin(31)))
         ));
+    }
+    #[test]
+    fn load_old_pin_file_keeps_peer_without_spki() {
+        // Arrange
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pins.toml");
+        fs::write(
+            &path,
+            format!(
+                "[[peer]]\nmachine_id = \"{}\"\npin = \"{}\"\nname = \"old\"\n",
+                "01".repeat(16),
+                "01".repeat(32)
+            ),
+        )
+        .unwrap();
+
+        // Act
+        let store = PinStore::load(&path).unwrap();
+
+        // Assert
+        assert!(store.get(&entry(1).machine_id).unwrap().spki_der.is_none());
+    }
+
+    #[test]
+    fn record_certificate_wrong_pin_rejects_public_key() {
+        // Arrange
+        let dir = tempfile::tempdir().unwrap();
+        let identity = identity::load_or_create(dir.path()).unwrap();
+        let mut store = PinStore::load(&dir.path().join("pins.toml")).unwrap();
+        store.add(Entry {
+            machine_id: identity.machine_id,
+            pin: entry(1).pin,
+            name: "peer".into(),
+            spki_der: None,
+        });
+
+        // Act
+        let result = store.record_certificate(&identity.cert_der);
+
+        // Assert
+        assert!(matches!(result, Err(PinStoreError::CertificateMismatch)));
+        assert!(store.get(&identity.machine_id).unwrap().spki_der.is_none());
     }
 }

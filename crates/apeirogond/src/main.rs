@@ -2,6 +2,8 @@
 #![forbid(unsafe_code)]
 
 #[allow(dead_code, reason = "consumed by the daemon loop (#23)")]
+mod desk_store;
+#[allow(dead_code, reason = "consumed by the daemon loop (#23)")]
 mod endpoint;
 #[allow(dead_code, reason = "consumed by the daemon loop (#23)")]
 mod handshake;

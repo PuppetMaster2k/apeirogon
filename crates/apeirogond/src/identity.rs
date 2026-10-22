@@ -11,12 +11,13 @@ use std::path::Path;
 use a7n_platform::fs::write_user_only;
 use a7n_proto::{MachineId, Pin, ProtoError};
 use rcgen::{
-    CertificateParams, DistinguishedName, DnType, KeyPair, PublicKeyData, SerialNumber,
+    CertificateParams, DistinguishedName, DnType, KeyPair, PublicKeyData, SerialNumber, SigningKey,
     date_time_ymd,
 };
 use sha2::{Digest, Sha256};
-use x509_parser::prelude::{FromDer, X509Certificate};
+use x509_parser::prelude::{FromDer, SubjectPublicKeyInfo, X509Certificate};
 
+const ED25519_OID: &str = "1.3.101.112";
 const KEY_FILE: &str = "identity.key";
 const CERT_FILE: &str = "identity.crt";
 const SUBJECT_COMMON_NAME: &str = "apeirogon";
@@ -38,6 +39,8 @@ pub(crate) enum IdentityError {
     X509(String),
     #[error("stored certificate does not belong to the stored key")]
     CertKeyMismatch,
+    #[error("desk signing requires an Ed25519 identity")]
+    UnsupportedSigningKey,
     #[error(transparent)]
     Proto(#[from] ProtoError),
 }
@@ -75,6 +78,41 @@ pub(crate) fn machine_id_of(cert_der: &[u8]) -> Result<MachineId, IdentityError>
 /// Pin of a certificate: SHA-256 of its DER.
 pub(crate) fn pin_of(cert_der: &[u8]) -> Result<Pin, IdentityError> {
     Ok(Pin::try_from(&Sha256::digest(cert_der)[..])?)
+}
+
+/// Public key authenticated by a certificate.
+pub(crate) fn spki_of(cert_der: &[u8]) -> Result<Vec<u8>, IdentityError> {
+    let (_, cert) = X509Certificate::from_der(cert_der)
+        .map_err(|error| IdentityError::X509(error.to_string()))?;
+    Ok(cert.tbs_certificate.subject_pki.raw.to_vec())
+}
+
+/// Signs desk records with the device's Ed25519 key.
+pub(crate) fn sign(identity: &Identity, message: &[u8]) -> Result<Vec<u8>, IdentityError> {
+    if identity.key.algorithm() != &rcgen::PKCS_ED25519 {
+        return Err(IdentityError::UnsupportedSigningKey);
+    }
+    Ok(identity.key.sign(message)?)
+}
+
+/// Verifies Ed25519 only; malformed or other public keys are rejected.
+pub(crate) fn verify(spki_der: &[u8], message: &[u8], signature: &[u8]) -> bool {
+    let Ok((remaining, spki)) = SubjectPublicKeyInfo::from_der(spki_der) else {
+        return false;
+    };
+    if !remaining.is_empty()
+        || spki.algorithm.algorithm.to_id_string() != ED25519_OID
+        || spki.algorithm.parameters.is_some()
+        || spki.subject_public_key.unused_bits != 0
+    {
+        return false;
+    }
+    ring::signature::UnparsedPublicKey::new(
+        &ring::signature::ED25519,
+        &spki.subject_public_key.data,
+    )
+    .verify(message, signature)
+    .is_ok()
 }
 
 /// Issues the deterministic self-signed certificate for `key`.
@@ -165,5 +203,40 @@ mod tests {
         // Assert
         assert_eq!(first.machine_id, second.machine_id);
         assert_eq!(first.pin, second.pin);
+    }
+    #[test]
+    fn sign_device_key_verifies_only_correct_key_and_message() {
+        // Arrange
+        let dir = tempfile::tempdir().unwrap();
+        let identity = load_or_create(dir.path()).unwrap();
+        let other = KeyPair::generate_for(&rcgen::PKCS_ED25519).unwrap();
+        let p256 = KeyPair::generate().unwrap();
+        let message = b"desk record";
+
+        // Act
+        let signature = sign(&identity, message).unwrap();
+
+        // Assert
+        assert!(verify(
+            &identity.key.subject_public_key_info(),
+            message,
+            &signature
+        ));
+        assert!(!verify(
+            &other.subject_public_key_info(),
+            message,
+            &signature
+        ));
+        assert!(!verify(
+            &identity.key.subject_public_key_info(),
+            b"changed",
+            &signature
+        ));
+        assert!(!verify(
+            &p256.subject_public_key_info(),
+            message,
+            &signature
+        ));
+        assert!(!verify(b"bad DER", message, &signature));
     }
 }
