@@ -6,7 +6,7 @@
 use a7n_core::liveness::{self, DropReason, Liveness, Poll};
 use a7n_proto::v1::envelope::Body;
 use a7n_proto::v1::{Ack, Envelope};
-use a7n_proto::{FrameKind, MachineId, decode_datagram, limits};
+use a7n_proto::{FrameKind, MachineId, decode_datagram, encode_datagram, limits};
 use quinn::VarInt;
 use tokio::sync::mpsc;
 use tokio::time::{Instant, sleep_until};
@@ -29,7 +29,7 @@ enum Event {
 /// Drives `link` until liveness drops it (`Ok`) or it fails (`Err`).
 ///
 /// One task owns the link and its [`Liveness`]; received messages other than
-/// `Ping` and `Ack` go to `inbound` tagged with the peer.
+/// `Ping` go to `inbound` tagged with the peer.
 ///
 /// All `select!` branches are cancel-safe: `read_frame` keeps partial
 /// frames in `link.control_buf`, `read_datagram` and `sleep_until` hold no
@@ -41,6 +41,7 @@ pub(crate) async fn drive(
 ) -> Result<DropReason, LinkError> {
     let mut liveness = Liveness::new(core_role(link.role), std::time::Instant::now());
     let mut send_buf = Vec::new();
+    let mut input_seq = 0u64;
     // When the partial frame in `control_buf` started; a `select!` wake-up
     // restarts `read_frame`'s own timer, so the 30 s bound is kept here.
     let mut partial_since: Option<std::time::Instant> = None;
@@ -77,12 +78,28 @@ pub(crate) async fn drive(
                 liveness.on_received(now);
                 forward(&inbound, &link, envelope).await?;
             }
-            Event::Outbound(Some(envelope)) => {
-                if let Some(Body::Input(batch)) = &envelope.body {
-                    liveness.on_input_sent(batch.seq, now);
-                }
-                if let Some(body) = envelope.body {
-                    send_envelope(&mut link.control_send, &mut send_buf, body).await?;
+            Event::Outbound(Some(mut envelope)) => {
+                if matches!(envelope.body, Some(Body::Motion(_))) {
+                    send_buf.clear();
+                    encode_datagram(&envelope, &mut send_buf);
+                    // ponytail: one small allocation per motion datagram; pool buffers if profiling shows it.
+                    if let Err(error) = link.connection.send_datagram(send_buf.clone().into()) {
+                        match error {
+                            quinn::SendDatagramError::ConnectionLost(error) => {
+                                return Err(error.into());
+                            }
+                            _ => eprintln!("kind=motion_dropped"),
+                        }
+                    }
+                } else {
+                    if let Some(Body::Input(batch)) = &mut envelope.body {
+                        input_seq = input_seq.checked_add(1).ok_or(LinkError::InvalidHello)?;
+                        batch.seq = input_seq;
+                        liveness.on_input_sent(batch.seq, now);
+                    }
+                    if let Some(body) = envelope.body {
+                        send_envelope(&mut link.control_send, &mut send_buf, body).await?;
+                    }
                 }
             }
             Event::Outbound(None) => return Err(LinkError::InboundClosed),
@@ -135,7 +152,7 @@ async fn handle_frame(
         }
         Some(Body::Ack(ack)) => {
             let _rtt = liveness.on_ack(ack.seq, ack.held_us, now);
-            Ok(())
+            forward(inbound, link, envelope).await
         }
         Some(Body::Input(batch)) => {
             let ack = Ack {
@@ -174,3 +191,6 @@ fn core_role(role: Role) -> liveness::Role {
         Role::Responder => liveness::Role::Responder,
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -131,6 +131,7 @@ impl Daemon {
                 // An old task can finish after its replacement is registered.
                 if self.is_current(peer, id) {
                     self.links.by_peer.remove(&peer);
+                    self.input_link_lost(peer);
                 }
             }
         }
@@ -175,6 +176,7 @@ impl Daemon {
             if rejected {
                 return Ok(());
             }
+            self.input_link_lost(peer);
         }
         // Both sides send Desk immediately, before the driver handles input.
         let _ = sender.try_send(Envelope {

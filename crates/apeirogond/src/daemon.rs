@@ -28,6 +28,7 @@ use crate::pin_store::{Entry, PinStore, PinStoreError};
 use crate::tls::{self, TlsError, TrustSnapshot, TrustedPins};
 
 mod connections;
+mod input;
 mod layout;
 mod nearby;
 mod pairing;
@@ -112,6 +113,7 @@ pub(crate) struct Daemon {
     event_rx: mpsc::Receiver<Event>,
     inbound: mpsc::Sender<Inbound>,
     inbound_rx: mpsc::Receiver<Inbound>,
+    input: input::Input,
 }
 
 impl Daemon {
@@ -139,6 +141,7 @@ impl Daemon {
         };
         let (events, event_rx) = mpsc::channel(MAILBOX_CAPACITY);
         let (inbound, inbound_rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let input = input::Input::new(identity.machine_id);
         Ok(Self {
             identity,
             pins,
@@ -159,11 +162,22 @@ impl Daemon {
             event_rx,
             inbound,
             inbound_rx,
+            input,
         })
     }
 
     pub(crate) async fn run(
         mut self,
+        commands: mpsc::Receiver<Command>,
+        discoveries: mpsc::Receiver<crate::discovery::Event>,
+    ) -> Result<(), DaemonError> {
+        let result = self.run_loop(commands, discoveries).await;
+        self.shutdown_input().await;
+        result
+    }
+
+    async fn run_loop(
+        &mut self,
         mut commands: mpsc::Receiver<Command>,
         mut discoveries: mpsc::Receiver<crate::discovery::Event>,
     ) -> Result<(), DaemonError> {
@@ -172,7 +186,10 @@ impl Daemon {
             .spawn(endpoint::accept_loop(self.endpoint.clone(), accepted));
         let mut retry = tokio::time::interval(nearby::RETRY_INTERVAL);
         retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut keepalive = tokio::time::interval(a7n_platform::input::KEEPALIVE_INTERVAL);
+        keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
+            let deadline = self.input.focus.next_deadline();
             tokio::select! {
                 command = commands.recv() => {
                     let Some(command) = command else { return Ok(()); };
@@ -184,15 +201,28 @@ impl Daemon {
                 Some(event) = self.event_rx.recv() => self.event(event),
                 Some(event) = discoveries.recv() => self.discovery(event),
                 _ = retry.tick() => self.retry_nearby(),
+                _ = keepalive.tick() => self.input.keepalive(),
+                () = input::deadline(deadline) => self.poll_focus().await,
+                event = input::captured(&mut self.input.capture) => self.captured(event).await,
+                event = input::feedback(&mut self.input.injector) => self.pointer_feedback(event).await,
                 Some((peer, id, envelope)) = self.inbound_rx.recv() => {
-                    if self.is_current(peer, id) && self.receive(envelope).is_err() {
+                    if self.is_current(peer, id) && self.receive_from(peer, envelope).await.is_err() {
                         if let Some(handle) = self.links.by_peer.remove(&peer) {
                             handle.connection.close(0u32.into(), b"");
                         }
+                        self.input_link_lost(peer);
                         eprintln!("kind=desk_failed");
                     }
                 }
                 Some(_) = self.tasks.join_next(), if !self.tasks.is_empty() => {}
+            }
+            self.flush_link_losses().await;
+            if self.input.failed {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "input backend closed",
+                )
+                .into());
             }
         }
     }
@@ -319,24 +349,34 @@ impl Daemon {
     }
 
     fn broadcast(&mut self, envelope: &Envelope) {
-        self.links.by_peer.retain(|_, handle| {
+        let mut lost = Vec::new();
+        self.links.by_peer.retain(|peer, handle| {
             if handle.sender.try_send(envelope.clone()).is_ok() {
                 return true;
             }
             // A slow peer catches up from persistent state on its next handshake.
             handle.connection.close(0u32.into(), b"");
+            lost.push(*peer);
             false
         });
+        for peer in lost {
+            self.input_link_lost(peer);
+        }
     }
 
     fn drop_untrusted(&mut self) {
+        let mut lost = Vec::new();
         self.links.by_peer.retain(|peer, handle| {
             if self.pins.get(peer).is_some() {
                 return true;
             }
             handle.connection.close(0u32.into(), b"");
+            lost.push(*peer);
             false
         });
+        for peer in lost {
+            self.input_link_lost(peer);
+        }
     }
 
     fn is_current(&self, peer: MachineId, id: usize) -> bool {
