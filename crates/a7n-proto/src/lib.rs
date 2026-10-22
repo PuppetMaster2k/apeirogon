@@ -13,6 +13,13 @@ pub mod v1 {
     include!(concat!(env!("OUT_DIR"), "/apeirogon.v1.rs"));
 }
 
+/// ALPN of the control link (PROTOCOL.md 1).
+pub const ALPN_LINK: &[u8] = b"a7n/1";
+/// ALPN of the pairing connection (PROTOCOL.md 1).
+pub const ALPN_PAIR: &[u8] = b"a7n-pair/1";
+/// Protocol major version sent in `Hello` and `Welcome` (PROTOCOL.md 4).
+pub const PROTOCOL_VERSION: u32 = 1;
+
 pub use error::ProtoError;
 pub use frame::{FrameKind, decode_datagram, decode_frame, encode_datagram, encode_frame};
 pub use ids::{Generation, MachineId, Pin, Route};
