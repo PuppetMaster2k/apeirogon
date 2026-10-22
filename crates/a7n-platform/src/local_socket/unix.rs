@@ -14,12 +14,12 @@ use interprocess::{
     local_socket::{GenericFilePath, ListenerOptions, tokio::prelude::*},
     os::unix::local_socket::ListenerOptionsExt,
 };
-use rustix::process::geteuid;
+use rustix::{fs::RawMode, process::geteuid};
 
 use super::{Listener, SocketError, SocketLocation, Stream};
 
 const DIRECTORY_MODE: u32 = 0o700;
-const SOCKET_MODE: u32 = 0o600;
+const SOCKET_MODE: RawMode = 0o600;
 const PERMISSION_BITS: u32 = 0o7777;
 // Leave room for the terminating NUL on macOS as well as Linux.
 const MAX_SOCKET_PATH_BYTES: usize = 103;
@@ -122,7 +122,8 @@ pub(super) async fn bind_user_only(location: &SocketLocation) -> Result<Listener
         }
         Err(error) => return Err(error.into()),
     };
-    fs::set_permissions(path, fs::Permissions::from_mode(SOCKET_MODE))?;
+    // RawMode varies by OS; std's permission API always takes u32.
+    fs::set_permissions(path, fs::Permissions::from_mode(SOCKET_MODE as _))?;
     Ok(listener)
 }
 

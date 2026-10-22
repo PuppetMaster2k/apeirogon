@@ -55,7 +55,7 @@ async fn bind_user_only_private_directory_sets_socket_permissions() {
     );
     assert_eq!(
         fs::symlink_metadata(location.as_path()).unwrap().mode() & PERMISSION_BITS,
-        SOCKET_MODE
+        0o600
     );
     drop(listener);
 }
