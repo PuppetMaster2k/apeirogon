@@ -50,7 +50,7 @@ let merged = layout::apply_edit(&state.layout, incoming, clock.next_version());
 
 ## 2. Coding style
 
-- Edition 2021, `rustfmt` with default settings. CI fails on unformatted code.
+- Edition 2024, `rustfmt` with default settings. CI fails on unformatted code.
 - `cargo clippy --all-targets -- -D warnings` must pass. Enable
   `clippy::pedantic` per crate and allow individual lints only with a reason.
 - Every file starts with an SPDX line: `// SPDX-License-Identifier: GPL-3.0-or-later`
