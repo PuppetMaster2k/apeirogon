@@ -2,6 +2,7 @@
 
 //! One task owns identity, trust, desk membership, pairing and the live registry.
 
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -25,6 +26,7 @@ use crate::pin_store::{Entry, PinStore, PinStoreError};
 use crate::tls::{self, TlsError, TrustSnapshot, TrustedPins};
 
 mod connections;
+mod nearby;
 mod pairing;
 #[cfg(test)]
 #[path = "pairing/tests.rs"]
@@ -72,6 +74,7 @@ enum Event {
     Ended(MachineId, usize),
     PairingEnded,
     ExpireConnects,
+    DiscoveryDialEnded(MachineId),
     Confirmed {
         entry: Entry,
         paired: Paired,
@@ -93,6 +96,8 @@ pub(crate) struct Daemon {
     trust: TrustedPins,
     links: Links,
     pending_connects: Vec<connections::PendingConnect>,
+    nearby: HashMap<MachineId, Vec<SocketAddr>>,
+    discovery_dials: HashSet<MachineId>,
     host: Option<HostPairing>,
     host_busy: bool,
     limiter: AttemptLimiter<IpAddr>,
@@ -121,7 +126,7 @@ impl Daemon {
         };
         endpoint.set_default_client_config(tls::client_config(&identity, Arc::clone(&trust))?);
         let info = PeerInfo {
-            name: crate::pin_store::hex_encode(identity.machine_id.as_bytes()),
+            name: identity.machine_id.to_string(),
             listen_port: u32::from(endpoint.local_addr()?.port()),
             ..PeerInfo::default()
         };
@@ -136,6 +141,8 @@ impl Daemon {
             trust,
             links: Links::default(),
             pending_connects: Vec::new(),
+            nearby: HashMap::new(),
+            discovery_dials: HashSet::new(),
             host: None,
             host_busy: false,
             limiter: AttemptLimiter::new(PAIRING_SOURCES),
@@ -150,10 +157,13 @@ impl Daemon {
     pub(crate) async fn run(
         mut self,
         mut commands: mpsc::Receiver<Command>,
+        mut discoveries: mpsc::Receiver<crate::discovery::Event>,
     ) -> Result<(), DaemonError> {
         let (accepted, mut accepted_rx) = mpsc::channel(MAILBOX_CAPACITY);
         self.tasks
             .spawn(endpoint::accept_loop(self.endpoint.clone(), accepted));
+        let mut retry = tokio::time::interval(nearby::RETRY_INTERVAL);
+        retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 command = commands.recv() => {
@@ -164,6 +174,8 @@ impl Daemon {
                     self.accept(connection, permit, deadline)?;
                 }
                 Some(event) = self.event_rx.recv() => self.event(event),
+                Some(event) = discoveries.recv() => self.discovery(event),
+                _ = retry.tick() => self.retry_nearby(),
                 Some((peer, id, envelope)) = self.inbound_rx.recv() => {
                     if self.is_current(peer, id) && self.receive(envelope).is_err() {
                         if let Some(handle) = self.links.by_peer.remove(&peer) {
@@ -219,6 +231,7 @@ impl Daemon {
                     })
                 })
                 .collect(),
+            nearby: self.nearby_status(),
         }
     }
 

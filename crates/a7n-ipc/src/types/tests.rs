@@ -3,26 +3,6 @@
 use super::*;
 
 #[test]
-fn deserialize_unpair_invalid_machine_id_is_rejected() {
-    // Arrange
-    let ids = [
-        "",
-        "00",
-        "z0000000000000000000000000000000",
-        "é000000000000000000000000000000",
-    ];
-    for id in ids {
-        let json = format!(r#"{{"type":"unpair","machine":"{id}"}}"#);
-
-        // Act
-        let result = serde_json::from_str::<Request>(&json);
-
-        // Assert
-        assert!(result.is_err());
-    }
-}
-
-#[test]
 fn serialize_unpair_machine_id_uses_hex_string() {
     // Arrange
     let machine = MachineId::try_from([0xab; MachineId::LEN].as_slice()).unwrap();

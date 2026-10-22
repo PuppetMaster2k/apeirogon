@@ -134,7 +134,7 @@ impl PinStore {
 impl From<&Entry> for EntryRecord {
     fn from(entry: &Entry) -> Self {
         Self {
-            machine_id: hex_encode(entry.machine_id.as_bytes()),
+            machine_id: entry.machine_id.to_string(),
             pin: hex_encode(entry.pin.as_bytes()),
             name: entry.name.clone(),
             spki_der: entry.spki_der.as_deref().map(hex_encode),
@@ -147,7 +147,7 @@ impl TryFrom<EntryRecord> for Entry {
 
     fn try_from(record: EntryRecord) -> Result<Self, Self::Error> {
         Ok(Self {
-            machine_id: MachineId::try_from(&hex_decode(&record.machine_id)?[..])?,
+            machine_id: record.machine_id.parse()?,
             pin: Pin::try_from(&hex_decode(&record.pin)?[..])?,
             name: record.name,
             spki_der: record.spki_der.as_deref().map(hex_decode).transpose()?,
@@ -156,7 +156,7 @@ impl TryFrom<EntryRecord> for Entry {
 }
 
 /// Lowercase hex of `bytes`.
-pub(crate) fn hex_encode(bytes: &[u8]) -> String {
+fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().fold(String::new(), |mut out, byte| {
         // Writing to a String cannot fail.
         let _ = write!(out, "{byte:02x}");

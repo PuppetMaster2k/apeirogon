@@ -3,7 +3,7 @@
 use a7n_proto::MachineId;
 
 use super::*;
-use crate::{PeerInfo, StatusInfo};
+use crate::{NearbyMachine, PeerInfo, StatusInfo};
 
 #[tokio::test]
 async fn request_status_returns_same_status_info() {
@@ -17,6 +17,10 @@ async fn request_status_returns_same_status_info() {
             name: "peer".to_owned(),
             connected: true,
             rtt_ms: Some(7),
+        }],
+        nearby: vec![NearbyMachine {
+            id: MachineId::try_from([3; MachineId::LEN].as_slice()).unwrap(),
+            addr: "127.0.0.1:42042".parse().unwrap(),
         }],
     };
     let expected = status.clone();

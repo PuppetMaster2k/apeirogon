@@ -65,6 +65,9 @@ impl Daemon {
 
     pub(super) fn event(&mut self, event: Event) {
         match event {
+            Event::DiscoveryDialEnded(peer) => {
+                self.discovery_dials.remove(&peer);
+            }
             Event::Link(Err(LinkError::Superseded(peer)), Some(reply)) => {
                 let deadline = Instant::now() + limits::HANDSHAKE_TIMEOUT;
                 self.pending_connects.push(PendingConnect {
