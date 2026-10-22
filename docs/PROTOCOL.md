@@ -99,6 +99,7 @@ The layout is a 2D canvas on which each machine's whole virtual desktop (all its
 ## 8. Ownership and routing
 
 - `route` is a number that rises with every move. Messages with an older route are ignored.
+  Routes are ordered per owner and per link: a responder ignores a `Focus` whose route is not newer than the last one it accepted from that owner on the current link (including a let-go) and forgets it when the link ends. `Accept`, `Refuse` and `Handover` must carry exactly the route of the take they answer; an owner's route rises with every move it makes.
 - **Take**: owner sends `Focus{target = responder id}` with an optional `Landing`. Responder answers `Accept{route}` or `Refuse{route, reason, other}`. If neither arrives within 1 s, the owner MUST take focus home.
 - **Let go**: `Focus` with another target. The responder releases all held keys and buttons.
 - **Handover**: the responder asks its owner to send input onward or home (`next` = owner id).

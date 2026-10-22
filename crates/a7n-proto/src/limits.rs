@@ -37,6 +37,10 @@ pub const UNACKED_INPUT_DROP: Duration = Duration::from_millis(1500);
 pub const TAKE_TIMEOUT: Duration = Duration::from_secs(1);
 /// Owner silence after which another peer may take over (section 8).
 pub const IDLE_TAKEOVER: Duration = Duration::from_secs(3);
+/// Edge overshoot required when a take omits resistance (Focus wire schema).
+pub const DEFAULT_RESISTANCE_PX: u32 = 120;
+/// Largest edge resistance accepted from an owner (Focus wire schema).
+pub const RESISTANCE_MAX_PX: u32 = 1000;
 /// Digits in a pairing code (section 14).
 pub const PAIRING_CODE_LENGTH: usize = 6;
 /// Lifetime of a pairing code (section 14).
