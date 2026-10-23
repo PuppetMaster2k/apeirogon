@@ -16,10 +16,10 @@ use x11rb::protocol::xproto::{
 use x11rb::protocol::xtest::{self, ConnectionExt as _};
 use x11rb::{CURRENT_TIME, NONE};
 
-use super::accumulate::ScrollAccumulator;
 use super::buttons::{scroll_clicks, x_button_from};
 use super::keymap::keycode_from_hid;
 use super::{Bounds, Session};
+use crate::input::scroll::ScrollAccumulator;
 use crate::input::{Captured, Inject, InputError};
 
 /// `detail` of an `XTest` `MotionNotify` that is relative to the pointer.

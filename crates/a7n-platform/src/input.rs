@@ -7,6 +7,10 @@ use std::time::{Duration, Instant};
 use a7n_proto::v1::InputEvent;
 use tokio::sync::mpsc;
 
+#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
+mod scroll;
+#[cfg(windows)]
+mod windows;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod x11;
 
@@ -72,9 +76,12 @@ pub enum InputError {
     #[cfg(all(unix, not(target_os = "macos")))]
     #[error("the X server lacks the {0} extension")]
     MissingX11Extension(&'static str),
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(any(windows, all(unix, not(target_os = "macos"))))]
     #[error("cannot start an input thread: {0}")]
     Thread(std::io::Error),
+    #[cfg(windows)]
+    #[error("Windows input failed: {0}")]
+    Windows(#[from] std::io::Error),
 }
 
 /// # Errors
@@ -95,7 +102,12 @@ fn start_platform() -> Result<(Capture, Injector), InputError> {
     }
 }
 
-#[cfg(not(all(unix, not(target_os = "macos"))))]
+#[cfg(windows)]
+fn start_platform() -> Result<(Capture, Injector), InputError> {
+    windows::start()
+}
+
+#[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
 fn start_platform() -> Result<(Capture, Injector), InputError> {
     Err(InputError::Unsupported)
 }
