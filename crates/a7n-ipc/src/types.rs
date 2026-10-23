@@ -82,6 +82,8 @@ pub enum ErrorKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StatusInfo {
+    /// None when input works, otherwise the reason it is unavailable.
+    pub input: Option<String>,
     pub pid: u32,
     #[serde(with = "machine_id")]
     pub machine: MachineId,

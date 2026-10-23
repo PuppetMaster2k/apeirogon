@@ -10,10 +10,6 @@ repository = "https://github.com/PuppetMaster2k/apeirogon"
 rust-version = "1.85"
 
 [workspace.dependencies]
-objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSData", "NSObject", "NSString"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem", "NSWorkspace", "NSRunningApplication"] }
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFRunLoop", "CFDate"] }
 a7n-proto    = { path = "crates/a7n-proto" }
 a7n-ipc      = { path = "crates/a7n-ipc" }
 a7n-core     = { path = "crates/a7n-core" }
@@ -49,6 +45,12 @@ tempfile            = "3"
 quinn               = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 rustls              = { version = "0.23", default-features = false, features = ["ring", "std"] }
 tokio               = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util"] }
+
+objc2 = "=0.6.4"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSArray", "NSData", "NSObject", "NSString"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSEvent", "NSGraphicsContext", "NSPasteboard", "NSPasteboardItem", "NSRunningApplication", "NSWorkspace", "objc2-core-graphics"] }
+objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["std", "CFDate", "CFMachPort", "CFRunLoop"] }
+objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["std", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation", "CGDirectDisplay", "CGDisplayConfiguration", "CGGeometry", "CGError", "libc"] }
 
 [workspace.lints.rust]
 missing_debug_implementations = "warn"

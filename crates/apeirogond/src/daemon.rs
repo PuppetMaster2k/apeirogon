@@ -320,6 +320,7 @@ impl Daemon {
 
     fn status(&self) -> Status {
         Status {
+            input: self.input.unavailable.clone(),
             pid: std::process::id(),
             machine: self.identity.machine_id,
             name: self.info.name.clone(),

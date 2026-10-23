@@ -43,19 +43,20 @@ async fn main() -> Result<()> {
     let dirs = ProjectDirs::from("", "", "apeirogon").context("no home directory found")?;
     let config_path = Config::path()?;
     let config = Config::load(&config_path)?;
-    let input = a7n_platform::input::start().map_or_else(
-        |_| {
-            crate::log::event!("kind=input_unavailable");
-            None
-        },
-        Some,
-    );
+    let (input, input_error) = match a7n_platform::input::start() {
+        Ok(handles) => (Some(handles), None),
+        Err(error) => {
+            crate::log::event!("kind=input_unavailable reason={error}");
+            (None, Some(error.to_string()))
+        }
+    };
     let daemon = daemon::Daemon::load(
         dirs.data_local_dir(),
         SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.port)),
     )?
     .with_config(config, config_path)
     .with_input(input)
+    .with_input_error(input_error)
     .with_clipboard(a7n_platform::clipboard::start().ok())
     .with_trace_input(cli.trace_input);
     let (discoveries, discovery_rx) = mpsc::channel(discovery::CHANNEL_CAPACITY);

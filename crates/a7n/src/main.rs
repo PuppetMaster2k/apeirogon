@@ -221,6 +221,9 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
     match response {
         Response::Clipboard(info) => clip::write_status(output, info)?,
         Response::Status(status) => {
+            if let Some(reason) = &status.input {
+                writeln!(output, "input: unavailable ({reason})")?;
+            }
             writeln!(output, "{} {} (this machine)", status.name, status.machine)?;
             for peer in &status.peers {
                 let state = if peer.connected {
