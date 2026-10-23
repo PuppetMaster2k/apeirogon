@@ -23,6 +23,7 @@ pub(super) struct Input {
     pub(super) focus: Focus,
     pub(super) capture: Option<Capture>,
     pub(super) injector: Option<Injector>,
+    pub(super) unavailable: Option<String>,
     trace_keys: bool,
     counter: MotionCounter,
     tracker: MotionTracker,
@@ -40,6 +41,7 @@ impl Input {
             focus: Focus::new(own),
             capture: None,
             injector: None,
+            unavailable: None,
             trace_keys: false,
             counter: MotionCounter::default(),
             tracker: MotionTracker::default(),
@@ -68,6 +70,7 @@ impl Input {
             crate::log::event!("kind=input_backend_closed");
         }
         self.failed = true;
+        self.unavailable = Some("input backend closed".to_owned());
     }
 
     pub(super) async fn grab(&mut self, grabbed: bool) {
@@ -126,6 +129,11 @@ pub(super) async fn deadline(deadline: Option<Instant>) {
 }
 
 impl Daemon {
+    pub(crate) fn with_input_error(mut self, error: Option<String>) -> Self {
+        self.input.unavailable = error;
+        self
+    }
+
     pub(crate) fn with_trace_input(mut self, enabled: bool) -> Self {
         self.input.trace_keys = enabled;
         self

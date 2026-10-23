@@ -7,7 +7,11 @@ use std::time::{Duration, Instant};
 use a7n_proto::v1::InputEvent;
 use tokio::sync::mpsc;
 
-#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(all(test, not(target_os = "macos")))]
+#[path = "input/macos/keymap.rs"]
+mod macos_keymap;
 mod scroll;
 #[cfg(windows)]
 mod windows;
@@ -64,6 +68,11 @@ pub struct Injector {
 pub enum InputError {
     #[error("input capture and injection are not supported on this platform")]
     Unsupported,
+    #[error("{0} permission missing")]
+    MissingPermission(&'static str),
+    #[cfg(target_os = "macos")]
+    #[error("macOS input failed: {0}")]
+    Macos(#[from] std::io::Error),
     #[cfg(all(unix, not(target_os = "macos")))]
     #[error("cannot connect to the X server: {0}")]
     X11Connect(#[from] x11rb::errors::ConnectError),
@@ -76,7 +85,6 @@ pub enum InputError {
     #[cfg(all(unix, not(target_os = "macos")))]
     #[error("the X server lacks the {0} extension")]
     MissingX11Extension(&'static str),
-    #[cfg(any(windows, all(unix, not(target_os = "macos"))))]
     #[error("cannot start an input thread: {0}")]
     Thread(std::io::Error),
     #[cfg(windows)]
@@ -107,7 +115,12 @@ fn start_platform() -> Result<(Capture, Injector), InputError> {
     windows::start()
 }
 
-#[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
+#[cfg(target_os = "macos")]
+fn start_platform() -> Result<(Capture, Injector), InputError> {
+    macos::start()
+}
+
+#[cfg(not(any(windows, unix)))]
 fn start_platform() -> Result<(Capture, Injector), InputError> {
     Err(InputError::Unsupported)
 }

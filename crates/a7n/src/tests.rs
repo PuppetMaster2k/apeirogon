@@ -58,6 +58,7 @@ fn write_response_status_displays_identity_and_peer_states() {
     // Arrange
     let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let response = Response::Status(StatusInfo {
+        input: Some("Accessibility permission missing".to_owned()),
         pid: std::process::id(),
         machine,
         name: "local".into(),
@@ -81,6 +82,7 @@ fn write_response_status_displays_identity_and_peer_states() {
     assert_eq!(
         String::from_utf8(output).unwrap(),
         concat!(
+            "input: unavailable (Accessibility permission missing)\n",
             "local 0123456789abcdef0123456789abcdef (this machine)\n",
             "peer 0123456789abcdef0123456789abcdef connected\n",
             "peer 0123456789abcdef0123456789abcdef offline\n",
@@ -139,6 +141,7 @@ fn write_response_status_with_nearby_displays_machine_ids_and_addresses() {
     // Arrange
     let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let response = Response::Status(StatusInfo {
+        input: None,
         pid: std::process::id(),
         machine,
         name: "local".into(),
