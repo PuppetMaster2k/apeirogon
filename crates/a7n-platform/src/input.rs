@@ -7,12 +7,18 @@ use std::time::{Duration, Instant};
 use a7n_proto::v1::InputEvent;
 use tokio::sync::mpsc;
 
+#[cfg(all(unix, not(target_os = "macos")))]
+mod accumulate;
+#[cfg(all(unix, not(target_os = "macos")))]
+mod evdev_keymap;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(all(test, not(target_os = "macos")))]
 #[path = "input/macos/keymap.rs"]
 mod macos_keymap;
 mod scroll;
+#[cfg(all(unix, not(target_os = "macos")))]
+mod wayland;
 #[cfg(windows)]
 mod windows;
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -20,6 +26,17 @@ mod x11;
 
 pub const KEEPALIVE_INTERVAL: Duration = Duration::from_millis(500);
 pub const DEADMAN_TIMEOUT: Duration = Duration::from_millis(1500);
+
+/// Raw pointer and key events queued for the daemon.
+#[cfg(all(unix, not(target_os = "macos")))]
+const CAPTURE_EVENT_CAPACITY: usize = 1024;
+#[cfg(all(unix, not(target_os = "macos")))]
+const CAPTURE_CONTROL_CAPACITY: usize = 16;
+#[cfg(all(unix, not(target_os = "macos")))]
+const INJECT_COMMAND_CAPACITY: usize = 1024;
+/// Position reports are superseded by the next one, so a short queue is enough.
+#[cfg(all(unix, not(target_os = "macos")))]
+const INJECT_POINTER_CAPACITY: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bounds {
@@ -70,6 +87,9 @@ pub enum InputError {
     Unsupported,
     #[error("{0} permission missing")]
     MissingPermission(&'static str),
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[error("Wayland portal failed: {0}")]
+    Portal(String),
     #[cfg(target_os = "macos")]
     #[error("macOS input failed: {0}")]
     Macos(#[from] std::io::Error),
@@ -94,7 +114,7 @@ pub enum InputError {
 
 /// # Errors
 /// Returns [`InputError::Unsupported`] when no backend fits the session
-/// (Wayland, no display, other platforms), or the backend's own error when it
+/// (no display, other platforms), or the backend's own error when it
 /// cannot start.
 pub fn start() -> Result<(Capture, Injector), InputError> {
     start_platform()
@@ -102,12 +122,27 @@ pub fn start() -> Result<(Capture, Injector), InputError> {
 
 #[cfg(all(unix, not(target_os = "macos")))]
 fn start_platform() -> Result<(Capture, Injector), InputError> {
-    let session_type = std::env::var("XDG_SESSION_TYPE").ok();
-    let display_set = std::env::var_os("DISPLAY").is_some_and(|display| !display.is_empty());
-    match select_backend(session_type.as_deref(), display_set) {
+    match detect_backend() {
+        Backend::Wayland => wayland::start(),
         Backend::X11 => x11::start(),
         Backend::None => Err(InputError::Unsupported),
     }
+}
+
+/// The backend the current session environment calls for.
+#[cfg(all(unix, not(target_os = "macos")))]
+pub(crate) fn detect_backend() -> Backend {
+    let session_type = std::env::var("XDG_SESSION_TYPE").ok();
+    select_backend(
+        session_type.as_deref(),
+        env_set("DISPLAY"),
+        env_set("WAYLAND_DISPLAY"),
+    )
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn env_set(name: &str) -> bool {
+    std::env::var_os(name).is_some_and(|value| !value.is_empty())
 }
 
 #[cfg(windows)]
@@ -128,6 +163,7 @@ fn start_platform() -> Result<(Capture, Injector), InputError> {
 #[cfg(all(unix, not(target_os = "macos")))]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Backend {
+    Wayland,
     X11,
     None,
 }
@@ -135,11 +171,23 @@ pub(crate) enum Backend {
 /// `XWayland` cannot capture global input, so a Wayland session never gets the
 /// X11 backend even when `DISPLAY` is set.
 #[cfg(all(unix, not(target_os = "macos")))]
-pub(crate) fn select_backend(session_type: Option<&str>, display_set: bool) -> Backend {
-    if session_type == Some("wayland") || !display_set {
-        return Backend::None;
+pub(crate) fn select_backend(
+    session_type: Option<&str>,
+    display_set: bool,
+    wayland_display_set: bool,
+) -> Backend {
+    if session_type == Some("wayland") {
+        return if wayland_display_set {
+            Backend::Wayland
+        } else {
+            Backend::None
+        };
     }
-    Backend::X11
+    if display_set {
+        Backend::X11
+    } else {
+        Backend::None
+    }
 }
 
 /// Backends check this independently so a stalled daemon cannot keep input grabbed.
@@ -170,21 +218,28 @@ mod tests {
 
     #[cfg(all(unix, not(target_os = "macos")))]
     #[test]
-    fn select_backend_wayland_or_no_display_is_unsupported() {
+    fn select_backend_session_type_and_displays_pick_backend() {
         // Arrange
         let cases = [
-            (Some("wayland"), true, Backend::None),
-            (Some("x11"), false, Backend::None),
-            (Some("x11"), true, Backend::X11),
-            (None, true, Backend::X11),
+            (Some("wayland"), true, true, Backend::Wayland),
+            (Some("wayland"), false, true, Backend::Wayland),
+            (Some("wayland"), true, false, Backend::None),
+            (Some("x11"), false, false, Backend::None),
+            (Some("x11"), true, false, Backend::X11),
+            (Some("x11"), true, true, Backend::X11),
+            (None, true, false, Backend::X11),
+            (None, false, true, Backend::None),
         ];
 
-        for (session_type, display_set, expected) in cases {
+        for (session_type, display_set, wayland_display_set, expected) in cases {
             // Act
-            let backend = select_backend(session_type, display_set);
+            let backend = select_backend(session_type, display_set, wayland_display_set);
 
             // Assert
-            assert_eq!(backend, expected, "{session_type:?} display={display_set}");
+            assert_eq!(
+                backend, expected,
+                "{session_type:?} display={display_set} wayland={wayland_display_set}"
+            );
         }
     }
 

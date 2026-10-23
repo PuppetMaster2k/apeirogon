@@ -39,4 +39,4 @@ paired to a second machine. Every item must pass before a release.
   stay down.
 - [ ] Kill the daemon while driving (`kill -9 apeirogond`): local keyboard
   and mouse work again within 1.5 s and the cursor is visible.
-- [ ] Start the daemon with `XDG_SESSION_TYPE=wayland` set: it reports `kind=input_unavailable` and does not grab anything.
+- [ ] Start the daemon with `XDG_SESSION_TYPE=wayland` set and `WAYLAND_DISPLAY` unset: it reports `kind=input_unavailable` and does not grab anything.

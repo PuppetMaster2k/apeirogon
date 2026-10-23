@@ -51,6 +51,12 @@ scope.
   best-effort via their own protocols. **No evdev/uinput fallback:** read
   access to `/dev/input` lets a process log every keystroke system-wide, and
   granting it needs root.
+- Wayland capture only starts when the pointer hits a barrier at the edge of
+  the screens. While a peer drives a Wayland machine, its local keyboard and
+  mouse are therefore not blocked and the daemon does not see that local
+  activity: idle takeover does not apply there, and local and remote input
+  can mix. Accepted for v0.1; the portal offers no way to watch local input
+  without capturing it.
 - Wayland clipboard: `ext-data-control-v1`, falling back to
   `wlr-data-control-unstable-v1` (wlroots, KDE). Wayland is lazy by design:
   the compositor asks the offering client to write into a pipe on paste, so

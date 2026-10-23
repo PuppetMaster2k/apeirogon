@@ -22,10 +22,10 @@ use x11rb::protocol::xproto::{ConnectionExt as _, GrabMode, GrabStatus};
 use x11rb::rust_connection::RustConnection;
 use x11rb::{CURRENT_TIME, NONE};
 
-use super::accumulate::MotionAccumulator;
 use super::buttons::{PointerButton, classify_x_button};
 use super::keymap::hid_from_keycode;
 use super::{Bounds, Session};
+use crate::input::accumulate::MotionAccumulator;
 use crate::input::{CaptureControl, Captured, DeadMan, InputError};
 
 /// Longest wait on the X connection before control commands and the dead-man
