@@ -23,6 +23,11 @@ fn try_from_unknown_and_security_keys_drops_everything_outside_allow_list() {
         ("name".into(), "remote".into()),
         ("sync.settings".into(), "false".into()),
         ("clipboard.policy".into(), "allow".into()),
+        (
+            "peers.01010101010101010101010101010101.clipboard".into(),
+            "both".into(),
+        ),
+        ("clipboard.deny_apps".into(), "[]".into()),
         ("unknown".into(), "value".into()),
     ]
     .into();

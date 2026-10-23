@@ -41,7 +41,8 @@ async fn main() -> Result<()> {
         SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.port)),
     )?
     .with_config(config, config_path)
-    .with_input(input);
+    .with_input(input)
+    .with_clipboard(a7n_platform::clipboard::start().ok());
     let (discoveries, discovery_rx) = mpsc::channel(discovery::CHANNEL_CAPACITY);
     let (machine, port) = daemon.discovery_identity()?;
     let discovery_task = tokio::spawn(discovery::run(machine, port, discoveries));

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+pub mod clipboard;
 pub mod fs;
 pub mod input;
 pub mod local_socket;

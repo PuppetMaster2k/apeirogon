@@ -187,3 +187,22 @@ fn set_sync_settings_round_trips_and_rejects_non_boolean() {
     let loaded = Config::parse(&config.to_toml().unwrap()).unwrap();
     assert!(!loaded.sync.settings);
 }
+
+#[test]
+fn set_clipboard_policy_validates_values_and_keeps_deny_apps_file_only() {
+    // Arrange
+    let mut config = Config::parse("[clipboard]\ndeny_apps = ['secret.app']").unwrap();
+    let key = "peers.01010101010101010101010101010101.clipboard";
+    for policy in ["both", "send", "receive", "off"] {
+        // Act
+        config.set(key, policy).unwrap();
+        let restored = Config::parse(&config.to_toml().unwrap()).unwrap();
+
+        // Assert
+        assert_eq!(restored.get(key).as_deref(), Some(policy));
+        assert_eq!(restored.clipboard.deny_apps, ["secret.app"]);
+    }
+    assert!(config.set(key, "ask").is_err());
+    assert_eq!(config.get(key).as_deref(), Some("off"));
+    assert!(config.set("clipboard.deny_apps", "[]").is_err());
+}
