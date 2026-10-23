@@ -5,6 +5,9 @@
 use a7n_core::clipboard::{Generation, Item, LocalChange};
 use tokio::sync::{mpsc, oneshot};
 
+#[cfg(all(unix, not(target_os = "macos")))]
+mod x11;
+
 /// Backends must suppress changes caused by their own `Set` commands so that
 /// remote clipboard writes cannot create a copy/announce feedback loop.
 #[derive(Debug)]
@@ -47,10 +50,21 @@ pub struct PasteRequest {
 pub enum ClipboardError {
     #[error("clipboard is not supported on this platform")]
     Unsupported,
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[error("X11 clipboard failed: {0}")]
+    X11(#[from] crate::input::InputError),
 }
 
 /// # Errors
-/// Returns [`ClipboardError::Unsupported`] until OS backends are implemented.
+/// Returns an error when the session is unsupported or the backend cannot start.
 pub fn start() -> Result<Clipboard, ClipboardError> {
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let session = std::env::var("XDG_SESSION_TYPE").ok();
+        let display = std::env::var_os("DISPLAY").is_some_and(|value| !value.is_empty());
+        if crate::input::select_backend(session.as_deref(), display) == crate::input::Backend::X11 {
+            return Ok(x11::start()?);
+        }
+    }
     Err(ClipboardError::Unsupported)
 }
