@@ -171,6 +171,7 @@ impl Daemon {
         let id = link.connection.stable_id();
         let (sender, outbound) = mpsc::channel(super::MAILBOX_CAPACITY);
         let handle = LinkHandle {
+            capabilities: link.capabilities.clone(),
             sender: sender.clone(),
             connection: link.connection.clone(),
             role: link.role,
@@ -190,6 +191,14 @@ impl Daemon {
         let _ = sender.try_send(Envelope {
             body: Some(Body::Layout(self.layout.state.to_proto())),
         });
+        if link
+            .capabilities
+            .contains(&a7n_proto::v1::Capability::SettingsSync)
+        {
+            if let Some(settings) = self.settings_message() {
+                let _ = sender.try_send(settings);
+            }
+        }
         let _ = sender.try_send(Envelope {
             body: Some(Body::Accepts(a7n_proto::v1::Accepts {
                 accepts: self.allow_drive(peer),

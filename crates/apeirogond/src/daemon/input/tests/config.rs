@@ -142,8 +142,11 @@ async fn reload_config_input_settings_apply_scrolling_and_receiver_speed() {
     // Arrange
     let (a, b, mut a_input, mut b_input) = pair().await;
     drive(&mut a_input, &mut b_input).await;
-    save(&a, "[input]\nnatural_scrolling = true\n");
-    save(&b, "[input]\nspeed = 0.5\n");
+    save(
+        &a,
+        "[sync]\nsettings = false\n[input]\nnatural_scrolling = true\n",
+    );
+    save(&b, "[sync]\nsettings = false\n[input]\nspeed = 0.5\n");
     let scroll = InputEvent {
         event: Some(input_event::Event::Scroll(ScrollEvent {
             dx: 2.0,
@@ -186,6 +189,65 @@ async fn reload_config_input_settings_apply_scrolling_and_receiver_speed() {
             break;
         }
     }
+    a.stop().await;
+    b.stop().await;
+}
+
+#[tokio::test]
+async fn reload_config_synced_speed_changes_peer_file_and_live_motion() {
+    // Arrange
+    let (a, b, mut a_input, mut b_input) = pair().await;
+    timeout(TEST_TIMEOUT, async {
+        loop {
+            let a_state =
+                crate::settings_store::SettingsStore::load(&a.dir.path().join("settings.pb"));
+            let b_state =
+                crate::settings_store::SettingsStore::load(&b.dir.path().join("settings.pb"));
+            if a_state.state.is_some() && a_state.state == b_state.state {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    save(&a, "[input]\nspeed = 2.0\n");
+
+    // Act
+    a.command(Command::ReloadConfig).await.unwrap();
+    timeout(TEST_TIMEOUT, async {
+        loop {
+            if Config::load(&b.dir.path().join("config.toml"))
+                .unwrap()
+                .input
+                .speed
+                .to_bits()
+                == 2.0_f64.to_bits()
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    drive(&mut a_input, &mut b_input).await;
+    a_input
+        .capture
+        .send(Captured::Pointer {
+            x: 50,
+            y: 50,
+            dx: 4,
+            dy: -6,
+        })
+        .await
+        .unwrap();
+
+    // Assert
+    assert!(matches!(
+        b_input.injected().await,
+        Inject::Motion { dx: 8, dy: -12 }
+    ));
     a.stop().await;
     b.stop().await;
 }

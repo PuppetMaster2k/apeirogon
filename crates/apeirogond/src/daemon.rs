@@ -26,6 +26,7 @@ use crate::layout_store::LayoutStore;
 use crate::link::{Link, LinkError, Links};
 use crate::pairing::PairingError;
 use crate::pin_store::{Entry, PinStore, PinStoreError};
+use crate::settings_store::SettingsStore;
 use crate::tls::{self, TlsError, TrustSnapshot, TrustedPins};
 
 mod config;
@@ -37,6 +38,7 @@ mod pairing;
 #[cfg(test)]
 #[path = "pairing/tests.rs"]
 mod pairing_tests;
+mod settings;
 #[cfg(test)]
 pub(crate) mod test_peer;
 #[cfg(test)]
@@ -102,6 +104,7 @@ pub(crate) struct Daemon {
     pins: PinStore,
     desk: DeskStore,
     layout: LayoutStore,
+    settings: SettingsStore,
     endpoint: Endpoint,
     info: PeerInfo,
     trust: TrustedPins,
@@ -142,6 +145,7 @@ impl Daemon {
         endpoint.set_default_client_config(tls::client_config(&identity, Arc::clone(&trust))?);
         let info = PeerInfo {
             name: identity.machine_id.to_string(),
+            capabilities: vec![a7n_proto::v1::Capability::SettingsSync.into()],
             listen_port: u32::from(endpoint.local_addr()?.port()),
             ..PeerInfo::default()
         };
@@ -153,6 +157,7 @@ impl Daemon {
             pins,
             desk,
             layout,
+            settings: SettingsStore::load(&path.join("settings.pb")),
             endpoint,
             info,
             trust,
@@ -189,6 +194,7 @@ impl Daemon {
         mut commands: mpsc::Receiver<Command>,
         mut discoveries: mpsc::Receiver<crate::discovery::Event>,
     ) -> Result<(), DaemonError> {
+        self.detect_settings_edit()?;
         let (accepted, mut accepted_rx) = mpsc::channel(MAILBOX_CAPACITY);
         self.tasks
             .spawn(endpoint::accept_loop(self.endpoint.clone(), accepted));
@@ -363,6 +369,13 @@ impl Daemon {
     fn broadcast(&mut self, envelope: &Envelope) {
         let mut lost = Vec::new();
         self.links.by_peer.retain(|peer, handle| {
+            if matches!(envelope.body, Some(Body::Settings(_)))
+                && !handle
+                    .capabilities
+                    .contains(&a7n_proto::v1::Capability::SettingsSync)
+            {
+                return true;
+            }
             if handle.sender.try_send(envelope.clone()).is_ok() {
                 return true;
             }

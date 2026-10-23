@@ -35,6 +35,16 @@ impl Daemon {
 
     pub(super) async fn reload_config(&mut self) -> Result<(), DaemonError> {
         let config = Config::load(&self.config_path)?;
+        let enabling_sync = !self.config.sync.settings && config.sync.settings;
+        self.apply_config(config).await;
+        self.detect_settings_edit()?;
+        if enabling_sync {
+            self.broadcast_settings();
+        }
+        Ok(())
+    }
+
+    pub(super) async fn apply_config(&mut self, config: Config) {
         let before: Vec<_> = self
             .links
             .by_peer
@@ -58,7 +68,6 @@ impl Daemon {
             }
             self.send_input(peer, Body::Accepts(Accepts { accepts }));
         }
-        Ok(())
     }
 
     pub(super) fn snapshot_remap(&mut self, peer: MachineId) {

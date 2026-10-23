@@ -8,3 +8,4 @@ pub mod input;
 pub mod layout;
 pub mod liveness;
 pub mod pairing;
+pub mod settings;

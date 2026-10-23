@@ -171,3 +171,19 @@ fn set_hotkeys_round_trips_and_rejects_collision_without_mutation() {
     assert_eq!(loaded.get("hotkeys.double_tap").as_deref(), Some("none"));
     assert_eq!(loaded.bindings().lock, Chord::parse("meta+l").unwrap());
 }
+
+#[test]
+fn set_sync_settings_round_trips_and_rejects_non_boolean() {
+    // Arrange
+    let mut config = Config::parse("").unwrap();
+    assert_eq!(config.get("sync.settings").as_deref(), Some("true"));
+    config.set("sync.settings", "false").unwrap();
+
+    // Act
+    let result = config.set("sync.settings", "no");
+
+    // Assert
+    assert!(result.is_err());
+    let loaded = Config::parse(&config.to_toml().unwrap()).unwrap();
+    assert!(!loaded.sync.settings);
+}
