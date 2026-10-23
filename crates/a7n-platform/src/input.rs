@@ -114,7 +114,7 @@ fn start_platform() -> Result<(Capture, Injector), InputError> {
 
 #[cfg(all(unix, not(target_os = "macos")))]
 #[derive(Debug, PartialEq, Eq)]
-enum Backend {
+pub(crate) enum Backend {
     X11,
     None,
 }
@@ -122,7 +122,7 @@ enum Backend {
 /// `XWayland` cannot capture global input, so a Wayland session never gets the
 /// X11 backend even when `DISPLAY` is set.
 #[cfg(all(unix, not(target_os = "macos")))]
-fn select_backend(session_type: Option<&str>, display_set: bool) -> Backend {
+pub(crate) fn select_backend(session_type: Option<&str>, display_set: bool) -> Backend {
     if session_type == Some("wayland") || !display_set {
         return Backend::None;
     }
