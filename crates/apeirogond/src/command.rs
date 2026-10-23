@@ -23,6 +23,7 @@ pub(crate) enum Command {
         reply: Reply<()>,
     },
     Status(Reply<Status>),
+    ClipboardStatus(Reply<a7n_ipc::ClipboardInfo>),
     GetLayout(Reply<a7n_ipc::LayoutInfo>),
     SetLayout {
         placed: Vec<a7n_ipc::LayoutPlacement>,

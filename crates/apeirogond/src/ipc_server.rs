@@ -60,6 +60,9 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
             .await
         }
         Request::Status => execute(commands, Command::Status, Response::Status).await,
+        Request::ClipboardStatus => {
+            execute(commands, Command::ClipboardStatus, Response::Clipboard).await
+        }
         Request::PairHost => {
             execute(commands, Command::PairHost, |code| Response::PairCode {
                 code,

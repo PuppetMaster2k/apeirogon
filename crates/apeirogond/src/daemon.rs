@@ -290,6 +290,9 @@ impl Daemon {
             Command::Status(reply) => {
                 let _ = reply.send(Ok(self.status()));
             }
+            Command::ClipboardStatus(reply) => {
+                let _ = reply.send(Ok(self.clipboard_status()));
+            }
             Command::GetLayout(reply) => {
                 let _ = reply.send(Ok(self.layout_info()));
             }

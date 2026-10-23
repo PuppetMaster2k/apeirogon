@@ -6,6 +6,8 @@ use a7n_core::pairing::PairingCode;
 use a7n_proto::MachineId;
 use serde::{Deserialize, Serialize};
 
+use crate::config::ClipboardPolicy;
+
 /// Commands accepted after the version handshake.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
@@ -17,6 +19,7 @@ pub enum Request {
         machine: MachineId,
     },
     Status,
+    ClipboardStatus,
     GetLayout,
     SetLayout {
         placed: Vec<LayoutPlacement>,
@@ -41,6 +44,7 @@ pub enum Request {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Response {
     Status(StatusInfo),
+    Clipboard(ClipboardInfo),
     Layout(LayoutInfo),
     PairCode {
         #[serde(with = "pairing_code")]
@@ -84,6 +88,39 @@ pub struct StatusInfo {
     pub name: String,
     pub peers: Vec<PeerInfo>,
     pub nearby: Vec<NearbyMachine>,
+}
+
+/// Clipboard availability and metadata; never includes contents or source apps.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClipboardInfo {
+    pub available: bool,
+    pub current: Option<ClipboardCopy>,
+    pub peers: Vec<PeerClipboard>,
+}
+
+/// Metadata of the current announced copy, without formats or payloads.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClipboardCopy {
+    #[serde(with = "machine_id")]
+    pub origin: MachineId,
+    pub origin_name: Option<String>,
+    pub generation: u64,
+    pub items: u32,
+    pub size: u64,
+    pub local: bool,
+}
+
+/// Local clipboard policy and link state for one paired peer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PeerClipboard {
+    #[serde(with = "machine_id")]
+    pub machine: MachineId,
+    pub name: String,
+    pub policy: ClipboardPolicy,
+    pub linked: bool,
 }
 
 /// Desk canvas and known machines that have not been placed yet.

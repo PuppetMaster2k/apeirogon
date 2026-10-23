@@ -51,6 +51,74 @@ fn wire(origin: MachineId, generation: u64, text: &str) -> ClipboardAnnounce {
 mod fetch;
 
 #[tokio::test]
+async fn clipboard_status_local_change_returns_metadata_only() {
+    // Arrange
+    let (mut daemon, dir, _changes, _commands) = daemon();
+    daemon.info.name = "this machine".into();
+    let offline = MachineId::try_from(&[1; MachineId::LEN][..]).unwrap();
+    daemon.pins.add(crate::pin_store::Entry {
+        machine_id: offline,
+        pin: daemon.identity.pin,
+        name: "offline peer".into(),
+        spki_der: None,
+    });
+    daemon
+        .config
+        .set(&format!("peers.{offline}.clipboard"), "off")
+        .unwrap();
+    let mut copy = change("sample");
+    copy.items.push(Item {
+        mime: a7n_core::clipboard::TEXT_HTML.into(),
+        data: b"<p>x</p>".to_vec(),
+    });
+    daemon.clipboard_changed(Some(copy));
+    let peer = Peer::run(daemon, dir);
+    let socket_dir = tempfile::tempdir().unwrap();
+    let location = a7n_ipc::SocketLocation::new(socket_dir.path().join("private/control.sock"));
+    let server = a7n_ipc::IpcServer::bind_at(&location).await.unwrap();
+    let server_task = tokio::spawn(crate::ipc_server::serve(
+        server,
+        peer.sender.as_ref().unwrap().clone(),
+    ));
+    let mut client = a7n_ipc::IpcClient::connect_at(&location).await.unwrap();
+
+    // Act
+    let response = client
+        .request(&a7n_ipc::Request::ClipboardStatus)
+        .await
+        .unwrap();
+
+    // Assert
+    let a7n_ipc::Response::Clipboard(info) = response else {
+        panic!("expected clipboard status")
+    };
+    assert_eq!(
+        info,
+        ClipboardInfo {
+            available: true,
+            current: Some(ClipboardCopy {
+                origin: peer.machine,
+                origin_name: Some("this machine".into()),
+                generation: 1,
+                items: 2,
+                size: 14,
+                local: true,
+            }),
+            peers: vec![PeerClipboard {
+                machine: offline,
+                name: "offline peer".into(),
+                policy: ClipboardPolicy::Off,
+                linked: false,
+            }],
+        }
+    );
+    drop(client);
+    server_task.abort();
+    let _ = server_task.await;
+    peer.stop().await;
+}
+
+#[tokio::test]
 async fn clipboard_changed_two_daemons_delivers_only_non_sensitive_copy() {
     // Arrange
     let (a, a_dir, changes, _a_commands) = daemon();
