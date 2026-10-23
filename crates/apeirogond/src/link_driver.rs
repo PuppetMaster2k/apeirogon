@@ -23,6 +23,7 @@ enum Event {
     Frame(Envelope),
     Datagram(Envelope),
     Timer,
+    Transfer(quinn::RecvStream),
     Outbound(Option<Envelope>),
 }
 
@@ -38,6 +39,7 @@ pub(crate) async fn drive(
     mut link: Link,
     inbound: mpsc::Sender<(MachineId, usize, Envelope)>,
     mut outbound: mpsc::Receiver<Envelope>,
+    transfers: mpsc::Sender<(MachineId, usize, quinn::RecvStream)>,
 ) -> Result<DropReason, LinkError> {
     let mut liveness = Liveness::new(core_role(link.role), std::time::Instant::now());
     let mut send_buf = Vec::new();
@@ -52,6 +54,7 @@ pub(crate) async fn drive(
                 frame.min(liveness.next_deadline())
             }));
         let event = tokio::select! {
+            stream = link.connection.accept_uni() => Event::Transfer(stream?),
             frame = read_frame(&mut link.control_recv, &mut link.control_buf, FrameKind::Control) => Event::Frame(frame?),
             datagram = link.connection.read_datagram() => motion_event(&datagram?)?,
             envelope = outbound.recv() => Event::Outbound(envelope),
@@ -103,6 +106,12 @@ pub(crate) async fn drive(
                 }
             }
             Event::Outbound(None) => return Err(LinkError::InboundClosed),
+            Event::Transfer(stream) => {
+                transfers
+                    .send((link.peer_id, link.connection.stable_id(), stream))
+                    .await
+                    .map_err(|_| LinkError::InboundClosed)?;
+            }
             Event::Timer => {}
         }
         partial_since = if link.control_buf.is_empty() {

@@ -70,6 +70,15 @@ impl Daemon {
 
     pub(super) fn event(&mut self, event: Event) {
         match event {
+            Event::ClipboardOpened(stream, transfer_id, buf) => {
+                self.clipboard_opened(stream, transfer_id, buf);
+            }
+            Event::ClipboardFetched {
+                peer,
+                link,
+                request,
+                data,
+            } => self.clipboard_fetched(peer, link, request, data),
             Event::DiscoveryDialEnded(peer) => {
                 self.discovery_dials.remove(&peer);
             }
@@ -136,6 +145,7 @@ impl Daemon {
                 // An old task can finish after its replacement is registered.
                 if self.is_current(peer, id) {
                     self.links.by_peer.remove(&peer);
+                    self.clipboard.links.remove(&peer);
                     self.input_link_lost(peer);
                 }
             }
@@ -205,11 +215,12 @@ impl Daemon {
             })),
         });
         self.clipboard_link_up(peer);
+        let transfers = self.transfer_tx.clone();
         let inbound = self.inbound.clone();
         let events = self.events.clone();
         self.tasks.spawn(async move {
             let connection = link.connection.clone();
-            let _ = link_driver::drive(link, inbound, outbound).await;
+            let _ = link_driver::drive(link, inbound, outbound, transfers).await;
             connection.close(0u32.into(), b"");
             let _ = events.send(Event::Ended(peer, id)).await;
         });

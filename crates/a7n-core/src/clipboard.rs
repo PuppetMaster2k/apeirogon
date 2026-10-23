@@ -119,7 +119,7 @@ pub enum ClipboardError {
 pub struct Received {
     pub generation: Generation,
     pub items: Vec<Item>,
-    pub pending: usize,
+    pub pending: Vec<u32>,
 }
 
 /// Validate before applying any data or advancing the current clipboard.
@@ -136,8 +136,8 @@ pub fn accept(
     };
     let mut inline = 0;
     let mut items = Vec::new();
-    let mut pending = 0;
-    for item in &incoming.items {
+    let mut pending = Vec::new();
+    for (index, item) in incoming.items.iter().enumerate() {
         if item.size > limits::CLIPBOARD_TEXT_MAX as u64 {
             return Err(ClipboardError::Size);
         }
@@ -162,7 +162,7 @@ pub fn accept(
                 });
             }
         } else if supported(&item.mime) {
-            pending += 1;
+            pending.push(u32::try_from(index).map_err(|_| ClipboardError::Size)?);
         }
     }
     if current.is_some_and(|current| generation <= current) {

@@ -61,3 +61,6 @@ pub const IMAGE_CLIPBOARD_MAX: usize = 8 * 1024 * 1024;
 pub const CLIPBOARD_INLINE_MAX: usize = 64 * 1024;
 /// Largest number of machines in a desk layout (section 14).
 pub const LAYOUT_MACHINES_MAX: usize = 64;
+
+/// Whole clipboard fetch, including waiting for its stream (section 14).
+pub const CLIPBOARD_FETCH_TIMEOUT: Duration = Duration::from_secs(10);

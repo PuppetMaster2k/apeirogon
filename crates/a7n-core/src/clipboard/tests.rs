@@ -74,7 +74,7 @@ fn announce_inline_budget_keeps_other_items_pending() {
     );
     assert_eq!(wire.items[1].inline_data, Vec::<u8>::new());
     assert_eq!(received.items.len(), 1);
-    assert_eq!(received.pending, 1);
+    assert_eq!(received.pending, vec![1]);
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn announce_text_at_limit_remains_metadata() {
     // Assert
     assert_eq!(wire.items[0].inline_data, Vec::<u8>::new());
     assert_eq!(wire.items[1].inline_data.len(), 1);
-    assert_eq!(received.pending, 1);
+    assert_eq!(received.pending, vec![0]);
 }
 
 #[test]
