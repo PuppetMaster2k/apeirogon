@@ -74,7 +74,6 @@ pub(crate) struct Link {
         reason = "handshake metadata for capability-gated input (#12)"
     )]
     pub(crate) peer_info: PeerInfo,
-    #[allow(dead_code, reason = "negotiated capabilities for input dispatch (#12)")]
     pub(crate) capabilities: Vec<Capability>,
     pub(crate) role: Role,
 }
@@ -116,6 +115,7 @@ fn new_link_wins(own: MachineId, peer: MachineId, new: Role, existing: Role) -> 
 /// A task owns the streams; the state owner holds only its mailbox and close handle.
 #[derive(Debug)]
 pub(crate) struct LinkHandle {
+    pub(crate) capabilities: Vec<Capability>,
     pub(crate) sender: mpsc::Sender<Envelope>,
     pub(crate) connection: Connection,
     pub(crate) role: Role,

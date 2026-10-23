@@ -212,6 +212,16 @@ impl Daemon {
     ) -> Result<(), DaemonError> {
         self.poll_focus().await;
         let actions = match &envelope.body {
+            Some(Body::Settings(settings)) => {
+                if self.links.by_peer.get(&peer).is_some_and(|handle| {
+                    handle
+                        .capabilities
+                        .contains(&a7n_proto::v1::Capability::SettingsSync)
+                }) {
+                    self.receive_settings(settings).await?;
+                }
+                return Ok(());
+            }
             Some(Body::Focus(focus)) => {
                 // Without an injector there is no backend that can honour a take.
                 let allow_drive = self.allow_drive(peer);

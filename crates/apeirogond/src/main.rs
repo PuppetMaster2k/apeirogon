@@ -14,6 +14,7 @@ mod link;
 mod link_driver;
 mod pairing;
 mod pin_store;
+mod settings_store;
 mod tls;
 
 use std::net::{Ipv4Addr, SocketAddr};

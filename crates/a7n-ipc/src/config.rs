@@ -25,6 +25,7 @@ pub struct Config {
     pub port: u16,
     pub input: InputConfig,
     pub hotkeys: HotkeyConfig,
+    pub sync: SyncConfig,
     pub peers: BTreeMap<String, PeerConfig>,
 }
 
@@ -35,8 +36,21 @@ impl Default for Config {
             port: limits::DEFAULT_UDP_PORT,
             input: InputConfig::default(),
             hotkeys: HotkeyConfig::default(),
+            sync: SyncConfig::default(),
             peers: BTreeMap::new(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SyncConfig {
+    pub settings: bool,
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self { settings: true }
     }
 }
 
@@ -215,6 +229,26 @@ impl Config {
     /// # Errors
     /// Rejects unsupported keys, invalid values and invalid resulting settings.
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), ConfigError> {
+        self.set_many([(key, value)])
+    }
+
+    /// Apply supported dotted keys together, leaving the config unchanged on error.
+    /// # Errors
+    /// Rejects unsupported keys, invalid values and invalid final settings.
+    pub fn set_many<'a>(
+        &mut self,
+        values: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) -> Result<(), ConfigError> {
+        let mut candidate = self.clone();
+        for (key, value) in values {
+            candidate.set_unchecked(key, value)?;
+        }
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
+    }
+
+    fn set_unchecked(&mut self, key: &str, value: &str) -> Result<(), ConfigError> {
         let parts: Vec<_> = key.split('.').collect();
         let invalid = || ConfigError::Invalid(format!("{key} has an invalid value"));
         let value =
@@ -234,7 +268,9 @@ impl Config {
                 ["input", "speed"] => toml::Value::Float(value.parse().map_err(|_| {
                     ConfigError::Invalid("input.speed must be between 0.1 and 10.0".into())
                 })?),
-                ["input", "natural_scrolling"] | ["peers", _, "allow_drive"] => {
+                ["input", "natural_scrolling"]
+                | ["peers", _, "allow_drive"]
+                | ["sync", "settings"] => {
                     toml::Value::Boolean(value.parse().map_err(|_| {
                         ConfigError::Invalid(format!("{key} must be true or false"))
                     })?)
@@ -260,7 +296,6 @@ impl Config {
         let candidate: Self = table
             .try_into()
             .map_err(|error| ConfigError::Invalid(format!("{key}: {error}")))?;
-        candidate.validate()?;
         *self = candidate;
         Ok(())
     }
