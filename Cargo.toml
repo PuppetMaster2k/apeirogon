@@ -10,6 +10,10 @@ repository = "https://github.com/PuppetMaster2k/apeirogon"
 rust-version = "1.85"
 
 [workspace.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSData", "NSObject", "NSString"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem", "NSWorkspace", "NSRunningApplication"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFRunLoop", "CFDate"] }
 a7n-proto    = { path = "crates/a7n-proto" }
 a7n-ipc      = { path = "crates/a7n-ipc" }
 a7n-core     = { path = "crates/a7n-core" }

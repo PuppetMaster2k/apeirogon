@@ -5,6 +5,8 @@
 use a7n_core::clipboard::{Generation, Item, LocalChange};
 use tokio::sync::{mpsc, oneshot};
 
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod x11;
 
@@ -56,6 +58,9 @@ pub struct PasteRequest {
 pub enum ClipboardError {
     #[error("clipboard is not supported on this platform")]
     Unsupported,
+    #[cfg(target_os = "macos")]
+    #[error("macOS clipboard failed: {0}")]
+    Macos(#[from] std::io::Error),
     #[cfg(windows)]
     #[error("Windows clipboard failed: {0}")]
     Windows(#[from] std::io::Error),
@@ -79,6 +84,10 @@ pub fn start() -> Result<Clipboard, ClipboardError> {
     {
         Ok(windows::start()?)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::start()?)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     Err(ClipboardError::Unsupported)
 }
