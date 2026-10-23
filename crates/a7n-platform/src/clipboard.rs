@@ -74,9 +74,7 @@ pub enum ClipboardError {
 pub fn start() -> Result<Clipboard, ClipboardError> {
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        let session = std::env::var("XDG_SESSION_TYPE").ok();
-        let display = std::env::var_os("DISPLAY").is_some_and(|value| !value.is_empty());
-        if crate::input::select_backend(session.as_deref(), display) == crate::input::Backend::X11 {
+        if crate::input::detect_backend() == crate::input::Backend::X11 {
             return Ok(x11::start()?);
         }
     }

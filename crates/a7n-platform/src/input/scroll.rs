@@ -5,10 +5,10 @@
 use a7n_proto::v1::ScrollUnit;
 
 /// Pixels of smooth scrolling that make one wheel notch.
-const SCROLL_PIXELS_PER_LINE: f64 = 15.0;
+pub(super) const SCROLL_PIXELS_PER_LINE: f64 = 15.0;
 
 /// Bounds the clicks one hostile or buggy event can inject.
-const MAX_LINES_PER_EVENT: f64 = 100.0;
+pub(super) const MAX_LINES_PER_EVENT: f64 = 100.0;
 
 /// Removes and returns the whole part of `value`, leaving the remainder.
 #[allow(clippy::cast_possible_truncation, reason = "clamped to the i32 range")]

@@ -8,7 +8,6 @@
 //! Known limitation: bounds are the root window size at start; `RandR` changes
 //! are not followed.
 
-mod accumulate;
 mod buttons;
 mod capture;
 mod inject;
@@ -19,14 +18,10 @@ use x11rb::connection::{Connection, RequestConnection};
 use x11rb::protocol::xproto::{ConnectionExt as _, Window};
 use x11rb::rust_connection::RustConnection;
 
-use super::{Bounds, Capture, Injector, InputError};
-
-/// Raw pointer and key events queued for the daemon.
-const CAPTURE_EVENT_CAPACITY: usize = 1024;
-const CAPTURE_CONTROL_CAPACITY: usize = 16;
-const INJECT_COMMAND_CAPACITY: usize = 1024;
-/// Position reports are superseded by the next one, so a short queue is enough.
-const INJECT_POINTER_CAPACITY: usize = 64;
+use super::{
+    Bounds, CAPTURE_CONTROL_CAPACITY, CAPTURE_EVENT_CAPACITY, Capture, INJECT_COMMAND_CAPACITY,
+    INJECT_POINTER_CAPACITY, Injector, InputError,
+};
 
 struct Session {
     conn: RustConnection,
