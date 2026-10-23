@@ -58,6 +58,7 @@ fn write_response_status_displays_identity_and_peer_states() {
     // Arrange
     let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let response = Response::Status(StatusInfo {
+        pid: std::process::id(),
         machine,
         name: "local".into(),
         peers: [true, false]
@@ -138,6 +139,7 @@ fn write_response_status_with_nearby_displays_machine_ids_and_addresses() {
     // Arrange
     let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let response = Response::Status(StatusInfo {
+        pid: std::process::id(),
         machine,
         name: "local".into(),
         peers: Vec::new(),
@@ -208,4 +210,27 @@ fn write_response_daemon_error_returns_message_without_stdout() {
     // Assert
     assert_eq!(result.unwrap_err().to_string(), "pairing refused");
     assert_eq!(output, [] as [u8; 0]);
+}
+
+#[test]
+fn resolve_machine_id_names_and_prefixes_resolve_or_reject() {
+    // Arrange
+    let a = "abcd456789abcdef0123456789abcdef".parse().unwrap();
+    let b = "abcd556789abcdef0123456789abcdef".parse().unwrap();
+    let machines = [(a, "workstation"), (b, "laptop")];
+    let cases = [
+        ("workstation", Some(a)),
+        ("ABCD4", Some(a)),
+        ("abcd556789abcdef0123456789abcdef", Some(b)),
+        ("abcd", None),
+        ("abc", None),
+        ("unknown", None),
+    ];
+    for (target, expected) in cases {
+        // Act
+        let result = resolve_machine_id(target, machines.into_iter());
+
+        // Assert
+        assert_eq!(result.ok(), expected);
+    }
 }

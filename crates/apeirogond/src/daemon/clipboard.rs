@@ -75,12 +75,12 @@ impl Daemon {
         let Some(change) = change else {
             self.clipboard.handle = None;
             self.clipboard.announce = None;
-            eprintln!("kind=clipboard_unavailable");
+            crate::log::event!("kind=clipboard_unavailable");
             return;
         };
         if !Exclusion::allows(&change, &self.config.clipboard.deny_apps) {
             self.clipboard.announce = None;
-            eprintln!("kind=clipboard_excluded");
+            crate::log::event!("kind=clipboard_excluded");
             return;
         }
         let generation = self.clipboard.clock.next(self.identity.machine_id);
@@ -121,14 +121,14 @@ impl Daemon {
             Ok(Some(received)) => received,
             Ok(None) => return,
             Err(_) => {
-                eprintln!("kind=clipboard_rejected");
+                crate::log::event!("kind=clipboard_rejected");
                 return;
             }
         };
         self.clipboard.current = Some(received.generation);
         self.clipboard.announce = Some(wire.clone());
         if received.pending != 0 {
-            eprintln!("kind=clipboard_fetch_pending");
+            crate::log::event!("kind=clipboard_fetch_pending");
             return;
         }
         if received.items.is_empty() {
@@ -145,7 +145,7 @@ impl Daemon {
         }) {
             self.clipboard.handle = None;
             self.clipboard.announce = None;
-            eprintln!("kind=clipboard_unavailable");
+            crate::log::event!("kind=clipboard_unavailable");
         }
     }
 }

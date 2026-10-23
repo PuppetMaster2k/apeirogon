@@ -78,7 +78,7 @@ impl Daemon {
 
     pub(super) fn receive_layout(&mut self, wire: &v1::Layout) -> Result<(), DaemonError> {
         let Ok(incoming) = Layout::try_from(wire) else {
-            eprintln!("kind=layout_rejected");
+            crate::log::event!("kind=layout_rejected");
             return Ok(());
         };
         let mut staged = self.layout.state.clone();
@@ -86,7 +86,7 @@ impl Daemon {
         {
             self.layout.persist(staged)?;
             if lost_own_edit {
-                eprintln!("kind=layout_edit_lost");
+                crate::log::event!("kind=layout_edit_lost");
                 self.layout.lost_edit = true;
             }
             self.broadcast(&Envelope {

@@ -95,7 +95,7 @@ impl Daemon {
                 if let Some(reply) = reply {
                     let _ = reply.send(result);
                 } else if result.is_err() {
-                    eprintln!("kind=handshake_failed");
+                    crate::log::event!("kind=handshake_failed");
                 }
                 self.finish_connects();
             }
@@ -122,7 +122,7 @@ impl Daemon {
                         self.connect(addr, connected);
                         self.tasks.spawn(async move {
                             if !matches!(receiver.await, Ok(Ok(()))) {
-                                eprintln!("kind=post_pair_connect_failed");
+                                crate::log::event!("kind=post_pair_connect_failed");
                             }
                             let _ = reply.send(Ok(entry));
                         });

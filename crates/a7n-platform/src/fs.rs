@@ -4,7 +4,39 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Per-user daemon log path.
+///
+/// # Errors
+/// Returns an error if the user data directory cannot be found.
+pub fn log_path() -> io::Result<PathBuf> {
+    directories::ProjectDirs::from("", "", "apeirogon")
+        .map(|dirs| dirs.data_local_dir().join("apeirogond.log"))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no home directory found"))
+}
+
+/// Opens an append-only log with user-only permissions.
+///
+/// # Errors
+/// Returns any directory, permission or file I/O error.
+pub fn append_user_only(path: &Path) -> io::Result<File> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        options.mode(USER_ONLY_MODE);
+        let file = options.open(path)?;
+        file.set_permissions(fs::Permissions::from_mode(USER_ONLY_MODE))?;
+        Ok(file)
+    }
+    #[cfg(not(unix))]
+    options.open(path)
+}
 
 /// Permission bits of a user-only file on unix.
 #[cfg(unix)]
@@ -74,4 +106,40 @@ mod tests {
         let mode = fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, USER_ONLY_MODE);
     }
+}
+
+/// Compares open file identities, including across rename and rotation.
+///
+/// # Errors
+/// Returns any metadata query error.
+#[cfg(unix)]
+pub fn same_file(left: &File, right: &File) -> io::Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    let (left, right) = (left.metadata()?, right.metadata()?);
+    Ok(left.dev() == right.dev() && left.ino() == right.ino())
+}
+
+/// Compares open file identities, including across rename and rotation.
+///
+/// # Errors
+/// Returns any metadata query error.
+#[cfg(windows)]
+pub fn same_file(left: &File, right: &File) -> io::Result<bool> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+    };
+    fn identity(file: &File) -> io::Result<(u32, u32, u32)> {
+        let mut info = BY_HANDLE_FILE_INFORMATION::default();
+        // SAFETY: file owns a live handle and info is writable for the call.
+        if unsafe { GetFileInformationByHandle(file.as_raw_handle().cast(), &raw mut info) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok((
+            info.dwVolumeSerialNumber,
+            info.nFileIndexHigh,
+            info.nFileIndexLow,
+        ))
+    }
+    Ok(identity(left)? == identity(right)?)
 }

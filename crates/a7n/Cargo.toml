@@ -7,12 +7,16 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+a7n-platform.workspace = true
 a7n-ipc.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

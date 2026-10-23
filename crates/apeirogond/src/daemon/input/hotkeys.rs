@@ -34,38 +34,51 @@ impl Daemon {
     async fn apply_hotkey(&mut self, hotkey: Hotkey) {
         let actions = match hotkey {
             Hotkey::Home => {
-                eprintln!("kind=hotkey action=home");
+                crate::log::event!("kind=hotkey action=home");
                 self.input.focus.go_home()
             }
             Hotkey::Lock => {
-                eprintln!("kind=hotkey action=lock");
+                crate::log::event!("kind=hotkey action=lock");
                 self.input.focus.toggle_lock();
                 Vec::new()
             }
             Hotkey::Jump(n) => {
-                eprintln!("kind=hotkey action=jump");
+                crate::log::event!("kind=hotkey action=jump");
                 let Some(target) = self.layout.state.nth(n) else {
-                    eprintln!("kind=hotkey_target_unavailable");
+                    crate::log::event!("kind=hotkey_target_unavailable");
                     return;
                 };
-                if target == self.identity.machine_id {
-                    self.input.focus.go_home()
-                } else if self.links.by_peer.contains_key(&target) {
-                    self.input.focus.take(
-                        Take {
-                            target,
-                            landing: None,
-                            resistance_px: 0,
-                            reach: self.links.by_peer.keys().copied().collect(),
-                        },
-                        now(),
-                    )
-                } else {
-                    eprintln!("kind=hotkey_target_unavailable");
-                    return;
+                if self.switch_machine(target).await.is_err() {
+                    crate::log::event!("kind=hotkey_target_unavailable");
                 }
+                return;
             }
         };
         self.input_actions(actions).await;
+    }
+
+    pub(crate) async fn switch_machine(
+        &mut self,
+        target: a7n_proto::MachineId,
+    ) -> Result<(), crate::daemon::DaemonError> {
+        let actions = if target == self.identity.machine_id {
+            self.input.focus.go_home()
+        } else if self.links.by_peer.get(&target).is_some_and(|handle| {
+            handle.connection.close_reason().is_none() && !handle.sender.is_closed()
+        }) {
+            self.input.focus.take(
+                Take {
+                    target,
+                    landing: None,
+                    resistance_px: 0,
+                    reach: self.links.by_peer.keys().copied().collect(),
+                },
+                now(),
+            )
+        } else {
+            return Err(crate::daemon::DaemonError::NotConnected);
+        };
+        self.input_actions(actions).await;
+        Ok(())
     }
 }

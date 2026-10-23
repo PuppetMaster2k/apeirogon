@@ -67,7 +67,7 @@ impl Daemon {
             return Ok(());
         }
         let Ok(incoming) = Settings::try_from(wire) else {
-            eprintln!("kind=settings_rejected");
+            crate::log::event!("kind=settings_rejected");
             return Ok(());
         };
         if !newer(self.settings.state.as_ref(), &incoming) {
@@ -83,7 +83,7 @@ impl Daemon {
             )
             .is_err()
         {
-            eprintln!("kind=settings_rejected");
+            crate::log::event!("kind=settings_rejected");
             return Ok(());
         }
         candidate.save(&self.config_path)?;

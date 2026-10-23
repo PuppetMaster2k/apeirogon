@@ -11,6 +11,11 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
     ReloadConfig,
+    Shutdown,
+    Switch {
+        #[serde(with = "machine_id")]
+        machine: MachineId,
+    },
     Status,
     GetLayout,
     SetLayout {
@@ -63,6 +68,7 @@ pub enum ErrorKind {
     InvalidRequest,
     InvalidLayout,
     NotPaired,
+    NotConnected,
     PairingRefused,
     Busy,
     Internal,
@@ -72,6 +78,7 @@ pub enum ErrorKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StatusInfo {
+    pub pid: u32,
     #[serde(with = "machine_id")]
     pub machine: MachineId,
     pub name: String,

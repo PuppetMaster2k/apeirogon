@@ -23,6 +23,7 @@ pub(super) struct Input {
     pub(super) focus: Focus,
     pub(super) capture: Option<Capture>,
     pub(super) injector: Option<Injector>,
+    trace_keys: bool,
     counter: MotionCounter,
     tracker: MotionTracker,
     pub(super) scale: MotionScale,
@@ -39,6 +40,7 @@ impl Input {
             focus: Focus::new(own),
             capture: None,
             injector: None,
+            trace_keys: false,
             counter: MotionCounter::default(),
             tracker: MotionTracker::default(),
             scale: MotionScale::new(1.0),
@@ -63,7 +65,7 @@ impl Input {
 
     pub(super) fn closed(&mut self) {
         if !self.failed {
-            eprintln!("kind=input_backend_closed");
+            crate::log::event!("kind=input_backend_closed");
         }
         self.failed = true;
     }
@@ -81,7 +83,19 @@ impl Input {
         }
     }
 
+    fn trace_key(&self, event: &a7n_proto::v1::InputEvent) {
+        if !self.trace_keys {
+            return;
+        }
+        if let Some(a7n_proto::v1::input_event::Event::Key(key)) = &event.event {
+            crate::log::event!("kind=trace_key usage=0x{:x} down={}", key.usage, key.down);
+        }
+    }
+
     async fn inject(&mut self, command: Inject) {
+        if let Inject::Event(event) = &command {
+            self.trace_key(event);
+        }
         if let Some(injector) = &self.injector {
             if injector.commands.send(command).await.is_err() {
                 self.closed();
@@ -112,6 +126,11 @@ pub(super) async fn deadline(deadline: Option<Instant>) {
 }
 
 impl Daemon {
+    pub(crate) fn with_trace_input(mut self, enabled: bool) -> Self {
+        self.input.trace_keys = enabled;
+        self
+    }
+
     pub(crate) fn with_input(mut self, handles: Option<(Capture, Injector)>) -> Self {
         if let Some((capture, injector)) = handles {
             self.input.capture = Some(capture);
@@ -290,6 +309,9 @@ impl Daemon {
             self.input.closed();
             return;
         };
+        if let Captured::Input(input) = &event {
+            self.input.trace_key(input);
+        }
         self.poll_focus().await;
         if self.match_hotkey(&event).await {
             return;

@@ -7,10 +7,12 @@ name = "a7n"
 version = "0.1.0"
 dependencies = [
  "a7n-ipc",
+ "a7n-platform",
  "anyhow",
  "clap",
  "crossterm 0.29.0",
  "ratatui",
+ "tempfile",
  "tokio",
 ]
 
@@ -159,6 +161,7 @@ dependencies = [
  "a7n-platform",
  "a7n-proto",
  "anyhow",
+ "clap",
  "directories",
  "mdns-sd",
  "prost",
