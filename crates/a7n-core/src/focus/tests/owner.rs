@@ -3,6 +3,64 @@
 use super::*;
 
 #[test]
+fn on_handover_locked_owner_ignores_edge_handover() {
+    // Arrange
+    let now = Instant::now();
+    let mut focus = driving(now);
+    focus.set_locked(true);
+    for next in [1, 3] {
+        let handover = Handover {
+            route: 1,
+            next: id(next).as_bytes().to_vec(),
+            ..Default::default()
+        };
+
+        // Act
+        let actions = focus.on_handover(id(2), &handover, now);
+
+        // Assert
+        assert_eq!(actions, Vec::new());
+        assert_eq!(focus.cursor(), Cursor::Driving(id(2)));
+    }
+}
+
+#[test]
+fn go_home_locked_owner_returns_home_and_keeps_lock() {
+    // Arrange
+    let mut focus = driving(Instant::now());
+    focus.set_locked(true);
+
+    // Act
+    let actions = focus.go_home();
+
+    // Assert
+    assert!(has_let_go(&actions, 2, 1));
+    assert_eq!(focus.cursor(), Cursor::Home);
+    assert!(focus.is_locked());
+}
+
+#[test]
+fn on_handover_locked_owner_taken_over_returns_home() {
+    // Arrange
+    let now = Instant::now();
+    let mut focus = driving(now);
+    focus.set_locked(true);
+    let handover = Handover {
+        route: 1,
+        next: id(1).as_bytes().to_vec(),
+        taken_over_by: id(3).as_bytes().to_vec(),
+        ..Default::default()
+    };
+
+    // Act
+    let actions = focus.on_handover(id(2), &handover, now);
+
+    // Assert
+    assert_eq!(actions, vec![Action::Cursor(Cursor::Home)]);
+    assert!(focus.is_locked());
+}
+
+#[test]
 fn on_accepts_denied_pending_target_cancels_take() {
     // Arrange
     let mut focus = Focus::new(id(1));

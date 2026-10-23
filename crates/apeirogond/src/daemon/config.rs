@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use a7n_core::hotkey::HotkeyMatcher;
 use a7n_core::input::MotionScale;
 use a7n_ipc::config::Config;
 use a7n_proto::MachineId;
@@ -17,6 +18,7 @@ impl Daemon {
             .or_else(a7n_platform::host_name)
             .unwrap_or_else(|| self.identity.machine_id.to_string());
         self.input.scale = MotionScale::new(config.input.speed);
+        self.input.hotkeys = HotkeyMatcher::new(config.bindings());
         self.config = config;
         self.config_path = path;
         self
@@ -42,6 +44,7 @@ impl Daemon {
         if config.input.speed.to_bits() != self.config.input.speed.to_bits() {
             self.input.scale = MotionScale::new(config.input.speed);
         }
+        self.input.hotkeys = HotkeyMatcher::new(config.bindings());
         self.config = config;
         for (peer, was_allowed) in before {
             let accepts = self.allow_drive(peer);

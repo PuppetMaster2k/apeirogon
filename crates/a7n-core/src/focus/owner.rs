@@ -139,6 +139,9 @@ impl Focus {
             self.owner = Owner::Home;
             return vec![Action::Cursor(Cursor::Home)];
         }
+        if self.is_locked() {
+            return Vec::new();
+        }
         if next == self.own_id {
             return self.go_home();
         }

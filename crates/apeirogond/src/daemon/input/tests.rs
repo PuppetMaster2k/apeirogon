@@ -14,6 +14,7 @@ use crate::daemon::test_peer::{Peer, TEST_TIMEOUT};
 use crate::pin_store::Entry;
 
 mod config;
+mod hotkeys;
 
 struct FakeInput {
     capture: mpsc::Sender<Captured>,

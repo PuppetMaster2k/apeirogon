@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use a7n_core::focus::edge::EdgeResistance;
 use a7n_core::focus::{Action, Cursor, Focus, Take};
+use a7n_core::hotkey::HotkeyMatcher;
 use a7n_core::input::{MotionCounter, MotionScale, MotionTracker, edge_push};
 use a7n_platform::input::{Bounds, Capture, CaptureControl, Captured, Inject, Injector};
 use a7n_proto::v1::{Edge, Envelope, InputBatch, envelope::Body};
@@ -13,6 +14,7 @@ use a7n_proto::{MachineId, Route};
 
 use super::{Daemon, DaemonError};
 
+mod hotkeys;
 mod landing;
 
 use landing::landing_point;
@@ -25,6 +27,7 @@ pub(super) struct Input {
     tracker: MotionTracker,
     pub(super) scale: MotionScale,
     pub(super) modifier_remap: BTreeMap<u32, u32>,
+    pub(super) hotkeys: HotkeyMatcher,
     resistance: EdgeResistance,
     pub(super) failed: bool,
     lost: Vec<MachineId>,
@@ -40,6 +43,7 @@ impl Input {
             tracker: MotionTracker::default(),
             scale: MotionScale::new(1.0),
             modifier_remap: BTreeMap::new(),
+            hotkeys: HotkeyMatcher::new(a7n_ipc::config::Config::default().bindings()),
             resistance: EdgeResistance::new(0),
             failed: false,
             lost: Vec::new(),
@@ -273,6 +277,9 @@ impl Daemon {
             return;
         };
         self.poll_focus().await;
+        if self.match_hotkey(&event).await {
+            return;
+        }
         if let Cursor::Driving(peer) = self.input.focus.cursor() {
             self.forward_capture(peer, event);
             return;
@@ -340,6 +347,9 @@ impl Daemon {
     }
 
     async fn cross_edge(&mut self, bounds: Bounds, x: i32, y: i32, dx: i32, dy: i32, driven: bool) {
+        if !driven && self.input.focus.is_locked() {
+            return;
+        }
         let Some((edge, overshoot, along)) = edge_push(
             (bounds.x, bounds.y, bounds.width, bounds.height),
             x,

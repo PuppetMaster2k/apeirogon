@@ -86,6 +86,7 @@ pub struct Focus {
     accepted: BTreeMap<MachineId, Route>,
     last_local_input: Option<Instant>,
     held: HeldInputs,
+    locked: bool,
 }
 
 impl Focus {
@@ -99,7 +100,22 @@ impl Focus {
             accepted: BTreeMap::new(),
             last_local_input: None,
             held: HeldInputs::default(),
+            locked: false,
         }
+    }
+
+    /// Keep edge crossings on the current machine; explicit takes still work.
+    pub fn set_locked(&mut self, locked: bool) {
+        self.locked = locked;
+    }
+
+    pub fn toggle_lock(&mut self) {
+        self.locked = !self.locked;
+    }
+
+    #[must_use]
+    pub fn is_locked(&self) -> bool {
+        self.locked
     }
 
     #[must_use]

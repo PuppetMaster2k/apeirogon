@@ -104,6 +104,15 @@ impl Layout {
         &self.placements
     }
 
+    /// One-based machine number, ordered top to bottom, then left to right.
+    #[must_use]
+    pub fn nth(&self, n: u8) -> Option<MachineId> {
+        let index = usize::from(n.checked_sub(1)?);
+        let mut placements: Vec<_> = self.placements.iter().collect();
+        placements.sort_unstable_by_key(|p| (p.y, p.x));
+        placements.get(index).map(|p| p.id)
+    }
+
     /// # Errors
     /// Rejects invalid placements and an exhausted version counter.
     pub fn edit(&self, placements: Vec<Placement>, own_id: MachineId) -> Result<Self, LayoutError> {

@@ -11,6 +11,9 @@ use a7n_proto::{MachineId, limits};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
+mod hotkeys;
+pub use hotkeys::HotkeyConfig;
+
 const MIN_SPEED: f64 = 0.1;
 const MAX_SPEED: f64 = 10.0;
 
@@ -21,6 +24,7 @@ pub struct Config {
     pub name: Option<String>,
     pub port: u16,
     pub input: InputConfig,
+    pub hotkeys: HotkeyConfig,
     pub peers: BTreeMap<String, PeerConfig>,
 }
 
@@ -30,6 +34,7 @@ impl Default for Config {
             name: None,
             port: limits::DEFAULT_UDP_PORT,
             input: InputConfig::default(),
+            hotkeys: HotkeyConfig::default(),
             peers: BTreeMap::new(),
         }
     }
@@ -183,6 +188,7 @@ impl Config {
                 "input.speed must be between 0.1 and 10.0".into(),
             ));
         }
+        self.parse_bindings()?;
         let mut ids = BTreeSet::new();
         for id in self.peers.keys() {
             let machine = id.parse::<MachineId>().map_err(|_| {
@@ -213,7 +219,15 @@ impl Config {
         let invalid = || ConfigError::Invalid(format!("{key} has an invalid value"));
         let value =
             match parts.as_slice() {
-                ["name"] | ["peers", _, "modifier_remap", _] => toml::Value::String(value.into()),
+                ["name"]
+                | ["peers", _, "modifier_remap", _]
+                | ["hotkeys", "double_tap" | "lock" | "jump"] => toml::Value::String(value.into()),
+                ["hotkeys", "home"] => toml::Value::Array(
+                    value
+                        .split(',')
+                        .map(|chord| toml::Value::String(chord.trim().into()))
+                        .collect(),
+                ),
                 ["port"] => toml::Value::Integer(value.parse().map_err(|_| {
                     ConfigError::Invalid("port must be between 1 and 65535".into())
                 })?),
@@ -254,6 +268,9 @@ impl Config {
     /// Read a dotted key as a scalar; absent keys return None.
     #[must_use]
     pub fn get(&self, key: &str) -> Option<String> {
+        if key == "hotkeys.home" {
+            return Some(self.hotkeys.home.join(","));
+        }
         let mut value = toml::Value::try_from(self).ok()?;
         for part in key.split('.') {
             value = value.as_table_mut()?.remove(part)?;

@@ -3,6 +3,7 @@
 
 pub mod desk;
 pub mod focus;
+pub mod hotkey;
 pub mod input;
 pub mod layout;
 pub mod liveness;
