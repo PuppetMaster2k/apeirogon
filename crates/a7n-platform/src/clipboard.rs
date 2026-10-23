@@ -8,6 +8,12 @@ use tokio::sync::{mpsc, oneshot};
 #[cfg(all(unix, not(target_os = "macos")))]
 mod x11;
 
+#[cfg(any(windows, test))]
+#[path = "clipboard/windows/cf_html.rs"]
+mod cf_html;
+#[cfg(windows)]
+mod windows;
+
 /// Backends must suppress changes caused by their own `Set` commands so that
 /// remote clipboard writes cannot create a copy/announce feedback loop.
 #[derive(Debug)]
@@ -50,6 +56,9 @@ pub struct PasteRequest {
 pub enum ClipboardError {
     #[error("clipboard is not supported on this platform")]
     Unsupported,
+    #[cfg(windows)]
+    #[error("Windows clipboard failed: {0}")]
+    Windows(#[from] std::io::Error),
     #[cfg(all(unix, not(target_os = "macos")))]
     #[error("X11 clipboard failed: {0}")]
     X11(#[from] crate::input::InputError),
@@ -66,5 +75,10 @@ pub fn start() -> Result<Clipboard, ClipboardError> {
             return Ok(x11::start()?);
         }
     }
+    #[cfg(windows)]
+    {
+        Ok(windows::start()?)
+    }
+    #[cfg(not(windows))]
     Err(ClipboardError::Unsupported)
 }
