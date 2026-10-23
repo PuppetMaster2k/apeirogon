@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use a7n_core::clipboard::{Generation, Item, LocalChange};
@@ -22,7 +22,21 @@ const DEADLINE: Duration = Duration::from_secs(5);
 const POLL_INTERVAL: Duration = Duration::from_millis(5);
 pub(super) const LARGE_SIZE: usize = 200 * 1024;
 const CHUNK: usize = 32 * 1024;
-pub(super) static SELECTION: Mutex<()> = Mutex::new(());
+static SELECTION: Mutex<()> = Mutex::new(());
+static SERVER_KEEPALIVE: OnceLock<RustConnection> = OnceLock::new();
+
+/// Serializes tests that own CLIPBOARD.
+///
+/// An X server resets itself when its last client disconnects, and a test
+/// connecting during that reset gets `ECONNRESET`. One connection held for the
+/// whole test binary keeps the server from resetting between tests. A test
+/// that panicked must not fail the following ones, so a poisoned lock is
+/// taken over.
+pub(super) fn lock_selection() -> MutexGuard<'static, ()> {
+    let guard = SELECTION.lock().unwrap_or_else(PoisonError::into_inner);
+    SERVER_KEEPALIVE.get_or_init(|| x11rb::connect(None).unwrap().0);
+    guard
+}
 
 x11rb::atom_manager! {
     pub(super) Atoms: AtomsCookie {

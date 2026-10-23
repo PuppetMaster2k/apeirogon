@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Needs Xvfb; tests share CLIPBOARD and serialize their ownership changes.
+//! Needs Xvfb; tests share CLIPBOARD and serialize through `lock_selection`.
 #![cfg(all(unix, not(target_os = "macos")))]
 
 #[path = "x11_clipboard/support.rs"]
@@ -9,13 +9,13 @@ mod support;
 use a7n_core::clipboard::{Item, TEXT_HTML, TEXT_PLAIN};
 use a7n_platform::clipboard::{LazyItem, start};
 
-use support::{Client, LARGE_SIZE, SELECTION, generation, receive, set, wait_owned};
+use support::{Client, LARGE_SIZE, generation, lock_selection, receive, set, wait_owned};
 
 #[test]
 #[ignore = "needs an X server"]
 fn watch_external_text_reports_plain_html_and_source_app() {
     // Arrange
-    let _selection = SELECTION.lock().unwrap();
+    let _selection = lock_selection();
     let mut clipboard = start().unwrap();
     let mut client = Client::new();
     client.own();
@@ -39,7 +39,7 @@ fn watch_external_text_reports_plain_html_and_source_app() {
 #[ignore = "needs an X server"]
 fn watch_password_manager_marker_reports_sensitive_without_reading_data() {
     // Arrange
-    let _selection = SELECTION.lock().unwrap();
+    let _selection = lock_selection();
     let mut clipboard = start().unwrap();
     let mut client = Client::new();
     client.own();
@@ -57,7 +57,7 @@ fn watch_password_manager_marker_reports_sensitive_without_reading_data() {
 #[ignore = "needs an X server"]
 fn set_inline_text_answers_utf8_without_echo() {
     // Arrange
-    let _selection = SELECTION.lock().unwrap();
+    let _selection = lock_selection();
     let mut clipboard = start().unwrap();
     let client = Client::new();
     client.own();
@@ -85,7 +85,7 @@ fn set_inline_text_answers_utf8_without_echo() {
 #[ignore = "needs an X server"]
 fn set_lazy_text_requests_paste_and_delivers_reply() {
     // Arrange
-    let _selection = SELECTION.lock().unwrap();
+    let _selection = lock_selection();
     let mut clipboard = start().unwrap();
     let client = Client::new();
     client.own();
@@ -116,7 +116,7 @@ fn set_lazy_text_requests_paste_and_delivers_reply() {
 #[ignore = "needs an X server"]
 fn watch_large_incremental_text_reassembles_items() {
     // Arrange
-    let _selection = SELECTION.lock().unwrap();
+    let _selection = lock_selection();
     let mut clipboard = start().unwrap();
     let mut client = Client::new();
     let data = vec![b'x'; LARGE_SIZE];
@@ -134,7 +134,7 @@ fn watch_large_incremental_text_reassembles_items() {
 #[ignore = "needs an X server"]
 fn set_large_text_serves_incremental_chunks() {
     // Arrange
-    let _selection = SELECTION.lock().unwrap();
+    let _selection = lock_selection();
     let clipboard = start().unwrap();
     let client = Client::new();
     let data = vec![b'y'; LARGE_SIZE];
