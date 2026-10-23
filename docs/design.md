@@ -59,8 +59,27 @@ scope.
   `wayland-protocols`, because `wl-clipboard-rs` and `arboard` only accept
   data up front; `wl-clipboard-rs` is used for reading and watching.
 - GNOME (Mutter) has no data-control: use the xdg-desktop-portal Clipboard
-  portal, which also delivers on request. **To verify before v0.1:** whether
-  it requires a RemoteDesktop portal session alongside InputCapture.
+  portal, which also delivers on request (`SelectionTransfer` asks for a
+  MIME type, we answer with `SelectionWrite` on a fresh fd). Decided by the
+  spike (#25) from the portal specification:
+  - The Clipboard portal only extends sessions of other portals:
+    RemoteDesktop, or InputCapture since version 2. On an InputCapture
+    session the clipboard works only while capture is active, which is too
+    late to announce local copies. **Clipboard rides on the RemoteDesktop
+    session**, which we need anyway to inject input through libei
+    (`ConnectToEIS`).
+  - So a portal desktop runs two sessions: **InputCapture** (capture, pointer
+    barriers at layout edges) and **RemoteDesktop** (injection + clipboard).
+    `Clipboard.RequestClipboard` is called before the RemoteDesktop session
+    starts; `clipboard_enabled` in the start response says whether it worked.
+  - Prompts: each session shows one consent dialog on first use. Both use
+    `persist_mode = 2` and store the single-use `restore_token` in the
+    daemon's state directory, replacing it with the new token after every
+    start, so later starts need no dialog. Portals without persistence
+    (InputCapture < 2, RemoteDesktop < 2) prompt on every daemon start.
+  - Not yet verified on a live GNOME or KDE session; which compositor
+    versions implement InputCapture 2 and the Clipboard portal is part of
+    the manual checklist.
 - macOS: requires Accessibility and Input Monitoring permissions.
 
 ## Architecture
