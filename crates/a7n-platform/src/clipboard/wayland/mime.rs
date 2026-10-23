@@ -90,7 +90,7 @@ mod tests {
 
         // Assert
         assert!(plan.sensitive);
-        assert!(plan.reads.is_empty());
+        assert_eq!(plan.reads, Vec::<Read>::new());
     }
 
     #[test]

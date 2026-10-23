@@ -144,7 +144,7 @@ mod tests {
         let served = served(vec![item(TEXT_PLAIN, CLIPBOARD_TEXT_MAX + 1)], vec![big]);
 
         // Assert
-        assert!(served.offered().is_empty());
+        assert_eq!(served.offered(), Vec::<&str>::new());
     }
 
     #[test]
