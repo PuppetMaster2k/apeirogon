@@ -250,3 +250,35 @@ fn try_from_malformed_ids_and_overlapping_wire_rejects() {
         assert!(result.is_err());
     }
 }
+
+#[test]
+fn nth_unsorted_placements_returns_one_based_canvas_order() {
+    // Arrange
+    let layout = Layout::empty(id(1))
+        .edit(
+            vec![
+                rect(1, 0, 0),
+                rect(2, 100, -100),
+                rect(3, -100, -100),
+                rect(4, -100, 0),
+            ],
+            id(1),
+        )
+        .unwrap();
+
+    // Act
+    let order: Vec<_> = (0..=5).map(|n| layout.nth(n)).collect();
+
+    // Assert
+    assert_eq!(
+        order,
+        vec![
+            None,
+            Some(id(3)),
+            Some(id(2)),
+            Some(id(4)),
+            Some(id(1)),
+            None
+        ]
+    );
+}

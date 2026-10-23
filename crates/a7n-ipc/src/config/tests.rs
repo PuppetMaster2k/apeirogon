@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use a7n_core::hotkey::Chord;
+
 use super::*;
 
 #[test]
@@ -116,4 +118,56 @@ fn load_missing_file_uses_defaults_and_rejects_invalid_existing_file() {
     assert_eq!(defaults.port, limits::DEFAULT_UDP_PORT);
     assert_eq!(defaults.input.speed, 1.0);
     assert!(result.is_err());
+}
+
+#[test]
+fn parse_hotkey_collisions_and_bad_tokens_rejects_named_setting() {
+    // Arrange
+    for (settings, key) in [
+        ("home = ['a', 'A']", "home"),
+        ("home = ['ctrl+alt+shift+l']", "lock"),
+        ("lock = 'ctrl+alt+shift+1'", "lock"),
+        ("home = ['ctrl+alt+shift+9']", "home"),
+        ("lock = 'foo'", "lock"),
+        ("double_tap = 'left_home'", "double_tap"),
+        ("jump = 'ctrl+1'", "jump"),
+    ] {
+        // Act
+        let error = Config::parse(&format!("[hotkeys]\n{settings}")).unwrap_err();
+
+        // Assert
+        assert!(
+            error.to_string().contains(&format!("hotkeys.{key}")),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn set_hotkeys_round_trips_and_rejects_collision_without_mutation() {
+    // Arrange
+    let mut config = Config::default();
+    for (key, value) in [
+        ("double_tap", "none"),
+        ("lock", "meta+l"),
+        ("jump", "meta+shift"),
+        ("home", "escape, ctrl+home"),
+    ] {
+        config.set(&format!("hotkeys.{key}"), value).unwrap();
+    }
+    let before = config.to_toml().unwrap();
+
+    // Act
+    let result = config.set("hotkeys.lock", "ctrl+home");
+
+    // Assert
+    assert!(result.is_err());
+    assert_eq!(config.to_toml().unwrap(), before);
+    let loaded = Config::parse(&before).unwrap();
+    assert_eq!(
+        loaded.get("hotkeys.home").as_deref(),
+        Some("escape,ctrl+home")
+    );
+    assert_eq!(loaded.get("hotkeys.double_tap").as_deref(), Some("none"));
+    assert_eq!(loaded.bindings().lock, Chord::parse("meta+l").unwrap());
 }
