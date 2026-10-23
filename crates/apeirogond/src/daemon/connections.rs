@@ -204,6 +204,7 @@ impl Daemon {
                 accepts: self.allow_drive(peer),
             })),
         });
+        self.clipboard_link_up(peer);
         let inbound = self.inbound.clone();
         let events = self.events.clone();
         self.tasks.spawn(async move {

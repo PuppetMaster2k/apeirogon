@@ -155,7 +155,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 
 - `SettingsSync` shares convenience settings (hotkeys, speed multipliers and the like) across the desk. Receivers MUST apply only keys on a fixed allow-list and ignore everything else.
 - Security settings are never synced and never changeable by a peer: `allow_drive`, per-peer clipboard and file policy, the clipboard app deny-list, and the sensitive-content check.
-- Per peer, the user controls `allow_drive` (announced with `Accepts`) and clipboard and file policy (receive, send, ask).
+- Per peer, the user controls `allow_drive` (announced with `Accepts`) and clipboard and file policy. Text clipboard policy is local config `peers.<id>.clipboard`: `both` (default), `send`, `receive`, or `off`. The app deny-list is local config `clipboard.deny_apps`, edited in the file. Interactive `ask` policy is deferred to the GUI (#26).
 
 ## 14. Limits and defaults
 

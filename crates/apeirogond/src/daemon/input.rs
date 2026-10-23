@@ -212,6 +212,10 @@ impl Daemon {
     ) -> Result<(), DaemonError> {
         self.poll_focus().await;
         let actions = match &envelope.body {
+            Some(Body::ClipboardAnnounce(wire)) => {
+                self.receive_clipboard(peer, wire);
+                return Ok(());
+            }
             Some(Body::Settings(settings)) => {
                 if self.links.by_peer.get(&peer).is_some_and(|handle| {
                     handle

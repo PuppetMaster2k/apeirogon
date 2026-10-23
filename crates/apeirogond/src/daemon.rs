@@ -29,6 +29,7 @@ use crate::pin_store::{Entry, PinStore, PinStoreError};
 use crate::settings_store::SettingsStore;
 use crate::tls::{self, TlsError, TrustSnapshot, TrustedPins};
 
+mod clipboard;
 mod config;
 mod connections;
 mod input;
@@ -121,6 +122,7 @@ pub(crate) struct Daemon {
     inbound: mpsc::Sender<Inbound>,
     inbound_rx: mpsc::Receiver<Inbound>,
     input: input::Input,
+    clipboard: clipboard::State,
     config: Config,
     config_path: PathBuf,
 }
@@ -174,6 +176,7 @@ impl Daemon {
             inbound,
             inbound_rx,
             input,
+            clipboard: clipboard::State::default(),
             config: Config::default(),
             config_path: path.join("config.toml"),
         })
@@ -195,6 +198,9 @@ impl Daemon {
         mut discoveries: mpsc::Receiver<crate::discovery::Event>,
     ) -> Result<(), DaemonError> {
         self.detect_settings_edit()?;
+        if self.clipboard.handle.is_none() {
+            eprintln!("kind=clipboard_unavailable");
+        }
         let (accepted, mut accepted_rx) = mpsc::channel(MAILBOX_CAPACITY);
         self.tasks
             .spawn(endpoint::accept_loop(self.endpoint.clone(), accepted));
@@ -217,6 +223,7 @@ impl Daemon {
                 _ = retry.tick() => self.retry_nearby(),
                 _ = keepalive.tick() => self.input.keepalive(),
                 () = input::deadline(deadline) => self.poll_focus().await,
+                event = clipboard::changed(&mut self.clipboard.handle) => self.clipboard_changed(event),
                 event = input::captured(&mut self.input.capture) => self.captured(event).await,
                 event = input::feedback(&mut self.input.injector) => self.pointer_feedback(event).await,
                 Some((peer, id, envelope)) = self.inbound_rx.recv() => {

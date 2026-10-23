@@ -54,12 +54,21 @@ async fn receive_settings_peer_security_key_keeps_local_policy() {
     // Arrange
     let (a, _a_dir) = daemon();
     let (mut b, b_dir) = daemon();
+    let clipboard_key = format!("peers.{}.clipboard", a.identity.machine_id);
+    b.config.set(&clipboard_key, "off").unwrap();
+    b.config.clipboard.deny_apps = vec!["secret.app".into()];
     let key = format!("peers.{}.allow_drive", a.identity.machine_id);
     b.config.set(&key, "true").unwrap();
     b.config.save(&b.config_path).unwrap();
     let wire = edit(
         &b,
-        &[("input.speed", "2"), (&key, "false"), ("name", "hostile")],
+        &[
+            ("input.speed", "2"),
+            (&key, "false"),
+            (&clipboard_key, "both"),
+            ("clipboard.deny_apps", "[]"),
+            ("name", "hostile"),
+        ],
     );
 
     // Act
@@ -69,10 +78,16 @@ async fn receive_settings_peer_security_key_keeps_local_policy() {
     let saved = Config::load(&b.config_path).unwrap();
     assert_eq!(saved.get(&key).as_deref(), Some("true"));
     assert_eq!(b.config.get(&key).as_deref(), Some("true"));
+    assert_eq!(saved.get(&clipboard_key).as_deref(), Some("off"));
+    assert_eq!(b.config.get(&clipboard_key).as_deref(), Some("off"));
+    assert_eq!(saved.clipboard.deny_apps, ["secret.app"]);
     assert!(saved.name.is_none());
     assert_eq!(saved.input.speed, 2.0);
     let restored = SettingsStore::load(&b_dir.path().join("settings.pb"));
-    assert!(!restored.state.unwrap().values.contains_key(&key));
+    let values = restored.state.unwrap().values;
+    assert!(!values.contains_key(&key));
+    assert!(!values.contains_key(&clipboard_key));
+    assert!(!values.contains_key("clipboard.deny_apps"));
 }
 
 #[tokio::test]

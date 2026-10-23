@@ -27,6 +27,7 @@ pub struct Config {
     pub hotkeys: HotkeyConfig,
     pub sync: SyncConfig,
     pub peers: BTreeMap<String, PeerConfig>,
+    pub clipboard: ClipboardConfig,
 }
 
 impl Default for Config {
@@ -38,6 +39,7 @@ impl Default for Config {
             hotkeys: HotkeyConfig::default(),
             sync: SyncConfig::default(),
             peers: BTreeMap::new(),
+            clipboard: ClipboardConfig::default(),
         }
     }
 }
@@ -74,6 +76,7 @@ impl Default for InputConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct PeerConfig {
     pub allow_drive: bool,
+    pub clipboard: ClipboardPolicy,
     pub modifier_remap: BTreeMap<Modifier, Modifier>,
 }
 
@@ -81,9 +84,26 @@ impl Default for PeerConfig {
     fn default() -> Self {
         Self {
             allow_drive: true,
+            clipboard: ClipboardPolicy::default(),
             modifier_remap: BTreeMap::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ClipboardConfig {
+    pub deny_apps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClipboardPolicy {
+    #[default]
+    Both,
+    Send,
+    Receive,
+    Off,
 }
 
 /// Physical modifier names; enum values are their USB HID keyboard usages.
@@ -254,6 +274,7 @@ impl Config {
         let value =
             match parts.as_slice() {
                 ["name"]
+                | ["peers", _, "clipboard"]
                 | ["peers", _, "modifier_remap", _]
                 | ["hotkeys", "double_tap" | "lock" | "jump"] => toml::Value::String(value.into()),
                 ["hotkeys", "home"] => toml::Value::Array(
