@@ -11,6 +11,7 @@ use a7n_ipc::{
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
+mod clip;
 mod config;
 mod daemon;
 mod layout;
@@ -39,6 +40,11 @@ enum Command {
     Layout,
     /// Show this machine, its paired peers and nearby unpaired machines.
     Status,
+    /// Show clipboard availability, current copy metadata and paired-peer policies.
+    #[command(
+        after_help = "Change a peer's policy with: a7n config set peers.<id>.clipboard <both|send|receive|off>"
+    )]
+    Clip,
     /// Show a pairing code, or join a target using a code read from stdin.
     Pair {
         /// Peer IP, IP:port, or nearby machine id / unique hex prefix (at least 4 digits).
@@ -90,6 +96,7 @@ async fn run(command: Command) -> Result<()> {
         Command::Config { command } => return config::run(command).await,
         Command::Layout => return layout::run().await,
         Command::Status => Request::Status,
+        Command::Clip => Request::ClipboardStatus,
         Command::Pair { target: None } => Request::PairHost,
         Command::Pair {
             target: Some(target),
@@ -212,6 +219,7 @@ fn parse_addr(input: &str) -> Result<SocketAddr, &'static str> {
 
 fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
     match response {
+        Response::Clipboard(info) => clip::write_status(output, info)?,
         Response::Status(status) => {
             writeln!(output, "{} {} (this machine)", status.name, status.machine)?;
             for peer in &status.peers {

@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use a7n_core::clipboard::{self, Clock, Exclusion, Generation, LocalChange};
 use a7n_ipc::config::ClipboardPolicy;
+use a7n_ipc::{ClipboardCopy, ClipboardInfo, PeerClipboard};
 use a7n_platform::clipboard::{Clipboard, ClipboardCommand, LazyItem, PasteRequest};
 use a7n_proto::v1::{Capability, ClipboardAnnounce, envelope::Body};
 use a7n_proto::{MachineId, limits};
@@ -63,6 +64,44 @@ pub(super) async fn next(handle: &mut Option<Clipboard>) -> Event {
 }
 
 impl Daemon {
+    pub(super) fn clipboard_status(&self) -> ClipboardInfo {
+        let current = self
+            .clipboard
+            .current
+            .zip(self.clipboard.announce.as_ref())
+            .and_then(|(generation, announce)| {
+                Some(ClipboardCopy {
+                    origin: generation.origin,
+                    origin_name: if generation.origin == self.identity.machine_id {
+                        Some(self.info.name.clone())
+                    } else {
+                        self.pins
+                            .get(&generation.origin)
+                            .map(|entry| entry.name.clone())
+                    },
+                    generation: generation.generation,
+                    items: u32::try_from(announce.items.len()).ok()?,
+                    size: announce.items.iter().map(|item| item.size).sum(),
+                    local: generation.origin == self.identity.machine_id,
+                })
+            });
+        ClipboardInfo {
+            available: self.clipboard.handle.is_some(),
+            current,
+            peers: self
+                .status()
+                .peers
+                .into_iter()
+                .map(|peer| PeerClipboard {
+                    machine: peer.id,
+                    name: peer.name,
+                    policy: self.clipboard_policy(peer.id),
+                    linked: peer.connected,
+                })
+                .collect(),
+        }
+    }
+
     pub(crate) fn with_clipboard(mut self, handle: Option<Clipboard>) -> Self {
         if handle.is_some() {
             self.info
