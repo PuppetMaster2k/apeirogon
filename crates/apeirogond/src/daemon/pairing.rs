@@ -64,7 +64,7 @@ impl Daemon {
             .await;
             drop(permit);
             if result.is_err() {
-                eprintln!("kind=pairing_failed");
+                crate::log::event!("kind=pairing_failed");
             }
             let _ = events.send(Event::PairingEnded).await;
         });
@@ -87,7 +87,7 @@ impl Daemon {
             body: Some(a7n_proto::v1::envelope::Body::Desk(self.desk.to_desk())),
         });
         if result.is_err() || trust.is_err() {
-            eprintln!("kind=pairing_store_failed");
+            crate::log::event!("kind=pairing_store_failed");
             return Err(PairingError::Refused);
         }
         Ok(paired.done())

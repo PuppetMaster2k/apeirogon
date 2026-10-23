@@ -12,7 +12,9 @@ use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
 mod config;
+mod daemon;
 mod layout;
+mod logs;
 
 #[derive(Debug, Parser)]
 #[command(version, about = "Control the apeirogon daemon")]
@@ -42,8 +44,22 @@ enum Command {
         /// Peer IP, IP:port, or nearby machine id / unique hex prefix (at least 4 digits).
         target: Option<String>,
     },
-    /// Remove a paired machine by its 32-hex machine id.
-    Unpair { machine: MachineId },
+    /// Remove a paired machine by id, unique hex prefix (at least 4), or exact name.
+    Unpair { machine: String },
+    /// Move focus to a machine by id, unique hex prefix (at least 4), or exact name.
+    Switch { machine: String },
+    /// Manage the per-user daemon.
+    Daemon {
+        #[command(subcommand)]
+        command: daemon::Command,
+    },
+    /// Read recent daemon events, even while the daemon is stopped.
+    Logs {
+        #[arg(short, long)]
+        follow: bool,
+        #[arg(short = 'n', default_value_t = 50)]
+        lines: usize,
+    },
     /// Dial a paired peer by address when automatic discovery is unavailable.
     Connect {
         /// Peer IP or IP:port; IPv6 ports use [IP]:port.
@@ -65,6 +81,11 @@ async fn main() -> ExitCode {
 
 async fn run(command: Command) -> Result<()> {
     let request = match command {
+        Command::Daemon { command } => return daemon::run(command).await,
+        Command::Logs { follow, lines } => return logs::run(lines, follow).await,
+        Command::Switch { machine } => Request::Switch {
+            machine: resolve_machine(&machine).await?,
+        },
         Command::Init => return config::init(),
         Command::Config { command } => return config::run(command).await,
         Command::Layout => return layout::run().await,
@@ -76,7 +97,9 @@ async fn run(command: Command) -> Result<()> {
             addr: resolve_pair_addr(&target).await?,
             code: read_code()?,
         },
-        Command::Unpair { machine } => Request::Unpair { machine },
+        Command::Unpair { machine } => Request::Unpair {
+            machine: resolve_machine(&machine).await?,
+        },
         Command::Connect { addr } => Request::Connect { addr },
     };
     let mut client = connect_client().await?;
@@ -127,6 +150,40 @@ fn resolve_target(target: &str, nearby: &[NearbyMachine]) -> Result<SocketAddr, 
         return Err("ambiguous nearby machine id prefix; use more hex digits");
     }
     Ok(machine.addr)
+}
+
+async fn resolve_machine(target: &str) -> Result<MachineId> {
+    let mut client = connect_client().await?;
+    let Response::Status(status) = client.request(&Request::Status).await? else {
+        bail!("expected status from daemon");
+    };
+    resolve_machine_id(
+        target,
+        std::iter::once((status.machine, status.name.as_str())).chain(
+            status
+                .peers
+                .iter()
+                .map(|peer| (peer.id, peer.name.as_str())),
+        ),
+    )
+}
+
+fn resolve_machine_id<'a>(
+    target: &str,
+    machines: impl Iterator<Item = (MachineId, &'a str)>,
+) -> Result<MachineId> {
+    let prefix = target.to_ascii_lowercase();
+    let is_prefix = (4..=MachineId::LEN * 2).contains(&target.len())
+        && target.bytes().all(|byte| byte.is_ascii_hexdigit());
+    let mut matches = machines
+        .filter(|(id, name)| *name == target || (is_prefix && id.to_string().starts_with(&prefix)));
+    let (machine, _) = matches
+        .next()
+        .context("no machine matches that name or id prefix")?;
+    if matches.next().is_some() {
+        bail!("ambiguous machine name or id prefix; use the full id");
+    }
+    Ok(machine)
 }
 
 fn read_code() -> Result<PairingCode> {

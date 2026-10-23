@@ -88,7 +88,7 @@ pub(crate) async fn drive(
                             quinn::SendDatagramError::ConnectionLost(error) => {
                                 return Err(error.into());
                             }
-                            _ => eprintln!("kind=motion_dropped"),
+                            _ => crate::log::event!("kind=motion_dropped"),
                         }
                     }
                 } else {

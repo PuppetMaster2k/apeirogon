@@ -245,6 +245,7 @@ async fn status_ipc_round_trip_returns_own_machine() {
     assert_eq!(
         info,
         a7n_ipc::StatusInfo {
+            pid: std::process::id(),
             machine: peer.machine,
             name: "own machine".into(),
             nearby: vec![],

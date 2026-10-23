@@ -67,3 +67,48 @@ async fn dispatch_closed_command_channel_returns_internal() {
         }
     ));
 }
+
+#[tokio::test]
+async fn dispatch_switch_unlinked_peer_returns_not_connected() {
+    // Arrange
+    let peer = crate::daemon::test_peer::Peer::start();
+    let machine = a7n_proto::MachineId::try_from(&[0; a7n_proto::MachineId::LEN][..]).unwrap();
+
+    // Act
+    let response = dispatch(Request::Switch { machine }, peer.sender.as_ref().unwrap()).await;
+
+    // Assert
+    assert!(matches!(
+        response,
+        Response::Error {
+            kind: ErrorKind::NotConnected,
+            ..
+        }
+    ));
+    peer.stop().await;
+}
+
+#[tokio::test]
+async fn serve_shutdown_flushes_done_and_stops_with_clients_alive() {
+    // Arrange
+    let peer = crate::daemon::test_peer::Peer::start();
+    let sender = peer.sender.as_ref().unwrap().clone();
+    let dir = tempfile::tempdir().unwrap();
+    let location = a7n_ipc::SocketLocation::new(dir.path().join("private/control.sock"));
+    let server = a7n_ipc::IpcServer::bind_at(&location).await.unwrap();
+    let task = tokio::spawn(serve(server, sender.clone()));
+    let mut client = a7n_ipc::IpcClient::connect_at(&location).await.unwrap();
+    let _idle_client = a7n_ipc::IpcClient::connect_at(&location).await.unwrap();
+
+    // Act
+    let response = client.request(&Request::Shutdown).await.unwrap();
+
+    // Assert
+    assert!(matches!(response, Response::Done));
+    tokio::time::timeout(limits::HANDSHAKE_TIMEOUT, task)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(sender.is_closed());
+    peer.stop().await;
+}

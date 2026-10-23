@@ -8,20 +8,29 @@ use crate::command::{Command, Reply};
 use crate::daemon::DaemonError;
 
 pub(crate) async fn serve(server: IpcServer, commands: mpsc::Sender<Command>) {
+    let mut connections = tokio::task::JoinSet::new();
     loop {
-        match server.accept().await {
-            Ok(connection) => {
-                tokio::spawn(serve_connection(connection, commands.clone()));
-            }
-            Err(_) => eprintln!("kind=ipc_accept_failed"),
+        tokio::select! {
+            () = commands.closed() => break,
+            result = server.accept() => match result {
+                Ok(connection) => { connections.spawn(serve_connection(connection, commands.clone())); }
+                Err(_) => crate::log::event!("kind=ipc_accept_failed"),
+            },
+            Some(_) = connections.join_next(), if !connections.is_empty() => {},
         }
     }
+    while connections.join_next().await.is_some() {}
 }
 
 async fn serve_connection(mut connection: IpcConnection, commands: mpsc::Sender<Command>) {
-    while let Ok(request) = connection.read_request().await {
+    loop {
+        let request = tokio::select! {
+            () = commands.closed() => break,
+            request = connection.read_request() => match request { Ok(request) => request, Err(_) => break },
+        };
+        let shutdown = matches!(request, Request::Shutdown);
         let response = dispatch(request, &commands).await;
-        if connection.write_response(&response).await.is_err() {
+        if connection.write_response(&response).await.is_err() || shutdown {
             break;
         }
     }
@@ -29,6 +38,15 @@ async fn serve_connection(mut connection: IpcConnection, commands: mpsc::Sender<
 
 async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Response {
     match request {
+        Request::Shutdown => execute(commands, Command::Shutdown, |()| Response::Done).await,
+        Request::Switch { machine } => {
+            execute(
+                commands,
+                |reply| Command::Switch { machine, reply },
+                |()| Response::Done,
+            )
+            .await
+        }
         Request::ReloadConfig => {
             execute(commands, Command::ReloadConfig, |()| Response::Done).await
         }
@@ -107,6 +125,7 @@ fn error_response(error: &DaemonError) -> Response {
         DaemonError::Config(_) => ErrorKind::InvalidConfig,
         DaemonError::Layout(_) => ErrorKind::InvalidLayout,
         DaemonError::PairingBusy => ErrorKind::Busy,
+        DaemonError::NotConnected => ErrorKind::NotConnected,
         DaemonError::NotPaired => ErrorKind::NotPaired,
         DaemonError::Pairing(_) => ErrorKind::PairingRefused,
         _ => ErrorKind::Internal,

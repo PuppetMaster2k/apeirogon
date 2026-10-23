@@ -10,6 +10,7 @@ async fn request_status_returns_same_status_info() {
     // Arrange
     let (client_stream, server_stream) = tokio::io::duplex(1024);
     let status = StatusInfo {
+        pid: std::process::id(),
         machine: MachineId::try_from([1; MachineId::LEN].as_slice()).unwrap(),
         name: "own".to_owned(),
         peers: vec![PeerInfo {

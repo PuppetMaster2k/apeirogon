@@ -23,7 +23,7 @@ impl LayoutStore {
             Ok(Some(state)) => state,
             Ok(None) => Layout::empty(own_id),
             Err(()) => {
-                eprintln!("kind=layout_file_invalid");
+                crate::log::event!("kind=layout_file_invalid");
                 Layout::empty(own_id)
             }
         };

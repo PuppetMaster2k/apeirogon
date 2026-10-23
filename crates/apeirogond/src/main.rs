@@ -12,6 +12,7 @@ mod ipc_server;
 mod layout_store;
 mod link;
 mod link_driver;
+mod log;
 mod pairing;
 mod pin_store;
 mod settings_store;
@@ -21,17 +22,30 @@ use std::net::{Ipv4Addr, SocketAddr};
 
 use a7n_ipc::config::Config;
 use anyhow::{Context, Result};
+use clap::Parser;
 use directories::ProjectDirs;
 use tokio::sync::mpsc;
 
+#[derive(Parser)]
+#[command(version, about = "Apeirogon session daemon")]
+struct Cli {
+    /// Log physical key codes for input debugging.
+    #[arg(long)]
+    trace_input: bool,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+    if cli.trace_input {
+        log::event!("kind=trace_input_warning key codes will be logged; do not type secrets");
+    }
     let dirs = ProjectDirs::from("", "", "apeirogon").context("no home directory found")?;
     let config_path = Config::path()?;
     let config = Config::load(&config_path)?;
     let input = a7n_platform::input::start().map_or_else(
         |_| {
-            eprintln!("kind=input_unavailable");
+            crate::log::event!("kind=input_unavailable");
             None
         },
         Some,
@@ -42,7 +56,8 @@ async fn main() -> Result<()> {
     )?
     .with_config(config, config_path)
     .with_input(input)
-    .with_clipboard(a7n_platform::clipboard::start().ok());
+    .with_clipboard(a7n_platform::clipboard::start().ok())
+    .with_trace_input(cli.trace_input);
     let (discoveries, discovery_rx) = mpsc::channel(discovery::CHANNEL_CAPACITY);
     let (machine, port) = daemon.discovery_identity()?;
     let discovery_task = tokio::spawn(discovery::run(machine, port, discoveries));
@@ -50,9 +65,12 @@ async fn main() -> Result<()> {
     let server = a7n_ipc::IpcServer::bind()
         .await
         .context("cannot open the control socket; is apeirogond already running?")?;
-    tokio::spawn(ipc_server::serve(server, commands));
+    let ipc_task = tokio::spawn(ipc_server::serve(server, commands));
     tokio::select! {
-        result = daemon.run(receiver, discovery_rx) => result?,
+        result = daemon.run(receiver, discovery_rx) => {
+            result?;
+            ipc_task.await.context("control server failed")?;
+        },
         result = tokio::signal::ctrl_c() => result.context("cannot listen for ctrl-c")?,
     }
     discovery_task.abort();

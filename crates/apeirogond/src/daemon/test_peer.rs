@@ -13,7 +13,7 @@ use super::*;
 pub(super) const TEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(crate) struct Peer {
-    pub(super) sender: Option<mpsc::Sender<Command>>,
+    pub(crate) sender: Option<mpsc::Sender<Command>>,
     pub(super) discoveries: mpsc::Sender<crate::discovery::Event>,
     task: JoinHandle<Result<(), DaemonError>>,
     pub(crate) machine: MachineId,

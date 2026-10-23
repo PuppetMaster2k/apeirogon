@@ -78,6 +78,8 @@ pub(crate) enum DaemonError {
     PairingBusy,
     #[error("machine is not paired")]
     NotPaired,
+    #[error("machine is not connected")]
+    NotConnected,
     #[error("trust snapshot lock poisoned")]
     TrustPoisoned,
 }
@@ -125,6 +127,7 @@ pub(crate) struct Daemon {
     clipboard: clipboard::State,
     config: Config,
     config_path: PathBuf,
+    shutdown_reply: Option<Reply<()>>,
 }
 
 impl Daemon {
@@ -179,6 +182,7 @@ impl Daemon {
             clipboard: clipboard::State::default(),
             config: Config::default(),
             config_path: path.join("config.toml"),
+            shutdown_reply: None,
         })
     }
 
@@ -189,6 +193,9 @@ impl Daemon {
     ) -> Result<(), DaemonError> {
         let result = self.run_loop(commands, discoveries).await;
         self.shutdown_input().await;
+        if let Some(reply) = self.shutdown_reply.take() {
+            let _ = reply.send(Ok(()));
+        }
         result
     }
 
@@ -199,7 +206,7 @@ impl Daemon {
     ) -> Result<(), DaemonError> {
         self.detect_settings_edit()?;
         if self.clipboard.handle.is_none() {
-            eprintln!("kind=clipboard_unavailable");
+            crate::log::event!("kind=clipboard_unavailable");
         }
         let (accepted, mut accepted_rx) = mpsc::channel(MAILBOX_CAPACITY);
         self.tasks
@@ -213,6 +220,10 @@ impl Daemon {
             tokio::select! {
                 command = commands.recv() => {
                     let Some(command) = command else { return Ok(()); };
+                    if let Command::Shutdown(reply) = command {
+                        self.shutdown_reply = Some(reply);
+                        return Ok(());
+                    }
                     self.command(command).await?;
                 }
                 Some((connection, permit, deadline)) = accepted_rx.recv() => {
@@ -232,7 +243,7 @@ impl Daemon {
                             handle.connection.close(0u32.into(), b"");
                         }
                         self.input_link_lost(peer);
-                        eprintln!("kind=desk_failed");
+                        crate::log::event!("kind=desk_failed");
                     }
                 }
                 Some(_) = self.tasks.join_next(), if !self.tasks.is_empty() => {}
@@ -250,6 +261,10 @@ impl Daemon {
 
     async fn command(&mut self, command: Command) -> Result<(), DaemonError> {
         match command {
+            Command::Shutdown(_) => unreachable!("shutdown is handled by the run loop"),
+            Command::Switch { machine, reply } => {
+                let _ = reply.send(self.switch_machine(machine).await);
+            }
             Command::ReloadConfig(reply) => {
                 let result = self.reload_config().await;
                 let _ = reply.send(result);
@@ -284,6 +299,7 @@ impl Daemon {
 
     fn status(&self) -> Status {
         Status {
+            pid: std::process::id(),
             machine: self.identity.machine_id,
             name: self.info.name.clone(),
             peers: self
@@ -362,7 +378,7 @@ impl Daemon {
             self.drop_untrusted();
             let outcome = result?;
             if outcome.self_revoked {
-                eprintln!("kind=self_revoked");
+                crate::log::event!("kind=self_revoked");
             }
             if before != self.desk.to_desk() {
                 self.broadcast(&Envelope {

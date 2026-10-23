@@ -19,7 +19,7 @@ pub(crate) struct SettingsStore {
 impl SettingsStore {
     pub(crate) fn load(path: &Path) -> Self {
         let state = read_settings(path).unwrap_or_else(|()| {
-            eprintln!("kind=settings_file_invalid");
+            crate::log::event!("kind=settings_file_invalid");
             None
         });
         Self {

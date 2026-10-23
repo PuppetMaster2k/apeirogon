@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+pub mod autostart;
 pub mod clipboard;
 pub mod fs;
 pub mod input;

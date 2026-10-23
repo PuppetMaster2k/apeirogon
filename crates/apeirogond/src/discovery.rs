@@ -70,7 +70,7 @@ impl Drop for Discovery {
 
 pub(crate) async fn run(own: MachineId, port: u16, sender: mpsc::Sender<Event>) {
     if browse(own, port, sender).await.is_err() {
-        eprintln!("kind=discovery_unavailable");
+        crate::log::event!("kind=discovery_unavailable");
     }
 }
 
@@ -110,7 +110,7 @@ async fn browse(
             },
             event = monitor.recv_async() => {
                 match event {
-                    Ok(DaemonEvent::Error(_)) => eprintln!("kind=discovery_failed"),
+                    Ok(DaemonEvent::Error(_)) => crate::log::event!("kind=discovery_failed"),
                     Err(_) => return Ok(()),
                     _ => {},
                 }

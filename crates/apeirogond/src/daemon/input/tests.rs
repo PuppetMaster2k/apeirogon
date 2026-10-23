@@ -378,3 +378,26 @@ async fn keepalive_full_control_is_ignored_and_closed_control_is_fatal() {
     assert!(!full_failed);
     assert!(daemon.input.failed);
 }
+
+#[tokio::test]
+async fn shutdown_driven_machine_releases_key_and_ungrabs_before_done() {
+    // Arrange
+    let (a, b, mut a_input, mut b_input) = pair().await;
+    drive(&mut a_input, &mut b_input).await;
+    b_input.grab(true).await;
+    a_input
+        .capture
+        .send(Captured::Input(key(true)))
+        .await
+        .unwrap();
+    b_input.injected().await;
+
+    // Act
+    b.command(crate::command::Command::Shutdown).await.unwrap();
+
+    // Assert
+    assert!(matches!(b_input.injected().await, Inject::Event(event) if event == key(false)));
+    b_input.grab(false).await;
+    b.stop().await;
+    a.stop().await;
+}
