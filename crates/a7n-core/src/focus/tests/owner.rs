@@ -3,6 +3,21 @@
 use super::*;
 
 #[test]
+fn on_accepts_denied_pending_target_cancels_take() {
+    // Arrange
+    let mut focus = Focus::new(id(1));
+    focus.take(request(2), Instant::now());
+
+    // Act
+    let actions = focus.on_accepts(id(2), false);
+
+    // Assert
+    assert_eq!(focus.cursor(), Cursor::Home);
+    assert_eq!(focus.next_deadline(), None);
+    assert!(has_let_go(&actions, 2, 1));
+}
+
+#[test]
 fn on_accept_pending_take_drives_target() {
     // Arrange
     let now = Instant::now();

@@ -32,12 +32,17 @@ impl Daemon {
         match protocol.as_deref() {
             Some(ALPN_PAIR) => self.host_pairing(connection, permit),
             Some(ALPN_LINK) if self.trusted(&connection) => {
+                let peer = identity::machine_id_of(&peer_certificate(&connection)?)?;
+                let accepts_drive = self.allow_drive(peer);
                 let events = self.events.clone();
                 let info = self.info.clone();
                 self.tasks.spawn(async move {
-                    let result = timeout_at(deadline, handshake::respond(connection, &info, true))
-                        .await
-                        .unwrap_or(Err(crate::link::LinkError::Timeout));
+                    let result = timeout_at(
+                        deadline,
+                        handshake::respond(connection, &info, accepts_drive),
+                    )
+                    .await
+                    .unwrap_or(Err(crate::link::LinkError::Timeout));
                     drop(permit);
                     let _ = events.send(Event::Link(result.map(Box::new), None)).await;
                 });
@@ -184,6 +189,11 @@ impl Daemon {
         });
         let _ = sender.try_send(Envelope {
             body: Some(Body::Layout(self.layout.state.to_proto())),
+        });
+        let _ = sender.try_send(Envelope {
+            body: Some(Body::Accepts(a7n_proto::v1::Accepts {
+                accepts: self.allow_drive(peer),
+            })),
         });
         let inbound = self.inbound.clone();
         let events = self.events.clone();

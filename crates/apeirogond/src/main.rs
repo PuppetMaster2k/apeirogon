@@ -18,6 +18,7 @@ mod tls;
 
 use std::net::{Ipv4Addr, SocketAddr};
 
+use a7n_ipc::config::Config;
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use tokio::sync::mpsc;
@@ -25,6 +26,8 @@ use tokio::sync::mpsc;
 #[tokio::main]
 async fn main() -> Result<()> {
     let dirs = ProjectDirs::from("", "", "apeirogon").context("no home directory found")?;
+    let config_path = Config::path()?;
+    let config = Config::load(&config_path)?;
     let input = a7n_platform::input::start().map_or_else(
         |_| {
             eprintln!("kind=input_unavailable");
@@ -34,8 +37,9 @@ async fn main() -> Result<()> {
     );
     let daemon = daemon::Daemon::load(
         dirs.data_local_dir(),
-        SocketAddr::from((Ipv4Addr::UNSPECIFIED, a7n_proto::limits::DEFAULT_UDP_PORT)),
+        SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.port)),
     )?
+    .with_config(config, config_path)
     .with_input(input);
     let (discoveries, discovery_rx) = mpsc::channel(discovery::CHANNEL_CAPACITY);
     let (machine, port) = daemon.discovery_identity()?;

@@ -154,6 +154,11 @@ impl Focus {
     }
 
     pub fn on_ack(&mut self, peer: MachineId, ack: &Ack) -> Vec<Action> {
+        self.on_accepts(peer, !ack.locked)
+    }
+
+    /// A policy denial cancels both an active drive and a pending take.
+    pub fn on_accepts(&mut self, peer: MachineId, accepts: bool) -> Vec<Action> {
         let is_target = match &self.owner {
             Owner::Home => false,
             Owner::Driving(session) => session.take.target == peer,
@@ -164,7 +169,7 @@ impl Focus {
                     || previous.as_ref().is_some_and(|p| p.take.target == peer)
             }
         };
-        if ack.locked && is_target {
+        if !accepts && is_target {
             self.go_home()
         } else {
             Vec::new()

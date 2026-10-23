@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::collections::BTreeMap;
 use std::future::pending;
 use std::time::Instant;
 
 use a7n_core::focus::edge::EdgeResistance;
 use a7n_core::focus::{Action, Cursor, Focus, Take};
-use a7n_core::input::{MotionCounter, MotionTracker, edge_push};
+use a7n_core::input::{MotionCounter, MotionScale, MotionTracker, edge_push};
 use a7n_platform::input::{Bounds, Capture, CaptureControl, Captured, Inject, Injector};
 use a7n_proto::v1::{Edge, Envelope, InputBatch, envelope::Body};
 use a7n_proto::{MachineId, Route};
@@ -22,6 +23,8 @@ pub(super) struct Input {
     pub(super) injector: Option<Injector>,
     counter: MotionCounter,
     tracker: MotionTracker,
+    pub(super) scale: MotionScale,
+    pub(super) modifier_remap: BTreeMap<u32, u32>,
     resistance: EdgeResistance,
     pub(super) failed: bool,
     lost: Vec<MachineId>,
@@ -35,6 +38,8 @@ impl Input {
             injector: None,
             counter: MotionCounter::default(),
             tracker: MotionTracker::default(),
+            scale: MotionScale::new(1.0),
+            modifier_remap: BTreeMap::new(),
             resistance: EdgeResistance::new(0),
             failed: false,
             lost: Vec::new(),
@@ -137,7 +142,7 @@ impl Daemon {
         }
     }
 
-    async fn sync_grab(&mut self) {
+    pub(super) async fn sync_grab(&mut self) {
         self.input
             .grab(
                 self.input.focus.is_driven()
@@ -146,7 +151,7 @@ impl Daemon {
             .await;
     }
 
-    async fn input_actions(&mut self, actions: Vec<Action>) {
+    pub(super) async fn input_actions(&mut self, actions: Vec<Action>) {
         for action in actions {
             match action {
                 Action::Send { peer, body } => self.send_input(peer, body),
@@ -156,8 +161,9 @@ impl Daemon {
                     }
                 }
                 Action::Cursor(cursor) => {
-                    if matches!(cursor, Cursor::Driving(_)) {
+                    if let Cursor::Driving(peer) = cursor {
                         self.input.counter.reset();
+                        self.snapshot_remap(peer);
                     }
                     self.input.resistance = EdgeResistance::new(0);
                     self.sync_grab().await;
@@ -168,6 +174,7 @@ impl Daemon {
                     ..
                 } => {
                     self.input.tracker.reset();
+                    self.input.scale = MotionScale::new(self.config.input.speed);
                     self.input.resistance = EdgeResistance::new(resistance_px);
                     self.sync_grab().await;
                     if let (Some(landing), Some(injector)) = (landing, &self.input.injector) {
@@ -179,7 +186,7 @@ impl Daemon {
         }
     }
 
-    fn send_input(&mut self, peer: MachineId, body: Body) {
+    pub(super) fn send_input(&mut self, peer: MachineId, body: Body) {
         let Some(handle) = self.links.by_peer.get(&peer) else {
             return;
         };
@@ -203,10 +210,11 @@ impl Daemon {
         let actions = match &envelope.body {
             Some(Body::Focus(focus)) => {
                 // Without an injector there is no backend that can honour a take.
-                let allow_drive = self.input.injector.is_some() && self.pins.get(&peer).is_some();
+                let allow_drive = self.allow_drive(peer);
                 self.input.focus.on_focus(peer, focus, allow_drive, now())
             }
             Some(Body::Accept(accept)) => self.input.focus.on_accept(peer, accept),
+            Some(Body::Accepts(accepts)) => self.input.focus.on_accepts(peer, accepts.accepts),
             Some(Body::Refuse(refuse)) => self.input.focus.on_refuse(peer, refuse),
             Some(Body::Handover(handover)) => self.input.focus.on_handover(peer, handover, now()),
             Some(Body::Ack(ack)) => self.input.focus.on_ack(peer, ack),
@@ -254,6 +262,7 @@ impl Daemon {
 
     async fn inject_motion(&mut self, delta: Option<(i32, i32)>) {
         if let Some((dx, dy)) = delta {
+            let (dx, dy) = self.input.scale.apply(dx, dy);
             self.input.inject(Inject::Motion { dx, dy }).await;
         }
     }
@@ -299,7 +308,8 @@ impl Daemon {
                 motion.route = route.0;
                 Body::Motion(motion)
             }
-            Captured::Input(event) => {
+            Captured::Input(mut event) => {
+                self.transform_input(&mut event);
                 let motion = self.input.counter.current();
                 // ponytail: one event per batch; coalesce when capture throughput needs it.
                 Body::Input(InputBatch {

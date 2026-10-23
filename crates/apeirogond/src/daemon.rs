@@ -4,12 +4,13 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, SocketAddr};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use a7n_core::layout::LayoutError;
 use a7n_core::pairing::{AttemptLimiter, HostPairing, Paired, PairingCode};
+use a7n_ipc::config::{Config, ConfigError};
 use a7n_proto::v1::{Envelope, PairDone, PeerInfo, envelope::Body};
 use a7n_proto::{MachineId, limits};
 use quinn::Endpoint;
@@ -27,6 +28,7 @@ use crate::pairing::PairingError;
 use crate::pin_store::{Entry, PinStore, PinStoreError};
 use crate::tls::{self, TlsError, TrustSnapshot, TrustedPins};
 
+mod config;
 mod connections;
 mod input;
 mod layout;
@@ -49,6 +51,8 @@ type Inbound = (MachineId, usize, Envelope);
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum DaemonError {
+    #[error(transparent)]
+    Config(#[from] ConfigError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -114,6 +118,8 @@ pub(crate) struct Daemon {
     inbound: mpsc::Sender<Inbound>,
     inbound_rx: mpsc::Receiver<Inbound>,
     input: input::Input,
+    config: Config,
+    config_path: PathBuf,
 }
 
 impl Daemon {
@@ -163,6 +169,8 @@ impl Daemon {
             inbound,
             inbound_rx,
             input,
+            config: Config::default(),
+            config_path: path.join("config.toml"),
         })
     }
 
@@ -193,7 +201,7 @@ impl Daemon {
             tokio::select! {
                 command = commands.recv() => {
                     let Some(command) = command else { return Ok(()); };
-                    self.command(command)?;
+                    self.command(command).await?;
                 }
                 Some((connection, permit, deadline)) = accepted_rx.recv() => {
                     self.accept(connection, permit, deadline)?;
@@ -227,8 +235,12 @@ impl Daemon {
         }
     }
 
-    fn command(&mut self, command: Command) -> Result<(), DaemonError> {
+    async fn command(&mut self, command: Command) -> Result<(), DaemonError> {
         match command {
+            Command::ReloadConfig(reply) => {
+                let result = self.reload_config().await;
+                let _ = reply.send(result);
+            }
             Command::Status(reply) => {
                 let _ = reply.send(Ok(self.status()));
             }

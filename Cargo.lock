@@ -42,11 +42,14 @@ dependencies = [
  "a7n-core",
  "a7n-platform",
  "a7n-proto",
+ "directories",
  "interprocess",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
+ "toml",
 ]
 
 [[package]]

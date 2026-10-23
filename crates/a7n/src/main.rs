@@ -11,6 +11,7 @@ use a7n_ipc::{
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
+mod config;
 mod layout;
 
 #[derive(Debug, Parser)]
@@ -22,6 +23,16 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Create the initial config, refusing to overwrite an existing file.
+    Init,
+    /// Read or edit settings. Writes replace formatting and remove comments.
+    #[command(
+        after_help = "Setting values rewrites config.toml without preserving comments or formatting."
+    )]
+    Config {
+        #[command(subcommand)]
+        command: config::Command,
+    },
     /// Arrange the desk's machines on an interactive canvas.
     Layout,
     /// Show this machine, its paired peers and nearby unpaired machines.
@@ -54,6 +65,8 @@ async fn main() -> ExitCode {
 
 async fn run(command: Command) -> Result<()> {
     let request = match command {
+        Command::Init => return config::init(),
+        Command::Config { command } => return config::run(command).await,
         Command::Layout => return layout::run().await,
         Command::Status => Request::Status,
         Command::Pair { target: None } => Request::PairHost,

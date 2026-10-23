@@ -3,6 +3,31 @@
 use super::*;
 
 #[test]
+fn apply_unit_speed_preserves_exact_deltas() {
+    // Arrange
+    let mut scale = MotionScale::new(1.0);
+    let deltas = [(1, -1), (i32::MIN, i32::MAX), (0, 0)];
+
+    // Act
+    let scaled = deltas.map(|(dx, dy)| scale.apply(dx, dy));
+
+    // Assert
+    assert_eq!(scaled, deltas);
+}
+
+#[test]
+fn apply_half_speed_retains_positive_and_negative_subpixels() {
+    // Arrange
+    let mut scale = MotionScale::new(0.5);
+
+    // Act
+    let scaled = [(1, -1), (1, -1), (-1, 1), (-1, 1)].map(|(dx, dy)| scale.apply(dx, dy));
+
+    // Assert
+    assert_eq!(scaled, [(0, 0), (1, -1), (0, 0), (-1, 1)]);
+}
+
+#[test]
 fn apply_stale_or_duplicate_sequence_drops_motion() {
     // Arrange
     let mut tracker = MotionTracker::default();
