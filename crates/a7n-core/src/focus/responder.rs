@@ -188,6 +188,19 @@ impl Focus {
         )]
     }
 
+    /// End this peer's ownership immediately when local policy is revoked.
+    pub fn deny_drive(&mut self, peer: MachineId) -> Vec<Action> {
+        let mut actions = Vec::new();
+        if self
+            .driven
+            .as_ref()
+            .is_some_and(|driven| driven.owner == peer)
+        {
+            self.end_driven(&mut actions);
+        }
+        actions
+    }
+
     pub(super) fn end_driven(&mut self, actions: &mut Vec<Action>) {
         self.driven = None;
         let released = self.held.release_all();

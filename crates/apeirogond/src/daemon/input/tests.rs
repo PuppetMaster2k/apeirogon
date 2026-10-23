@@ -13,6 +13,8 @@ use super::*;
 use crate::daemon::test_peer::{Peer, TEST_TIMEOUT};
 use crate::pin_store::Entry;
 
+mod config;
+
 struct FakeInput {
     capture: mpsc::Sender<Captured>,
     control: mpsc::Receiver<CaptureControl>,
@@ -61,8 +63,15 @@ fn daemon(input: bool) -> (Daemon, TempDir, Option<FakeInput>) {
 }
 
 async fn pair() -> (Peer, Peer, FakeInput, FakeInput) {
+    configured_pair(|_, _| {}).await
+}
+
+async fn configured_pair(
+    configure: impl FnOnce(&mut Daemon, &mut Daemon),
+) -> (Peer, Peer, FakeInput, FakeInput) {
     let (mut a, a_dir, a_input) = daemon(true);
     let (mut b, b_dir, b_input) = daemon(true);
+    configure(&mut a, &mut b);
     let placements = [a.identity.machine_id, b.identity.machine_id]
         .into_iter()
         .zip([0, 100])
@@ -194,58 +203,91 @@ async fn pointer_feedback_left_edge_returns_owner_home_and_ungrabs() {
 }
 
 #[tokio::test]
-async fn receive_focus_without_backend_refuses_not_allowed() {
-    // Arrange
-    let (a, _a_dir, _) = daemon(false);
-    let (mut b, b_dir, _) = daemon(false);
-    b.pins.add(Entry {
-        machine_id: a.identity.machine_id,
-        pin: a.identity.pin,
-        name: "owner".into(),
-        spki_der: None,
-    });
-    b.sync_trust().unwrap();
-    // Trust the responder for A's outgoing TLS handshake.
-    a.trust.write().unwrap().pins.insert(b.identity.pin);
-    let b = Peer::run(b, b_dir);
-    let mut link = crate::endpoint::dial(&a.endpoint, b.addr, &a.info)
+async fn receive_focus_unavailable_or_denied_refuses_not_allowed() {
+    for backend in [false, true] {
+        // Arrange
+        let (a, _a_dir, _) = daemon(false);
+        let (mut b, b_dir, _input) = daemon(backend);
+        if backend {
+            b.config
+                .set(
+                    &format!("peers.{}.allow_drive", a.identity.machine_id),
+                    "false",
+                )
+                .unwrap();
+        }
+        b.pins.add(Entry {
+            machine_id: a.identity.machine_id,
+            pin: a.identity.pin,
+            name: "owner".into(),
+            spki_der: None,
+        });
+        b.sync_trust().unwrap();
+        // Trust the responder for A's outgoing TLS handshake.
+        a.trust.write().unwrap().pins.insert(b.identity.pin);
+        let b = Peer::run(b, b_dir);
+        let connection = timeout(
+            limits::HANDSHAKE_TIMEOUT,
+            a.endpoint
+                .connect(b.addr, crate::tls::TLS_SERVER_NAME)
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let (mut send, mut recv) = connection.open_bi().await.unwrap();
+        let mut buffer = Vec::new();
+        let mut incoming = Vec::new();
+
+        // Act
+        crate::handshake::send_envelope(
+            &mut send,
+            &mut buffer,
+            Body::Hello(a7n_proto::v1::Hello {
+                protocol_version: a7n_proto::PROTOCOL_VERSION,
+                info: Some(a.info.clone()),
+            }),
+        )
         .await
         .unwrap();
-    let mut buffer = Vec::new();
-
-    // Act
-    crate::handshake::send_envelope(
-        &mut link.control_send,
-        &mut buffer,
-        Body::Focus(a7n_proto::v1::Focus {
-            route: 1,
-            target: b.machine.as_bytes().to_vec(),
-            ..Default::default()
-        }),
-    )
-    .await
-    .unwrap();
-    let refusal = timeout(TEST_TIMEOUT, async {
-        loop {
-            let envelope = crate::handshake::read_frame(
-                &mut link.control_recv,
-                &mut link.control_buf,
-                FrameKind::Control,
-            )
-            .await
-            .unwrap();
-            if let Some(Body::Refuse(refuse)) = envelope.body {
-                break refuse;
+        let welcome = timeout(
+            TEST_TIMEOUT,
+            crate::handshake::read_frame(&mut recv, &mut incoming, FrameKind::Control),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        crate::handshake::send_envelope(
+            &mut send,
+            &mut buffer,
+            Body::Focus(a7n_proto::v1::Focus {
+                route: 1,
+                target: b.machine.as_bytes().to_vec(),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap();
+        let refusal = timeout(TEST_TIMEOUT, async {
+            loop {
+                let envelope =
+                    crate::handshake::read_frame(&mut recv, &mut incoming, FrameKind::Control)
+                        .await
+                        .unwrap();
+                if let Some(Body::Refuse(refuse)) = envelope.body {
+                    break refuse;
+                }
             }
-        }
-    })
-    .await
-    .unwrap();
+        })
+        .await
+        .unwrap();
 
-    // Assert
-    assert_eq!(refusal.route, 1);
-    assert_eq!(refusal.reason, i32::from(RefuseReason::NotAllowed));
-    b.stop().await;
+        // Assert
+        assert!(matches!(welcome.body, Some(Body::Welcome(welcome)) if !welcome.accepts_drive));
+        assert_eq!(refusal.route, 1);
+        assert_eq!(refusal.reason, i32::from(RefuseReason::NotAllowed));
+        b.stop().await;
+    }
 }
 
 #[tokio::test]

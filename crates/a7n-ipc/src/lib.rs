@@ -9,6 +9,7 @@
 //! are flattened into the status response. Machine ids are 32 hex characters.
 //! A handshake error is a regular `Response::Error`, followed by closure.
 
+pub mod config;
 mod connection;
 mod error;
 mod framing;

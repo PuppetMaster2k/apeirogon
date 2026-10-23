@@ -5,6 +5,38 @@
 use a7n_proto::seq::{delta, is_newer};
 use a7n_proto::v1::{Edge, Motion};
 
+/// Receiver-side speed scaling, retaining subpixel motion between updates.
+#[derive(Debug)]
+pub struct MotionScale {
+    speed: f64,
+    remainder: (f64, f64),
+}
+
+impl MotionScale {
+    /// `speed` has already been validated at the configuration boundary.
+    #[must_use]
+    pub fn new(speed: f64) -> Self {
+        Self {
+            speed,
+            remainder: (0.0, 0.0),
+        }
+    }
+
+    pub fn apply(&mut self, dx: i32, dy: i32) -> (i32, i32) {
+        (
+            Self::axis(dx, self.speed, &mut self.remainder.0),
+            Self::axis(dy, self.speed, &mut self.remainder.1),
+        )
+    }
+
+    #[allow(clippy::cast_possible_truncation)] // Pixel deltas truncate toward zero and saturate at i32 bounds.
+    fn axis(delta: i32, speed: f64, remainder: &mut f64) -> i32 {
+        let scaled = f64::from(delta) * speed + *remainder;
+        *remainder = scaled.fract();
+        scaled as i32
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct MotionCounter {
     seq: u32,
