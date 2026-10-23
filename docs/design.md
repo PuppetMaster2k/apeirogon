@@ -61,9 +61,11 @@ scope.
   `wlr-data-control-unstable-v1` (wlroots, KDE). Wayland is lazy by design:
   the compositor asks the offering client to write into a pipe on paste, so
   that request is our "paste happened" signal and needs no key snooping. We
-  implement the offering side ourselves on `wayland-client` /
-  `wayland-protocols`, because `wl-clipboard-rs` and `arboard` only accept
-  data up front; `wl-clipboard-rs` is used for reading and watching.
+  implement watching, reading and offering ourselves on one `wayland-client`
+  connection (`wayland-protocols`, `wayland-protocols-wlr`), because
+  `wl-clipboard-rs` and `arboard` only accept data up front. Our own
+  selections carry the private format `application/x-apeirogon-clipboard`,
+  so they are not announced back.
 - GNOME (Mutter) has no data-control: use the xdg-desktop-portal Clipboard
   portal, which also delivers on request (`SelectionTransfer` asks for a
   MIME type, we answer with `SelectionWrite` on a fresh fd). Decided by the
@@ -83,6 +85,14 @@ scope.
     daemon's state directory, replacing it with the new token after every
     start, so later starts need no dialog. Portals without persistence
     (InputCapture < 2, RemoteDesktop < 2) prompt on every daemon start.
+  - The input backend owns the RemoteDesktop session, so it requests
+    clipboard access and hands the clipboard channels to
+    `clipboard::start()`, which therefore runs after `input::start()`. Echo
+    of our own selection is detected through `session_is_owner`.
+  - Outside Flatpak the daemon registers the host app id
+    `io.github.PuppetMaster2k.Apeirogon` before the first portal call and
+    ships a matching desktop file (`packaging/linux/`), so dialogs show
+    "Apeirogon" and remembered consent belongs to it.
   - Not yet verified on a live GNOME or KDE session; which compositor
     versions implement InputCapture 2 and the Clipboard portal is part of
     the manual checklist.

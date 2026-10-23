@@ -16,6 +16,10 @@ reason instead of hanging.
 - [ ] Second start (restart the daemon): no dialog appears when the portal
   supports persistence (`InputCapture` 2, `RemoteDesktop` 2). A portal without
   it asks again on every start; that is expected and must not fail.
+- [ ] With `packaging/linux/io.github.PuppetMaster2k.Apeirogon.desktop`
+  installed in `~/.local/share/applications/`, the consent dialogs show
+  "Apeirogon" as the requesting application and do not reappear after a
+  daemon restart.
 - [ ] Declining a dialog: `a7n status` names the missing permission; the
   daemon keeps running without input.
 - [ ] Leaving a dialog unanswered for 2 minutes ends the start with a timeout

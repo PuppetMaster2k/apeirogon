@@ -3,12 +3,14 @@
 //! The two portal sessions of a Wayland desktop and their libei connections.
 //!
 //! `InputCapture` captures local input at pointer barriers. `RemoteDesktop`
-//! injects input from peers. The clipboard portal (#22) will extend the
-//! `RemoteDesktop` session: it must call `Clipboard.RequestClipboard` on
-//! [`DesktopSession::session`] before [`open_desktop`] starts it, so that
-//! function is where that hook belongs.
+//! injects input from peers. The clipboard portal extends the `RemoteDesktop`
+//! session: [`open_desktop`] calls `Clipboard.RequestClipboard` before it starts
+//! the session and keeps the resulting clipboard service in
+//! [`DesktopSession::clipboard`].
 
 use std::os::unix::net::UnixStream;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use ashpd::Error as PortalFailure;
 use ashpd::desktop::input_capture::{
@@ -25,7 +27,12 @@ use reis::event::Connection;
 use reis::tokio::EiConvertEventStream;
 
 use super::tokens::{TokenKind, TokenStore};
+use crate::clipboard::wayland::portal as clipboard_portal;
 use crate::input::InputError;
+
+/// Name under which the portals know the daemon; they match it against an
+/// installed desktop file of the same name (`packaging/linux`).
+const PORTAL_APP_ID: &str = "io.github.PuppetMaster2k.Apeirogon";
 
 /// Name we give the EIS server in the libei handshake.
 const EI_CLIENT_NAME: &str = "apeirogon";
@@ -45,11 +52,26 @@ pub(super) struct CaptureSession {
 }
 
 pub(super) struct DesktopSession {
-    // Kept for the clipboard, which talks to the portal through this session.
-    #[allow(dead_code, reason = "used by the clipboard backend (#22)")]
-    pub(super) portal: RemoteDesktop,
-    pub(super) session: Session<RemoteDesktop>,
+    pub(super) session: Arc<Session<RemoteDesktop>>,
     pub(super) eis: Eis,
+    /// Present when the portal granted clipboard access with the session.
+    pub(super) clipboard: Option<clipboard_portal::Service>,
+}
+
+/// Tells the portals which application this process is. Once per process,
+/// before the first portal session; older portals lack the interface and then
+/// identify the process their own way.
+pub(super) async fn register_app() {
+    static REGISTERED: AtomicBool = AtomicBool::new(false);
+    if REGISTERED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let Ok(app_id) = ashpd::AppID::try_from(PORTAL_APP_ID) else {
+        return;
+    };
+    if let Err(error) = ashpd::register_host_app(app_id).await {
+        eprintln!("kind=portal_app_registration_skipped reason={error}");
+    }
 }
 
 /// Creates and starts the `InputCapture` session, which may show the one-time
@@ -116,6 +138,8 @@ pub(super) async fn open_desktop(
         .create_session(CreateSessionOptions::default())
         .await
         .map_err(fail)?;
+    let session = Arc::new(session);
+    let requested = clipboard_portal::request(&session).await;
     let token = restore_token(tokens.as_ref(), TokenKind::RemoteDesktop);
     let options = SelectDevicesOptions::default()
         .set_devices(DeviceType::Keyboard | DeviceType::Pointer)
@@ -132,6 +156,7 @@ pub(super) async fn open_desktop(
         .and_then(|request| request.response())
         .map_err(fail)?;
     remember(tokens, TokenKind::RemoteDesktop, granted.restore_token());
+    let clipboard = connect_clipboard(requested, &session, granted.is_clipboard_enabled()).await;
     if !granted
         .devices()
         .contains(DeviceType::Keyboard | DeviceType::Pointer)
@@ -144,10 +169,26 @@ pub(super) async fn open_desktop(
         .map_err(fail)?;
     let eis = handshake(fd, ContextType::Sender).await?;
     Ok(DesktopSession {
-        portal,
         session,
         eis,
+        clipboard,
     })
+}
+
+/// Subscribes to the clipboard portal; a failure only loses the clipboard.
+async fn connect_clipboard(
+    requested: Option<ashpd::desktop::clipboard::Clipboard>,
+    session: &Arc<Session<RemoteDesktop>>,
+    enabled: bool,
+) -> Option<clipboard_portal::Service> {
+    let requested = requested.filter(|_| enabled)?;
+    match clipboard_portal::Service::connect(requested, Arc::clone(session)).await {
+        Ok(service) => Some(service),
+        Err(error) => {
+            eprintln!("kind=clipboard_wayland_portal_unavailable reason={error}");
+            None
+        }
+    }
 }
 
 async fn handshake(fd: std::os::fd::OwnedFd, context_type: ContextType) -> Result<Eis, InputError> {

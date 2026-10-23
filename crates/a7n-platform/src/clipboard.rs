@@ -5,8 +5,12 @@
 use a7n_core::clipboard::{Generation, Item, LocalChange};
 use tokio::sync::{mpsc, oneshot};
 
+#[cfg(all(unix, not(target_os = "macos")))]
+mod formats;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(all(unix, not(target_os = "macos")))]
+pub(crate) mod wayland;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod x11;
 
@@ -67,15 +71,24 @@ pub enum ClipboardError {
     #[cfg(all(unix, not(target_os = "macos")))]
     #[error("X11 clipboard failed: {0}")]
     X11(#[from] crate::input::InputError),
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[error("Wayland clipboard failed: {0}")]
+    Wayland(#[from] wayland::WaylandError),
 }
 
+/// On Wayland, call `input::start()` first: on desktops without data-control
+/// the clipboard rides on the input backend's portal session.
+///
 /// # Errors
 /// Returns an error when the session is unsupported or the backend cannot start.
 pub fn start() -> Result<Clipboard, ClipboardError> {
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        if crate::input::detect_backend() == crate::input::Backend::X11 {
-            return Ok(x11::start()?);
+        use crate::input::{Backend, detect_backend};
+        match detect_backend() {
+            Backend::X11 => return Ok(x11::start()?),
+            Backend::Wayland => return Ok(wayland::start()?),
+            Backend::None => {}
         }
     }
     #[cfg(windows)]

@@ -103,6 +103,11 @@ impl Injecting {
         }
     }
 
+    /// The clipboard service of the session, to be run by the backend thread.
+    pub(super) fn take_clipboard(&mut self) -> Option<crate::clipboard::wayland::portal::Service> {
+        self.session.clipboard.take()
+    }
+
     /// Ends the emulation and closes the session; best effort.
     pub(super) async fn shutdown(&mut self) {
         let serial = self.session.eis.connection.serial();

@@ -21,6 +21,8 @@
 //!   happens to push through a barrier, and local hotkeys are not seen.
 //! - Zone changes re-arm the barriers, but the bounds told to the daemon at
 //!   start stay as they were.
+//! - The clipboard portal shares the `RemoteDesktop` session; see
+//!   `crate::clipboard::wayland`.
 //! - Not verified on a live GNOME or KDE session; see
 //!   `docs/checklists/input-wayland.md`.
 
@@ -44,6 +46,7 @@ use super::{
     Bounds, CAPTURE_CONTROL_CAPACITY, CAPTURE_EVENT_CAPACITY, Capture, CaptureControl, Captured,
     INJECT_COMMAND_CAPACITY, INJECT_POINTER_CAPACITY, Inject, Injector, InputError,
 };
+use crate::clipboard::wayland::portal::Service;
 use capture::Capturer;
 use inject::Injecting;
 use tokens::TokenStore;
@@ -114,6 +117,7 @@ fn run_thread(ready: &std_mpsc::Sender<Ready>, channels: Channels) {
 
 async fn run(ready: &std_mpsc::Sender<Ready>, mut channels: Channels) {
     let mut tokens = TokenStore::open_default();
+    session::register_app().await;
     let started = tokio::time::timeout(START_TIMEOUT, open(&mut tokens)).await;
     let (mut capturer, mut injecting) = match started {
         Ok(Ok(backend)) => backend,
@@ -129,6 +133,11 @@ async fn run(ready: &std_mpsc::Sender<Ready>, mut channels: Channels) {
             return;
         }
     };
+    let mut clipboard = injecting.take_clipboard();
+    if let Some(service) = &mut clipboard {
+        // The slot is filled before the daemon learns that input is up.
+        service.hand_over();
+    }
     let bounds = (capturer.bounds(), capturer.bounds());
     if ready.send(Ok(bounds)).is_err() {
         // Nobody is waiting any more.
@@ -139,11 +148,21 @@ async fn run(ready: &std_mpsc::Sender<Ready>, mut channels: Channels) {
     let outcome = tokio::select! {
         result = capturer.run(&channels.events, &mut channels.control) => result,
         result = injecting.run(&mut channels.commands, &channels.pointer) => result,
+        () = run_clipboard(clipboard) => unreachable!("the clipboard service never ends the backend"),
     };
     if let Err(error) = outcome {
         eprintln!("kind=input_wayland_stopped reason={error}");
     }
     close(&mut capturer, &mut injecting).await;
+}
+
+/// Serves the clipboard portal next to input. When the service ends, or never
+/// existed, input carries on alone.
+async fn run_clipboard(service: Option<Service>) {
+    if let Some(service) = service {
+        service.run().await;
+    }
+    std::future::pending::<()>().await;
 }
 
 /// Starts both sessions, capture first. If the second fails the first is
