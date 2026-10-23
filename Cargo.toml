@@ -47,9 +47,9 @@ rustls              = { version = "0.23", default-features = false, features = [
 tokio               = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util"] }
 
 objc2 = "=0.6.4"
-objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std"] }
-objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSEvent", "NSGraphicsContext", "objc2-core-graphics"] }
-objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["std", "CFRunLoop", "CFMachPort"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSArray", "NSData", "NSObject", "NSString"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSEvent", "NSGraphicsContext", "NSPasteboard", "NSPasteboardItem", "NSRunningApplication", "NSWorkspace", "objc2-core-graphics"] }
+objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["std", "CFDate", "CFMachPort", "CFRunLoop"] }
 objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["std", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation", "CGDirectDisplay", "CGDisplayConfiguration", "CGGeometry", "CGError", "libc"] }
 
 [workspace.lints.rust]
