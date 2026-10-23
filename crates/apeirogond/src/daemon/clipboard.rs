@@ -140,6 +140,7 @@ impl Daemon {
                 .try_send(ClipboardCommand::Set {
                     generation: received.generation,
                     items: received.items,
+                    lazy: Vec::new(),
                 })
                 .is_err()
         }) {

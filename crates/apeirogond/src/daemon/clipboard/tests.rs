@@ -25,6 +25,7 @@ fn daemon() -> (
         daemon.with_clipboard(Some(Clipboard {
             changes: change_rx,
             commands: command_tx,
+            pastes: mpsc::channel(1).1,
         })),
         dir,
         changes,
@@ -66,7 +67,9 @@ async fn clipboard_changed_two_daemons_delivers_only_non_sensitive_copy() {
         .unwrap();
 
     // Assert
-    let ClipboardCommand::Set { generation, items } = command;
+    let ClipboardCommand::Set {
+        generation, items, ..
+    } = command;
     assert_eq!(
         generation,
         Generation {
