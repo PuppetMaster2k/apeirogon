@@ -21,6 +21,9 @@ rustix.workspace = true
 ashpd.workspace = true
 futures-util.workspace = true
 reis.workspace = true
+wayland-client.workspace = true
+wayland-protocols.workspace = true
+wayland-protocols-wlr.workspace = true
 x11rb.workspace = true
 
 [target.'cfg(windows)'.dependencies]

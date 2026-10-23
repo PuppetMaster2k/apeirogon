@@ -20,6 +20,7 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::{COPY_DEPTH_FROM_PARENT, CURRENT_TIME};
 
 use super::Clipboard;
+use super::formats::{HTML_ALIAS, HTML_UTF8_ALIAS, SENSITIVE_MARKER};
 use crate::input::InputError;
 
 const CHANNEL_CAPACITY: usize = 16;
@@ -33,10 +34,10 @@ const MAX_PROPERTY_CHUNK: usize = 64 * 1024;
 x11rb::atom_manager! {
     pub Atoms: AtomsCookie {
         CLIPBOARD, TARGETS, UTF8_STRING, INCR, WM_CLASS,
-        PLAIN: b"text/plain;charset=utf-8",
-        HTML: b"text/html",
-        HTML_UTF8: b"text/html;charset=utf-8",
-        SENSITIVE: b"x-kde-passwordManagerHint",
+        PLAIN: TEXT_PLAIN.as_bytes(),
+        HTML: HTML_ALIAS.as_bytes(),
+        HTML_UTF8: HTML_UTF8_ALIAS.as_bytes(),
+        SENSITIVE: SENSITIVE_MARKER.as_bytes(),
         PROPERTY: b"_APEIROGON_CLIPBOARD",
     }
 }
