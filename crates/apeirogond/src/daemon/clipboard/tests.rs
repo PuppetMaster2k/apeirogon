@@ -25,6 +25,7 @@ fn daemon() -> (
         daemon.with_clipboard(Some(Clipboard {
             changes: change_rx,
             commands: command_tx,
+            pastes: mpsc::channel(1).1,
         })),
         dir,
         changes,
@@ -47,6 +48,8 @@ fn wire(origin: MachineId, generation: u64, text: &str) -> ClipboardAnnounce {
     clipboard::announce(change(text).items, Generation { origin, generation }).unwrap()
 }
 
+mod fetch;
+
 #[tokio::test]
 async fn clipboard_changed_two_daemons_delivers_only_non_sensitive_copy() {
     // Arrange
@@ -66,7 +69,9 @@ async fn clipboard_changed_two_daemons_delivers_only_non_sensitive_copy() {
         .unwrap();
 
     // Assert
-    let ClipboardCommand::Set { generation, items } = command;
+    let ClipboardCommand::Set {
+        generation, items, ..
+    } = command;
     assert_eq!(
         generation,
         Generation {
@@ -163,7 +168,7 @@ async fn receive_clipboard_old_or_invalid_copy_keeps_current_and_backend_alive()
 }
 
 #[tokio::test]
-async fn receive_clipboard_metadata_only_remembers_generation_without_setting() {
+async fn receive_clipboard_metadata_only_installs_lazy_item() {
     // Arrange
     let (mut daemon, _dir, _changes, mut commands) = daemon();
     let peer = daemon.identity.machine_id;
@@ -178,7 +183,10 @@ async fn receive_clipboard_metadata_only_remembers_generation_without_setting() 
     daemon.receive_clipboard(peer, &wire(peer, 9, "older"));
 
     // Assert
-    assert!(commands.try_recv().is_err());
+    let ClipboardCommand::Set { items, lazy, .. } = commands.try_recv().unwrap();
+    assert_eq!(items, []);
+    assert_eq!(lazy.len(), 1);
+    assert_eq!(lazy[0].item_index, 0);
     assert_eq!(daemon.clipboard.current.unwrap().generation, 10);
     assert_eq!(daemon.clipboard.announce, Some(incoming));
 }

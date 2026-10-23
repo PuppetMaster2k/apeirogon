@@ -50,6 +50,8 @@ const MAILBOX_CAPACITY: usize = 64;
 /// Bound the number of source-address rate-limit buckets.
 const PAIRING_SOURCES: usize = 256;
 
+type TransferStream = (MachineId, usize, quinn::RecvStream);
+
 type Inbound = (MachineId, usize, Envelope);
 
 #[derive(Debug, thiserror::Error)]
@@ -88,6 +90,13 @@ enum Event {
     Link(Result<Box<Link>, LinkError>, Option<Reply<()>>),
     Ended(MachineId, usize),
     PairingEnded,
+    ClipboardOpened(TransferStream, u64, Vec<u8>),
+    ClipboardFetched {
+        peer: MachineId,
+        link: usize,
+        request: a7n_platform::clipboard::PasteRequest,
+        data: Option<Vec<u8>>,
+    },
     ExpireConnects,
     DiscoveryDialEnded(MachineId),
     Confirmed {
@@ -123,6 +132,8 @@ pub(crate) struct Daemon {
     event_rx: mpsc::Receiver<Event>,
     inbound: mpsc::Sender<Inbound>,
     inbound_rx: mpsc::Receiver<Inbound>,
+    transfer_tx: mpsc::Sender<TransferStream>,
+    transfer_rx: mpsc::Receiver<TransferStream>,
     input: input::Input,
     clipboard: clipboard::State,
     config: Config,
@@ -156,6 +167,7 @@ impl Daemon {
         };
         let (events, event_rx) = mpsc::channel(MAILBOX_CAPACITY);
         let (inbound, inbound_rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let (transfer_tx, transfer_rx) = mpsc::channel(MAILBOX_CAPACITY);
         let input = input::Input::new(identity.machine_id);
         Ok(Self {
             identity,
@@ -178,6 +190,8 @@ impl Daemon {
             event_rx,
             inbound,
             inbound_rx,
+            transfer_tx,
+            transfer_rx,
             input,
             clipboard: clipboard::State::default(),
             config: Config::default(),
@@ -234,7 +248,11 @@ impl Daemon {
                 _ = retry.tick() => self.retry_nearby(),
                 _ = keepalive.tick() => self.input.keepalive(),
                 () = input::deadline(deadline) => self.poll_focus().await,
-                event = clipboard::changed(&mut self.clipboard.handle) => self.clipboard_changed(event),
+                Some(stream) = self.transfer_rx.recv() => self.clipboard_stream(stream),
+                event = clipboard::next(&mut self.clipboard.handle) => match event {
+                    clipboard::Event::Changed(change) => self.clipboard_changed(change),
+                    clipboard::Event::Paste(request) => self.clipboard_paste(request),
+                },
                 event = input::captured(&mut self.input.capture) => self.captured(event).await,
                 event = input::feedback(&mut self.input.injector) => self.pointer_feedback(event).await,
                 Some((peer, id, envelope)) = self.inbound_rx.recv() => {

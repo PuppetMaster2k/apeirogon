@@ -44,7 +44,7 @@ async fn drive_motion_and_batches_uses_datagram_and_numbers_reliable_input() {
     );
     let (outbound, mailbox) = mpsc::channel(4);
     let (inbound, mut received) = mpsc::channel(4);
-    let task = tokio::spawn(drive(link.unwrap(), inbound, mailbox));
+    let task = tokio::spawn(drive(link.unwrap(), inbound, mailbox, mpsc::channel(4).0));
     let motion = Motion {
         route: 1,
         motion_seq: 1,

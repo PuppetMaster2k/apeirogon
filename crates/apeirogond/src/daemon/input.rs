@@ -154,6 +154,7 @@ impl Daemon {
     }
 
     pub(super) fn input_link_lost(&mut self, peer: MachineId) {
+        self.clipboard.links.remove(&peer);
         self.input.lost.push(peer);
     }
 
@@ -231,6 +232,10 @@ impl Daemon {
     ) -> Result<(), DaemonError> {
         self.poll_focus().await;
         let actions = match &envelope.body {
+            Some(Body::TransferRequest(request)) => {
+                self.clipboard_request(peer, request);
+                return Ok(());
+            }
             Some(Body::ClipboardAnnounce(wire)) => {
                 self.receive_clipboard(peer, wire);
                 return Ok(());

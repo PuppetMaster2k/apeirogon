@@ -131,6 +131,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 - On Linux, files are delivered on paste as `text/uri-list` pointing into the receive directory: the paste request triggers the transfer, and the paths are handed out once the files are verified. Above a size threshold the receiver shows progress.
 - Text is offered as `text/plain;charset=utf-8` and, when the source has it, `text/html;charset=utf-8`.
 - Limits (defaults): text 256 KiB, image 8 MiB with validation before decode (decompression-bomb checks). Files are limited only by policy.
+- Text fetches use file index 0, contiguous offsets, and a final length and SHA-256 matching the announced item. The whole fetch, including waiting for its stream, MUST finish within 10 s.
 - A source that no longer holds the generation answers `ABORT_REASON_NOT_FOUND`.
 - Files: the item with MIME `application/x-apeirogon-files` carries a `FileManifest`. Paths are relative, `/`-separated, NFC normalised, and the receiver MUST reject `..`, absolute paths, and reserved names.
 
@@ -175,6 +176,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 | Pairing code | 6 digits, 60 s, 1 guess |
 | Pairing attempts | 5 per minute per source |
 | Concurrent transfers | 4 per link |
+| Clipboard fetch timeout | 10 s |
 | Text clipboard | 256 KiB |
 | Image clipboard | 8 MiB |
 | Inline clipboard total per announce | 64 KiB |

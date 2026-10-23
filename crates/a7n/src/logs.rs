@@ -58,7 +58,7 @@ fn read_tail(reader: &mut impl BufRead, lines: usize) -> io::Result<VecDeque<Vec
     Ok(tail)
 }
 
-// shortcut: intermediate rotations between polls can be lost; retain more backups if lossless following is needed.
+// ponytail: intermediate rotations between polls can be lost; retain more backups if lossless following is needed.
 fn read_new(
     path: &Path,
     previous: &mut Option<File>,

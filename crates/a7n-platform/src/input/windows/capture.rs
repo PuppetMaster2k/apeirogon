@@ -257,7 +257,7 @@ impl CaptureState {
             return false;
         }
         if message == WM_MOUSEMOVE {
-            // shortcut: low-level hooks expose accelerated deltas; use Raw Input
+            // ponytail: low-level hooks expose accelerated deltas; use Raw Input
             // if users need unaccelerated motion.
             let event = self.motion(mouse.pt);
             self.emit(event);
