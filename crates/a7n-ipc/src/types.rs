@@ -14,6 +14,9 @@ use crate::config::ClipboardPolicy;
 pub enum Request {
     ReloadConfig,
     Shutdown,
+    SetPaused {
+        paused: bool,
+    },
     Switch {
         #[serde(with = "machine_id")]
         machine: MachineId,
@@ -85,6 +88,11 @@ pub struct StatusInfo {
     /// None when input works, otherwise the reason it is unavailable.
     pub input: Option<String>,
     pub pid: u32,
+    /// Outgoing input sharing is suspended for this daemon session.
+    pub paused: bool,
+    /// Where this machine currently sends its physical input.
+    #[serde(with = "machine_id")]
+    pub focused: MachineId,
     #[serde(with = "machine_id")]
     pub machine: MachineId,
     pub name: String,

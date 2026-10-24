@@ -252,10 +252,16 @@ crates/
 ## User interface
 
 - **CLI** (`a7n`): `init`, `pair`, `unpair`, `layout`, `switch`, `status`,
-  `clip`, `send`, `config`, `daemon`, `logs`. Config is TOML, managed via
+  `clip`, `send`, `config`, `daemon`, `logs`, `pause`, `resume`. Config is TOML, managed via
   `a7n config`. `a7n layout` is an interactive TUI.
 - **GUI** (`a7n-gui`, egui/eframe) for Windows and macOS:
   - Thin client of the daemon over `a7n-ipc`; no logic of its own.
+  - Pause returns outgoing focus home and blocks edge, hotkey and explicit
+    switches to peers until resumed. Receiving input remains governed by
+    `allow_drive`. Pause is session state and resets at daemon startup.
+  - Local IPC version 2 adds `SetPaused { paused }` and status fields `paused`
+    and `focused` (machine id). Update the daemon and local clients together;
+    the peer wire protocol is unchanged.
   - Tray / menu-bar icon (`tray-icon`): status, focused machine, pause,
     settings, quit. Daemon starts at login (LaunchAgent / Run key).
   - Guided first-run macOS permission flow, with deep links to System Settings

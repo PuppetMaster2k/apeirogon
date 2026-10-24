@@ -59,6 +59,8 @@ fn write_response_status_displays_identity_and_peer_states() {
     let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let response = Response::Status(StatusInfo {
         input: Some("Accessibility permission missing".to_owned()),
+        paused: false,
+        focused: machine,
         pid: std::process::id(),
         machine,
         name: "local".into(),
@@ -142,6 +144,8 @@ fn write_response_status_with_nearby_displays_machine_ids_and_addresses() {
     let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let response = Response::Status(StatusInfo {
         input: None,
+        paused: false,
+        focused: machine,
         pid: std::process::id(),
         machine,
         name: "local".into(),

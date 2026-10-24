@@ -47,6 +47,14 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
             )
             .await
         }
+        Request::SetPaused { paused } => {
+            execute(
+                commands,
+                |reply| Command::SetPaused { paused, reply },
+                |()| Response::Done,
+            )
+            .await
+        }
         Request::ReloadConfig => {
             execute(commands, Command::ReloadConfig, |()| Response::Done).await
         }
@@ -127,7 +135,7 @@ fn error_response(error: &DaemonError) -> Response {
     let kind = match error {
         DaemonError::Config(_) => ErrorKind::InvalidConfig,
         DaemonError::Layout(_) => ErrorKind::InvalidLayout,
-        DaemonError::PairingBusy => ErrorKind::Busy,
+        DaemonError::PairingBusy | DaemonError::Paused => ErrorKind::Busy,
         DaemonError::NotConnected => ErrorKind::NotConnected,
         DaemonError::NotPaired => ErrorKind::NotPaired,
         DaemonError::Pairing(_) => ErrorKind::PairingRefused,

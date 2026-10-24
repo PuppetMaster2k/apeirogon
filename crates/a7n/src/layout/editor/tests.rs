@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_ipc::{MachineId, PlacedMachine, UnplacedMachine};
+use a7n_ipc::{MachineId, PlacedMachine};
 
 use super::*;
 
@@ -10,35 +10,9 @@ fn machine(id: u8, x: i32, y: i32) -> PlacedMachine {
         name: format!("machine-{id}"),
         x,
         y,
-        width: DEFAULT_MACHINE_SIZE.0,
-        height: DEFAULT_MACHINE_SIZE.1,
+        width: 1920,
+        height: 1080,
     }
-}
-
-#[test]
-fn new_unplaced_machines_places_to_right_top_aligned() {
-    // Arrange
-    let info = LayoutInfo {
-        placed: vec![machine(1, -1920, -100), machine(2, 0, 100)],
-        unplaced: [3, 4]
-            .into_iter()
-            .map(|id| UnplacedMachine {
-                machine: MachineId::try_from([id; MachineId::LEN].as_slice()).unwrap(),
-                name: format!("machine-{id}"),
-            })
-            .collect(),
-        lost_edit: false,
-    };
-
-    // Act
-    let editor = Editor::new(info).unwrap();
-
-    // Assert
-    assert_eq!(editor.placements[2].x, 1920);
-    assert_eq!(editor.placements[3].x, 3840);
-    assert_eq!(editor.placements[2].y, -100);
-    assert_eq!(editor.placements[3].y, -100);
-    assert!(validate(&editor.placements).is_ok());
 }
 
 #[test]

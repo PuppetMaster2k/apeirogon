@@ -57,10 +57,21 @@ impl Daemon {
         self.input_actions(actions).await;
     }
 
+    pub(crate) async fn set_paused(&mut self, paused: bool) {
+        if paused {
+            let actions = self.input.focus.go_home();
+            self.input_actions(actions).await;
+        }
+        self.input.paused = paused;
+    }
+
     pub(crate) async fn switch_machine(
         &mut self,
         target: a7n_proto::MachineId,
     ) -> Result<(), crate::daemon::DaemonError> {
+        if self.input.paused && target != self.identity.machine_id {
+            return Err(crate::daemon::DaemonError::Paused);
+        }
         let actions = if target == self.identity.machine_id {
             self.input.focus.go_home()
         } else if self.links.by_peer.get(&target).is_some_and(|handle| {

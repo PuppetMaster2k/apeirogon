@@ -18,6 +18,10 @@ pub(crate) type Reply<T> = oneshot::Sender<Result<T, DaemonError>>;
 pub(crate) enum Command {
     ReloadConfig(Reply<()>),
     Shutdown(Reply<()>),
+    SetPaused {
+        paused: bool,
+        reply: Reply<()>,
+    },
     Switch {
         machine: MachineId,
         reply: Reply<()>,

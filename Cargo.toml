@@ -10,6 +10,8 @@ repository = "https://github.com/PuppetMaster2k/apeirogon"
 rust-version = "1.85"
 
 [workspace.dependencies]
+eframe = "=0.31.1"
+tray-icon = { version = "=0.19.2", default-features = false }
 a7n-proto    = { path = "crates/a7n-proto" }
 a7n-ipc      = { path = "crates/a7n-ipc" }
 a7n-core     = { path = "crates/a7n-core" }

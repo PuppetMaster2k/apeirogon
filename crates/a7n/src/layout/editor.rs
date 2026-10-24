@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use a7n_ipc::{LayoutInfo, LayoutPlacement, Placement, validate};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-const DEFAULT_MACHINE_SIZE: (u32, u32) = (1920, 1080);
 const MOVE_STEP: i32 = 100;
 const FINE_MOVE_STEP: i32 = 10;
 
@@ -25,45 +24,12 @@ pub(super) enum Action {
 
 impl Editor {
     pub(super) fn new(info: LayoutInfo) -> Result<Self> {
-        let mut placements: Vec<_> = info
-            .placed
-            .iter()
-            .map(|machine| Placement {
-                id: machine.machine,
-                x: machine.x,
-                y: machine.y,
-                width: machine.width,
-                height: machine.height,
-            })
-            .collect();
-        let mut right = placements
-            .iter()
-            .map(|p| i64::from(p.x) + i64::from(p.width))
-            .max()
-            .unwrap_or(0);
-        let top = placements.iter().map(|p| p.y).min().unwrap_or(0);
-        let mut names: Vec<_> = info
-            .placed
-            .into_iter()
-            .map(|machine| machine.name)
-            .collect();
-        for machine in info.unplaced {
-            let x = i32::try_from(right).context("no canvas space to place unplaced machines")?;
-            placements.push(Placement {
-                id: machine.machine,
-                x,
-                y: top,
-                width: DEFAULT_MACHINE_SIZE.0,
-                height: DEFAULT_MACHINE_SIZE.1,
-            });
-            names.push(machine.name);
-            right += i64::from(DEFAULT_MACHINE_SIZE.0);
-        }
+        let draft = a7n_ipc::layout::LayoutDraft::try_from(info)?;
         Ok(Self {
-            placements,
-            names,
+            placements: draft.placements,
+            names: draft.names,
             selected: 0,
-            lost_edit: info.lost_edit,
+            lost_edit: draft.lost_edit,
         })
     }
 
