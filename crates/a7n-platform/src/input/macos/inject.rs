@@ -215,14 +215,7 @@ impl State {
             let event = event
                 .CGEvent()
                 .ok_or_else(|| io::Error::other("cannot convert media event"))?;
-            CGEvent::set_flags(Some(&event), self.flags());
-            CGEvent::set_integer_value_field(
-                Some(&event),
-                CGEventField::EventSourceUserData,
-                INJECTION_MARKER,
-            );
-            CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&event));
-            Ok(())
+            self.post(Some(event.into()))
         })
     }
 }

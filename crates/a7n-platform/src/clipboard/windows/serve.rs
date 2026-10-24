@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::thread;
-use std::time::Instant;
-
-use a7n_proto::limits::{CLIPBOARD_FETCH_TIMEOUT, CLIPBOARD_TEXT_MAX};
-use tokio::sync::oneshot;
+use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::System::DataExchange::{
     EmptyClipboard, GetClipboardOwner, GetClipboardSequenceNumber,
 };
 
 use super::State;
-use super::data::{Open, RETRY_INTERVAL, offer};
-use crate::clipboard::{ClipboardCommand, PasteRequest};
+use super::data::{Open, offer};
+use crate::clipboard::ClipboardCommand;
 
 impl State {
     pub(super) fn set(&mut self, hwnd: HWND, command: ClipboardCommand) {
@@ -64,31 +60,12 @@ impl State {
             return;
         };
         let item = &self.lazy[index].1;
-        let (reply, mut receiver) = oneshot::channel();
-        let request = PasteRequest {
-            generation,
-            item_index: item.item_index,
-            reply,
-        };
-        if self.pastes.try_send(request).is_err() {
+        let Some(bytes) = crate::clipboard::fetch::fetch(generation, item.item_index, &self.pastes)
+        else {
             return;
-        }
-        let deadline = Instant::now() + CLIPBOARD_FETCH_TIMEOUT;
-        loop {
-            match receiver.try_recv() {
-                Ok(Some(bytes)) => {
-                    if bytes.len() as u64 == item.size && self.formats.write(format, &bytes) {
-                        self.lazy.swap_remove(index);
-                    }
-                    return;
-                }
-                Err(oneshot::error::TryRecvError::Empty) if Instant::now() < deadline => {
-                    thread::sleep(
-                        RETRY_INTERVAL.min(deadline.saturating_duration_since(Instant::now())),
-                    );
-                }
-                _ => return,
-            }
+        };
+        if bytes.len() as u64 == item.size && self.formats.write(format, &bytes) {
+            self.lazy.swap_remove(index);
         }
     }
 

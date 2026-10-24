@@ -1,20 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::sync::Mutex;
-use std::thread;
-use std::time::{Duration, Instant};
 
 use a7n_core::clipboard::Generation;
-use a7n_proto::limits::{CLIPBOARD_FETCH_TIMEOUT, CLIPBOARD_TEXT_MAX};
+use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
 use objc2::rc::Retained;
 use objc2::{AnyThread, DefinedClass, define_class, msg_send};
 use objc2_app_kit::{NSPasteboard, NSPasteboardItem, NSPasteboardItemDataProvider};
 use objc2_foundation::{NSData, NSObject, NSObjectProtocol, NSString};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
 use crate::clipboard::{LazyItem, PasteRequest};
-
-const REPLY_INTERVAL: Duration = Duration::from_millis(10);
 
 pub(super) struct Offer {
     generation: Generation,
@@ -80,28 +76,6 @@ fn fetch(
     item: &LazyItem,
     pastes: &mpsc::Sender<PasteRequest>,
 ) -> Option<Vec<u8>> {
-    let (reply, mut receiver) = oneshot::channel();
-    pastes
-        .try_send(PasteRequest {
-            generation,
-            item_index: item.item_index,
-            reply,
-        })
-        .ok()?;
-    let deadline = Instant::now() + CLIPBOARD_FETCH_TIMEOUT;
-    loop {
-        match receiver.try_recv() {
-            Ok(Some(bytes))
-                if bytes.len() <= CLIPBOARD_TEXT_MAX && bytes.len() as u64 == item.size =>
-            {
-                return Some(bytes);
-            }
-            Err(oneshot::error::TryRecvError::Empty) if Instant::now() < deadline => {
-                thread::sleep(
-                    REPLY_INTERVAL.min(deadline.saturating_duration_since(Instant::now())),
-                );
-            }
-            _ => return None,
-        }
-    }
+    let bytes = crate::clipboard::fetch::fetch(generation, item.item_index, pastes)?;
+    (bytes.len() <= CLIPBOARD_TEXT_MAX && bytes.len() as u64 == item.size).then_some(bytes)
 }

@@ -169,14 +169,12 @@ async fn run_clipboard(service: Option<Service>) {
 /// closed again.
 async fn open(tokens: &mut Option<TokenStore>) -> Result<(Capturer, Injecting), InputError> {
     let mut capturer = Capturer::new(session::open_capture(tokens).await?).await?;
-    let desktop = match session::open_desktop(tokens).await {
-        Ok(desktop) => desktop,
-        Err(error) => {
-            let _ = tokio::time::timeout(SHUTDOWN_TIMEOUT, capturer.shutdown()).await;
-            return Err(error);
-        }
-    };
-    match Injecting::new(desktop, capturer.bounds()).await {
+    let injecting = async {
+        let desktop = session::open_desktop(tokens).await?;
+        Injecting::new(desktop, capturer.bounds()).await
+    }
+    .await;
+    match injecting {
         Ok(injecting) => Ok((capturer, injecting)),
         Err(error) => {
             let _ = tokio::time::timeout(SHUTDOWN_TIMEOUT, capturer.shutdown()).await;
