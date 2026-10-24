@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.2.0...v0.3.0) (2026-10-24)
+
+
+### Features
+
+* add image clipboard ([#78](https://github.com/PuppetMaster2k/apeirogon/issues/78)) ([99c21ca](https://github.com/PuppetMaster2k/apeirogon/commit/99c21ca4fc16efc06421b14f14fe13b116774ab2))
+* **gui:** add egui settings window and tray with pause ([#79](https://github.com/PuppetMaster2k/apeirogon/issues/79)) ([76e696a](https://github.com/PuppetMaster2k/apeirogon/commit/76e696a1970f285a3ceeaf3870b3dfc69ea30ac7))
+
 ## 0.2.0 - 2026-10-24
 
 ### Features
@@ -37,4 +45,3 @@
 
 - fix: bind the control socket before input start and clean up wayland review findings (#70)
 - fix: correct daemon crate name, licenses and msrv (#37)
-
