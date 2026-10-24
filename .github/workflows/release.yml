@@ -44,7 +44,7 @@ jobs:
                   tail -n +3 "$RUNNER_TEMP/release-plan" > "$RUNNER_TEMP/release-notes.md"
                   scripts/release.sh apply "$version" "$RUNNER_TEMP/release-notes.md"
                   git config user.name 'github-actions[bot]'
-                  git config user.email '41898+github-actions[bot]@users.noreply.github.com'
+                  git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
                   git checkout -B chore/release
                   git add Cargo.toml Cargo.lock CHANGELOG.md
                   git commit -s -m "chore: release $version"
