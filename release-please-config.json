@@ -5,7 +5,7 @@
     "include-v-in-tag": true,
     "draft": true,
     "force-tag-creation": true,
-    "signoff": "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+    "signoff": "PuppetMaster2k <marcel.fey@gmail.com>",
     "pull-request-title-pattern": "chore: release ${version}",
     "packages": {
         ".": {
