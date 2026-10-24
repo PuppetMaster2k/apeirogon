@@ -57,6 +57,10 @@ pub const CONCURRENT_TRANSFERS_PER_LINK: usize = 4;
 pub const CLIPBOARD_TEXT_MAX: usize = 256 * 1024;
 /// Largest image clipboard item in bytes (section 14).
 pub const IMAGE_CLIPBOARD_MAX: usize = 8 * 1024 * 1024;
+/// Largest clipboard image dimension in pixels (section 14).
+pub const IMAGE_MAX_DIMENSION: u32 = 16_384;
+/// Largest decoded RGBA clipboard image in bytes (section 14).
+pub const IMAGE_DECODED_MAX: usize = 256 * 1024 * 1024;
 /// Inline clipboard bytes per announce, summed over items (section 14).
 pub const CLIPBOARD_INLINE_MAX: usize = 64 * 1024;
 /// Largest number of machines in a desk layout (section 14).

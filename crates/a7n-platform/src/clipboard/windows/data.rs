@@ -5,7 +5,7 @@ use std::ptr::null_mut;
 use std::thread;
 use std::time::Duration;
 
-use a7n_core::clipboard::{TEXT_HTML, TEXT_PLAIN};
+use a7n_core::clipboard::{IMAGE_PNG, TEXT_HTML, TEXT_PLAIN, limit_for, validate_png};
 use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
 use windows_sys::Win32::Foundation::{GlobalFree, HWND};
 use windows_sys::Win32::System::DataExchange::{
@@ -14,7 +14,7 @@ use windows_sys::Win32::System::DataExchange::{
 use windows_sys::Win32::System::Memory::{
     GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock,
 };
-use windows_sys::Win32::System::Ole::CF_UNICODETEXT;
+use windows_sys::Win32::System::Ole::{CF_DIB, CF_UNICODETEXT};
 use windows_sys::core::w;
 
 use crate::clipboard::cf_html;
@@ -27,6 +27,7 @@ pub(super) const MAX_OS_BYTES: usize = (CLIPBOARD_TEXT_MAX + 1) * size_of::<u16>
 
 pub(super) struct Formats {
     pub html: u32,
+    pub png: u32,
     pub exclude: u32,
     pub history: u32,
     pub cloud: u32,
@@ -37,6 +38,7 @@ impl Formats {
         // SAFETY: All names are static NUL-terminated UTF-16 strings.
         let formats = unsafe {
             Self {
+                png: RegisterClipboardFormatW(w!("PNG")),
                 html: RegisterClipboardFormatW(w!("HTML Format")),
                 exclude: RegisterClipboardFormatW(w!(
                     "ExcludeClipboardContentFromMonitorProcessing"
@@ -47,6 +49,7 @@ impl Formats {
         };
         if [
             formats.html,
+            formats.png,
             formats.exclude,
             formats.history,
             formats.cloud,
@@ -60,6 +63,7 @@ impl Formats {
 
     pub(super) fn format(&self, mime: &str) -> Option<u32> {
         match mime {
+            IMAGE_PNG => Some(self.png),
             TEXT_PLAIN => Some(u32::from(CF_UNICODETEXT)),
             TEXT_HTML => Some(self.html),
             _ => None,
@@ -67,7 +71,17 @@ impl Formats {
     }
 
     pub(super) fn write(&self, format: u32, data: &[u8]) -> bool {
-        if data.len() > CLIPBOARD_TEXT_MAX {
+        if format == self.png || format == u32::from(CF_DIB) {
+            if data.len() > limit_for(IMAGE_PNG) || validate_png(data).is_err() {
+                return false;
+            }
+            return if format == self.png {
+                write_global(format, data)
+            } else {
+                super::image::to_dib(data).is_some_and(|dib| write_global(format, &dib))
+            };
+        }
+        if data.len() > limit_for(TEXT_PLAIN) {
             return false;
         }
         let Ok(text) = std::str::from_utf8(data) else {

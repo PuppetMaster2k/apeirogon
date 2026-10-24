@@ -53,3 +53,12 @@ there. Sensitive-content markers still prevent clipboard announcements.
 
 - [ ] Primary selection (middle click) is never synchronised.
 - [ ] Logs contain event kinds and sizes only, never clipboard text.
+
+## Images
+
+- Copy a PNG screenshot on X11, Wayland data-control and GNOME portal; paste it on each other backend and compare pixels.
+- Repeat with an image above 64 KiB and confirm the transfer starts on paste.
+- Copy text and an image together; check each pastes in the appropriate app.
+- Confirm sensitive markers and the app deny-list exclude image copies as well as text.
+- Try an image above 8 MiB and an image exceeding the dimension/decoded bounds; confirm paste fails without replacing newer clipboard data.
+- Pair with a text-only peer and confirm text still works without image offers.

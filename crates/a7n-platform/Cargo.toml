@@ -27,6 +27,7 @@ wayland-protocols-wlr.workspace = true
 x11rb.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+png.workspace = true
 widestring.workspace = true
 windows-sys.workspace = true
 
@@ -38,6 +39,7 @@ objc2-core-foundation.workspace = true
 objc2-core-graphics.workspace = true
 
 [dev-dependencies]
+png.workspace = true
 tempfile.workspace = true
 
 [lints]

@@ -3,7 +3,7 @@
 //! Which offered formats to read from a foreign selection. Pure.
 
 use super::super::formats::{SENSITIVE_MARKER, names_of};
-use a7n_core::clipboard::{TEXT_HTML, TEXT_PLAIN};
+use a7n_core::clipboard::{IMAGE_PNG, TEXT_HTML, TEXT_PLAIN};
 
 /// Offered next to our own selection so the backend recognises its own write
 /// coming back from the compositor and does not announce it again.
@@ -35,7 +35,7 @@ pub(super) fn plan_reads(offered: &[String]) -> ReadPlan {
             reads: Vec::new(),
         };
     }
-    let reads = [TEXT_PLAIN, TEXT_HTML]
+    let reads = [TEXT_PLAIN, TEXT_HTML, IMAGE_PNG]
         .into_iter()
         .filter_map(|item| {
             let offered = names_of(item)
@@ -67,7 +67,7 @@ mod tests {
                 vec![(TEXT_PLAIN, TEXT_PLAIN), (TEXT_HTML, "text/html")],
             ),
             (names(&["UTF8_STRING"]), vec![(TEXT_PLAIN, "UTF8_STRING")]),
-            (names(&["image/png", "TARGETS"]), vec![]),
+            (names(&[IMAGE_PNG, "TARGETS"]), vec![(IMAGE_PNG, IMAGE_PNG)]),
         ];
         for (offered, expected) in cases {
             // Act
@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn plan_reads_sensitive_marker_offered_reads_nothing() {
         // Arrange
-        let offered = names(&[TEXT_PLAIN, SENSITIVE_MARKER]);
+        let offered = names(&[TEXT_PLAIN, IMAGE_PNG, SENSITIVE_MARKER]);
 
         // Act
         let plan = plan_reads(&offered);

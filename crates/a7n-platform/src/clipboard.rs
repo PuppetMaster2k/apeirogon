@@ -21,11 +21,16 @@ mod x11;
 mod cf_html;
 #[cfg(windows)]
 mod windows;
+#[cfg(all(test, not(windows)))]
+#[path = "clipboard/windows/image.rs"]
+mod windows_image;
 
 /// Backends must suppress changes caused by their own `Set` commands so that
 /// remote clipboard writes cannot create a copy/announce feedback loop.
 #[derive(Debug)]
 pub struct Clipboard {
+    /// The backend can read and offer PNG images.
+    pub images: bool,
     pub changes: mpsc::Receiver<LocalChange>,
     pub commands: mpsc::Sender<ClipboardCommand>,
     /// The OS asked to paste an item that was offered without data.

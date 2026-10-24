@@ -103,6 +103,11 @@ impl Daemon {
     }
 
     pub(crate) fn with_clipboard(mut self, handle: Option<Clipboard>) -> Self {
+        if handle.as_ref().is_some_and(|handle| handle.images) {
+            self.info
+                .capabilities
+                .push(Capability::ClipboardImage.into());
+        }
         if handle.is_some() {
             self.info
                 .capabilities
@@ -131,6 +136,31 @@ impl Daemon {
                 .is_some_and(|link| link.capabilities.contains(&Capability::ClipboardText))
     }
 
+    fn clipboard_images(&self) -> bool {
+        self.clipboard
+            .handle
+            .as_ref()
+            .is_some_and(|handle| handle.images)
+    }
+
+    fn clipboard_can_send_image(&self, peer: MachineId) -> bool {
+        self.clipboard_images()
+            && self
+                .links
+                .by_peer
+                .get(&peer)
+                .is_some_and(|link| link.capabilities.contains(&Capability::ClipboardImage))
+    }
+
+    fn clipboard_announce_to(&mut self, peer: MachineId, mut wire: ClipboardAnnounce) {
+        if !self.clipboard_can_send_image(peer) {
+            wire.items.retain(|item| item.mime != clipboard::IMAGE_PNG);
+        }
+        if !wire.items.is_empty() {
+            self.send_input(peer, Body::ClipboardAnnounce(wire));
+        }
+    }
+
     pub(super) fn clipboard_link_up(&mut self, peer: MachineId) {
         let id = self.links.by_peer[&peer].connection.stable_id();
         self.clipboard.links.insert(peer, Transfers::new(id));
@@ -144,7 +174,7 @@ impl Daemon {
             .filter(|wire| wire.origin == self.identity.machine_id.as_bytes())
             .cloned()
         {
-            self.send_input(peer, Body::ClipboardAnnounce(wire));
+            self.clipboard_announce_to(peer, wire);
         }
     }
 
@@ -162,7 +192,7 @@ impl Daemon {
             return;
         }
         let generation = self.clipboard.clock.next(self.identity.machine_id);
-        // The previous copy is no longer available, even if this copy has no supported text.
+        // The previous copy is no longer available, even if this copy has no supported formats.
         self.clipboard.announce = None;
         let Some(wire) = clipboard::announce(change.items.clone(), generation) else {
             return;
@@ -187,7 +217,7 @@ impl Daemon {
             .filter(|peer| self.clipboard_can_send(*peer))
             .collect();
         for peer in peers {
-            self.send_input(peer, Body::ClipboardAnnounce(wire.clone()));
+            self.clipboard_announce_to(peer, wire.clone());
         }
         self.clipboard.announce = Some(wire);
     }
@@ -206,7 +236,7 @@ impl Daemon {
         {
             return;
         }
-        let received = match clipboard::accept(self.clipboard.current, wire) {
+        let mut received = match clipboard::accept(self.clipboard.current, wire) {
             Ok(Some(received)) => received,
             Ok(None) => return,
             Err(_) => {
@@ -214,6 +244,18 @@ impl Daemon {
                 return;
             }
         };
+        let images = self.clipboard_images();
+        received
+            .items
+            .retain(|item| item.mime != clipboard::IMAGE_PNG || images);
+        received
+            .pending
+            .retain(|&index| images || wire.items[index as usize].mime != clipboard::IMAGE_PNG);
+        if received.items.iter().any(|item| {
+            item.mime == clipboard::IMAGE_PNG && clipboard::validate_png(&item.data).is_err()
+        }) {
+            return;
+        }
         self.clipboard.current = Some(received.generation);
         self.clipboard.announce = Some(wire.clone());
         self.clipboard.own_items.clear();

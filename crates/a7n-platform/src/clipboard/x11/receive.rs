@@ -2,8 +2,8 @@
 
 use std::time::Instant;
 
+use a7n_core::clipboard::limit_for;
 use a7n_core::clipboard::{Item, LocalChange};
-use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
 use tokio::sync::mpsc::Sender;
 use x11rb::NONE;
 use x11rb::protocol::Event;
@@ -107,6 +107,7 @@ impl Receiver {
         let Some(read) = &mut self.active else {
             return;
         };
+        let limit = limit_for(mime(&session.atoms, read.target).unwrap_or(""));
         // Bound the reply before allocating, including a hostile TARGETS list.
         let reply = session
             .conn
@@ -116,7 +117,7 @@ impl Receiver {
                 session.atoms.PROPERTY,
                 AtomEnum::ANY,
                 0,
-                u32::try_from(CLIPBOARD_TEXT_MAX / 4 + 1).unwrap_or(u32::MAX),
+                u32::try_from(limit / 4 + 1).unwrap_or(u32::MAX),
             )
             .ok()
             .and_then(|cookie| cookie.reply().ok());
@@ -124,7 +125,7 @@ impl Receiver {
             self.advance(session);
             return;
         };
-        if reply.bytes_after != 0 || reply.value.len() > CLIPBOARD_TEXT_MAX {
+        if reply.bytes_after != 0 || reply.value.len() > limit {
             self.advance(session);
             return;
         }
@@ -132,7 +133,7 @@ impl Receiver {
             let size = reply.value32().and_then(|mut values| values.next());
             if read.target == session.atoms.TARGETS
                 || reply.format != 32
-                || size.is_none_or(|size| u64::from(size) > CLIPBOARD_TEXT_MAX as u64)
+                || size.is_none_or(|size| u64::from(size) > limit as u64)
             {
                 self.advance(session);
                 return;
@@ -159,7 +160,7 @@ impl Receiver {
         }
         if reply.format != 8
             || reply.type_ != read.target
-            || read.data.len().saturating_add(reply.value.len()) > CLIPBOARD_TEXT_MAX
+            || read.data.len().saturating_add(reply.value.len()) > limit
         {
             self.advance(session);
             return;

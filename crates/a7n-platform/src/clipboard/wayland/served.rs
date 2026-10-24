@@ -2,7 +2,8 @@
 
 //! The selection this backend owns after a `Set`, and how a paste is answered. Pure.
 
-use a7n_core::clipboard::{Generation, Item, TEXT_HTML, TEXT_PLAIN};
+use a7n_core::clipboard::{Generation, IMAGE_PNG, Item, TEXT_HTML, TEXT_PLAIN};
+#[cfg(test)]
 use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
 
 use super::super::formats::{item_mime_of, names_of};
@@ -36,18 +37,18 @@ impl Served {
             generation,
             items: items
                 .into_iter()
-                .filter(|item| item.data.len() <= CLIPBOARD_TEXT_MAX)
+                .filter(|item| item.data.len() <= a7n_core::clipboard::limit_for(&item.mime))
                 .collect(),
             lazy: lazy
                 .into_iter()
-                .filter(|item| item.size <= CLIPBOARD_TEXT_MAX as u64)
+                .filter(|item| item.size <= a7n_core::clipboard::limit_for(&item.mime) as u64)
                 .collect(),
         }
     }
 
     /// Every name to advertise, best first within each item.
     pub(super) fn offered(&self) -> Vec<&'static str> {
-        [TEXT_PLAIN, TEXT_HTML]
+        [TEXT_PLAIN, TEXT_HTML, IMAGE_PNG]
             .into_iter()
             .filter(|mime| self.has(mime))
             .flat_map(|mime| names_of(mime).iter().copied())
@@ -157,5 +158,43 @@ mod tests {
 
         // Assert
         assert_eq!(offered, ["text/html;charset=utf-8", "text/html"]);
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+    use a7n_proto::{MachineId, limits};
+
+    #[test]
+    fn decide_image_above_text_limit_offers_lazy_png() {
+        // Arrange
+        let generation = Generation {
+            generation: 1,
+            origin: MachineId::try_from(&[1; 16][..]).unwrap(),
+        };
+        let served = Served::new(ClipboardCommand::Set {
+            generation,
+            items: vec![],
+            lazy: vec![LazyItem {
+                mime: IMAGE_PNG.into(),
+                size: limits::CLIPBOARD_TEXT_MAX as u64 + 1,
+                item_index: 2,
+            }],
+        });
+
+        // Act
+        let offered = served.offered();
+        let decision = served.decide(IMAGE_PNG);
+
+        // Assert
+        assert_eq!(offered, [IMAGE_PNG]);
+        assert_eq!(
+            decision,
+            Serve::Lazy {
+                generation,
+                item_index: 2
+            }
+        );
     }
 }

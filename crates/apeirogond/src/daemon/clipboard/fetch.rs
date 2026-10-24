@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use a7n_core::clipboard::{IMAGE_PNG, limit_for, validate_png};
 use a7n_platform::clipboard::PasteRequest;
 use a7n_proto::v1::{
     AbortReason, ClipboardItem, ClipboardRef, FileChunk, FileEnd, TransferAbort, TransferDone,
@@ -183,7 +184,9 @@ impl Daemon {
                     && matches!(&request.source, Some(Source::Clipboard(reference))
                         if reference.origin == wire.origin && reference.generation == wire.generation)
                     && request.resume.is_empty()
-            }).and_then(|_| self.clipboard.own_items.get(request.item_index as usize))
+            }).and_then(|_| self.clipboard.own_items.iter()
+                .filter(|item| item.mime != IMAGE_PNG || self.clipboard_can_send_image(peer))
+                .nth(request.item_index as usize))
                 .map(|item| item.data.clone()).ok_or(AbortReason::NotFound)
         };
         let connection = link.connection.clone();
@@ -319,7 +322,7 @@ struct Verifier<'a> {
 
 impl<'a> Verifier<'a> {
     fn new(item: &'a ClipboardItem) -> Result<Self, &'static str> {
-        if item.size > limits::CLIPBOARD_TEXT_MAX as u64 {
+        if item.size > limit_for(&item.mime) as u64 {
             return Err("size");
         }
         Ok(Self {
@@ -348,6 +351,9 @@ impl<'a> Verifier<'a> {
                     || Sha256::digest(&self.data).as_slice() != self.item.sha256
                 {
                     return Err("integrity");
+                }
+                if self.item.mime == IMAGE_PNG && validate_png(&self.data).is_err() {
+                    return Err("image");
                 }
                 self.ended = true;
             }

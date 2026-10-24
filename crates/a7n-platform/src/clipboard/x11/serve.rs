@@ -3,7 +3,6 @@
 use std::time::Instant;
 
 use a7n_core::clipboard::{Generation, Item};
-use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
 use tokio::sync::{mpsc::Sender, oneshot};
 use x11rb::protocol::Event;
 use x11rb::protocol::xproto::{
@@ -59,11 +58,11 @@ impl Owner {
         self.generation = Some(generation);
         self.items = items
             .into_iter()
-            .filter(|item| item.data.len() <= CLIPBOARD_TEXT_MAX)
+            .filter(|item| item.data.len() <= a7n_core::clipboard::limit_for(&item.mime))
             .collect();
         self.lazy = lazy
             .into_iter()
-            .filter(|item| item.size <= CLIPBOARD_TEXT_MAX as u64)
+            .filter(|item| item.size <= a7n_core::clipboard::limit_for(&item.mime) as u64)
             .collect();
         let _ =
             session
@@ -163,6 +162,7 @@ impl Owner {
             session.atoms.PLAIN,
             session.atoms.HTML,
             session.atoms.HTML_UTF8,
+            session.atoms.PNG,
         ] {
             if mime(&session.atoms, target).is_some_and(|mime| {
                 self.items.iter().any(|item| item.mime == mime)
@@ -175,7 +175,10 @@ impl Owner {
     }
 
     fn respond(&mut self, session: &Session, request: SelectionRequestEvent, data: Vec<u8>) {
-        if data.len() > CLIPBOARD_TEXT_MAX || session.chunk_size == 0 {
+        if data.len()
+            > a7n_core::clipboard::limit_for(mime(&session.atoms, request.target).unwrap_or(""))
+            || session.chunk_size == 0
+        {
             notify(session, &request, NONE);
             return;
         }

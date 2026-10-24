@@ -23,6 +23,7 @@ fn daemon() -> (
     let (command_tx, commands) = mpsc::channel(8);
     (
         daemon.with_clipboard(Some(Clipboard {
+            images: true,
             changes: change_rx,
             commands: command_tx,
             pastes: mpsc::channel(1).1,
@@ -339,4 +340,58 @@ async fn clipboard_link_up_send_policy_or_older_generation_does_not_set_backend(
         a.stop().await;
         b.stop().await;
     }
+}
+
+#[tokio::test]
+async fn receive_clipboard_invalid_inline_image_does_not_set_backend() {
+    // Arrange
+    let (mut daemon, _dir, _changes, mut commands) = daemon();
+    let peer = daemon.identity.machine_id;
+    let incoming = clipboard::announce(
+        vec![Item {
+            mime: clipboard::IMAGE_PNG.into(),
+            data: b"invalid PNG".to_vec(),
+        }],
+        Generation {
+            origin: peer,
+            generation: 1,
+        },
+    )
+    .unwrap();
+
+    // Act
+    daemon.receive_clipboard(peer, &incoming);
+
+    // Assert
+    assert!(commands.try_recv().is_err());
+    assert!(daemon.clipboard.current.is_none());
+}
+
+#[tokio::test]
+async fn receive_clipboard_backend_without_images_drops_image_items() {
+    // Arrange
+    let (mut daemon, _dir, _changes, mut commands) = daemon();
+    daemon.clipboard.handle.as_mut().unwrap().images = false;
+    let peer = daemon.identity.machine_id;
+    let mut items = change("text").items;
+    items.push(Item {
+        mime: clipboard::IMAGE_PNG.into(),
+        data: vec![0; limits::CLIPBOARD_INLINE_MAX + 1],
+    });
+    let incoming = clipboard::announce(
+        items,
+        Generation {
+            origin: peer,
+            generation: 1,
+        },
+    )
+    .unwrap();
+
+    // Act
+    daemon.receive_clipboard(peer, &incoming);
+
+    // Assert
+    let ClipboardCommand::Set { items, lazy, .. } = commands.try_recv().unwrap();
+    assert_eq!(items, change("text").items);
+    assert_eq!(lazy, []);
 }

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Text clipboard formats shared by the X11 and Wayland backends.
+//! Clipboard formats shared by the X11 and Wayland backends.
 
-use a7n_core::clipboard::{TEXT_HTML, TEXT_PLAIN};
+use a7n_core::clipboard::{IMAGE_PNG, TEXT_HTML, TEXT_PLAIN};
 
 /// Password managers offer this format next to a secret; such a copy is never
 /// announced, and the exclusion cannot be turned off.
@@ -19,6 +19,7 @@ const HTML_NAMES: [&str; 2] = [HTML_UTF8_ALIAS, HTML_ALIAS];
 pub(super) fn names_of(item_mime: &str) -> &'static [&'static str] {
     match item_mime {
         TEXT_PLAIN => &PLAIN_NAMES,
+        IMAGE_PNG => &[IMAGE_PNG],
         TEXT_HTML => &HTML_NAMES,
         _ => &[],
     }
@@ -26,7 +27,7 @@ pub(super) fn names_of(item_mime: &str) -> &'static [&'static str] {
 
 /// The item format a requested name stands for.
 pub(super) fn item_mime_of(name: &str) -> Option<&'static str> {
-    [TEXT_PLAIN, TEXT_HTML]
+    [TEXT_PLAIN, TEXT_HTML, IMAGE_PNG]
         .into_iter()
         .find(|item| names_of(item).contains(&name))
 }
@@ -44,7 +45,7 @@ mod tests {
             (TEXT_PLAIN, Some(TEXT_PLAIN)),
             ("text/html", Some(TEXT_HTML)),
             (SENSITIVE_MARKER, None),
-            ("image/png", None),
+            ("image/png", Some(IMAGE_PNG)),
         ];
         for (name, expected) in cases {
             // Act
