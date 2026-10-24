@@ -268,16 +268,7 @@ impl State {
         let changes = self.changes.clone();
         let current = Arc::clone(&self.epoch);
         tokio::spawn(async move {
-            let items = transfer::read_items(reads).await;
-            if current.load(Ordering::SeqCst) != epoch {
-                return;
-            }
-            let change = LocalChange {
-                items,
-                sensitive,
-                source_app: None,
-            };
-            let _ = changes.send(change).await;
+            transfer::publish(reads, sensitive, &current, epoch, &changes).await;
         });
     }
 

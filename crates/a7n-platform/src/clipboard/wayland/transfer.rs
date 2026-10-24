@@ -4,9 +4,11 @@
 
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use a7n_core::clipboard::Item;
+use a7n_core::clipboard::{Item, LocalChange};
 use a7n_proto::limits::{CLIPBOARD_FETCH_TIMEOUT, CLIPBOARD_TEXT_MAX};
+use futures_util::future::join_all;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 use tokio::time::timeout;
@@ -31,20 +33,40 @@ impl Limiter {
 
 /// Reads each format within the text limit and the read timeout. A format
 /// that fails is left out, like in the X11 backend.
-pub(super) async fn read_items(reads: Vec<(&'static str, OwnedFd)>) -> Vec<Item> {
-    let mut items = Vec::new();
-    for (mime, fd) in reads {
+async fn read_items(reads: Vec<(&'static str, OwnedFd)>) -> Vec<Item> {
+    join_all(reads.into_iter().map(|(mime, fd)| async move {
         let read = timeout(READ_TIMEOUT, pipe::read_limited(fd, CLIPBOARD_TEXT_MAX)).await;
-        if let Ok(Ok(Some(data))) = read {
-            if !data.is_empty() {
-                items.push(Item {
-                    mime: mime.to_owned(),
-                    data,
-                });
-            }
+        match read {
+            Ok(Ok(Some(data))) if !data.is_empty() => Some(Item {
+                mime: mime.to_owned(),
+                data,
+            }),
+            _ => None,
         }
+    }))
+    .await
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+pub(super) async fn publish(
+    reads: Vec<(&'static str, OwnedFd)>,
+    sensitive: bool,
+    epoch: &AtomicU64,
+    stamp: u64,
+    changes: &Sender<LocalChange>,
+) {
+    let items = read_items(reads).await;
+    if epoch.load(Ordering::SeqCst) != stamp {
+        return;
     }
-    items
+    let change = LocalChange {
+        items,
+        sensitive,
+        source_app: None,
+    };
+    let _ = changes.send(change).await;
 }
 
 /// Answers one paste: inline data directly, lazy data after the origin
@@ -83,4 +105,69 @@ pub(super) async fn answer(
         timeout(WRITE_TIMEOUT, pipe::write_all(fd, data)).await,
         Ok(Ok(()))
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use rustix::pipe::{PipeFlags, pipe_with};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn read_items_interdependent_writers_reads_concurrently_in_input_order() {
+        // Arrange
+        let (first, first_writer) = pipe_with(PipeFlags::CLOEXEC).unwrap();
+        let (second, second_writer) = pipe_with(PipeFlags::CLOEXEC).unwrap();
+        let data = vec![7; CLIPBOARD_TEXT_MAX];
+        // The second pipe must be drained before the first writer can close.
+        let write = async {
+            pipe::write_all(second_writer, &data).await.unwrap();
+            pipe::write_all(first_writer, b"first").await.unwrap();
+        };
+
+        // Act
+        let (items, ()) = tokio::join!(
+            read_items(vec![("text/plain", first), ("text/html", second)]),
+            write,
+        );
+
+        // Assert
+        assert_eq!(
+            items,
+            vec![
+                Item {
+                    mime: "text/plain".to_owned(),
+                    data: b"first".to_vec()
+                },
+                Item {
+                    mime: "text/html".to_owned(),
+                    data
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_selection_changes_during_read_discards_stale_items() {
+        // Arrange
+        let (reader, writer) = pipe_with(PipeFlags::CLOEXEC).unwrap();
+        let epoch = AtomicU64::new(1);
+        let (changes, mut receiver) = tokio::sync::mpsc::channel(1);
+        let write = async {
+            epoch.store(2, Ordering::SeqCst);
+            pipe::write_all(writer, b"stale").await.unwrap();
+        };
+
+        // Act
+        tokio::join!(
+            publish(vec![("text/plain", reader)], false, &epoch, 1, &changes),
+            write,
+        );
+
+        // Assert
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
+    }
 }

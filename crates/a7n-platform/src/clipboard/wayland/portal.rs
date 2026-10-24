@@ -196,16 +196,7 @@ impl Service {
                     reads.push((read.item, fd.into()));
                 }
             }
-            let items = transfer::read_items(reads).await;
-            if epoch.load(Ordering::SeqCst) != stamp {
-                return;
-            }
-            let change = LocalChange {
-                items,
-                sensitive: plan.sensitive,
-                source_app: None,
-            };
-            let _ = sink.send(change).await;
+            transfer::publish(reads, plan.sensitive, &epoch, stamp, &sink).await;
         });
     }
 

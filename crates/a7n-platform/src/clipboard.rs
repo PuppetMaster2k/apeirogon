@@ -5,6 +5,8 @@
 use a7n_core::clipboard::{Generation, Item, LocalChange};
 use tokio::sync::{mpsc, oneshot};
 
+#[cfg(any(windows, target_os = "macos"))]
+mod fetch;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod formats;
 #[cfg(target_os = "macos")]
