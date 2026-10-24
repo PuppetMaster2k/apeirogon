@@ -353,13 +353,10 @@ fn validate_manifest_path_unsafe_paths_are_rejected() {
   switch that defaults to off), so `main` stays shippable.
 - PRs merge by **squash merge** only, once CI is green. The PR title becomes
   the commit on `main`, so it must be a valid Conventional Commit.
-- **Releases** use a release PR from `chore/release` into `main`. Since the
-  last `vX.Y.Z` tag's commit date, a closed milestone bumps the major version;
-  otherwise `feat` commits bump minor, and `fix` or `perf` commits bump patch.
-  Breaking-change markers do not bump major. Other commits produce no release;
-  `chore: release X.Y.Z` commits are skipped. Without a tag, the base is
-  `[workspace.package] version` and all history is scanned. Merging the release
-  PR publishes `vX.Y.Z` and binary archives from `main`.
+- **Releases** use release-please to open a release PR into `main`.
+  Standard Conventional Commits determine the version: `feat` bumps minor,
+  `fix` or `perf` bumps patch, and breaking changes (`!` or `BREAKING CHANGE`)
+  bump major. Merging the release PR publishes `vX.Y.Z` and binary archives.
 - Every PR links its issue (`Closes #12`). Features are tracked as GitHub
   issues grouped by milestone (`v1`, `v2`, ...).
 
