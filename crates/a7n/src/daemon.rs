@@ -89,7 +89,13 @@ async fn start() -> Result<()> {
         }
     })
     .await
-    .context("apeirogond did not start within 3 s; check a7n logs")?;
+    .with_context(|| {
+        if a7n_ipc::default_location().is_ok_and(|location| location.as_path().exists()) {
+            "apeirogond is starting (it may be waiting for a desktop permission dialog); check a7n logs"
+        } else {
+            "apeirogond did not start within 3 s; check a7n logs"
+        }
+    })?;
     Ok(())
 }
 

@@ -6,13 +6,13 @@ use std::os::fd::OwnedFd;
 use std::sync::Arc;
 
 use a7n_core::clipboard::Item;
-use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
+use a7n_proto::limits::{CLIPBOARD_FETCH_TIMEOUT, CLIPBOARD_TEXT_MAX};
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 use tokio::time::timeout;
 
 use super::served::{Serve, Served};
-use super::{MAX_TRANSFERS, PASTE_TIMEOUT, READ_TIMEOUT, WRITE_TIMEOUT, pipe};
+use super::{MAX_TRANSFERS, READ_TIMEOUT, WRITE_TIMEOUT, pipe};
 use crate::clipboard::PasteRequest;
 
 /// Caps the pastes served at once.
@@ -71,7 +71,7 @@ pub(super) async fn answer(
             if pastes.try_send(request).is_err() {
                 return false;
             }
-            fetched = timeout(PASTE_TIMEOUT, receiver).await;
+            fetched = timeout(CLIPBOARD_FETCH_TIMEOUT, receiver).await;
             match &fetched {
                 Ok(Ok(Some(data))) if data.len() <= CLIPBOARD_TEXT_MAX => data,
                 _ => return false,
