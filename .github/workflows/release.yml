@@ -1,0 +1,145 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Release
+
+on:
+    push:
+        branches: [main]
+    milestone:
+        types: [closed]
+    workflow_dispatch:
+
+permissions:
+    contents: write
+    pull-requests: write
+    issues: read
+
+jobs:
+    release-pr:
+        if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release ')
+        concurrency: release-pr
+        runs-on: ubuntu-latest
+        env:
+            # PRs opened with github.token do not trigger CI; add a PAT secret to get CI on them.
+            GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+            GH_REPO: ${{ github.repository }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: main
+                  fetch-depth: 0
+                  token: ${{ secrets.RELEASE_TOKEN || github.token }}
+            - uses: dtolnay/rust-toolchain@stable
+            - name: Plan and update release PR
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  [[ $(git log -1 --format=%s) != 'chore: release '* ]] || exit 0
+                  scripts/release.sh plan > "$RUNNER_TEMP/release-plan"
+                  pr=$(gh pr list --state open --base main --head chore/release --json number --jq '.[0].number // empty')
+                  if [[ ! -s "$RUNNER_TEMP/release-plan" ]]; then
+                      [[ -z "$pr" ]] || gh pr close "$pr"
+                      exit 0
+                  fi
+                  version=$(sed -n '1s/^version=//p' "$RUNNER_TEMP/release-plan")
+                  tail -n +3 "$RUNNER_TEMP/release-plan" > "$RUNNER_TEMP/release-notes.md"
+                  scripts/release.sh apply "$version" "$RUNNER_TEMP/release-notes.md"
+                  git config user.name 'github-actions[bot]'
+                  git config user.email '41898+github-actions[bot]@users.noreply.github.com'
+                  git checkout -B chore/release
+                  git add Cargo.toml Cargo.lock CHANGELOG.md
+                  git commit -s -m "chore: release $version"
+                  git push --force origin chore/release
+                  if [[ -n "$pr" ]]; then
+                      gh pr edit "$pr" --title "chore: release $version" --body-file "$RUNNER_TEMP/release-notes.md"
+                  else
+                      gh pr create --base main --head chore/release --title "chore: release $version" --body-file "$RUNNER_TEMP/release-notes.md"
+                  fi
+
+    publish:
+        if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: release ')
+        runs-on: ubuntu-latest
+        outputs:
+            version: ${{ steps.release.outputs.version }}
+        env:
+            GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+            GH_REPO: ${{ github.repository }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - name: Tag and publish changelog section
+              id: release
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  subject=$(git log -1 --format=%s)
+                  [[ "$subject" =~ ^chore:\ release\ ([0-9]+\.[0-9]+\.[0-9]+)(\ \(#[0-9]+\))?$ ]]
+                  version=${BASH_REMATCH[1]}
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
+                  awk -v version="$version" '
+                      /^## / { if (found) exit; found = ($2 == version); next }
+                      found { print }
+                  ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+                  test -s "$RUNNER_TEMP/release-notes.md"
+                  git tag "v$version"
+                  git push origin "v$version"
+                  gh release create "v$version" --verify-tag --title "v$version" --notes-file "$RUNNER_TEMP/release-notes.md"
+
+    build:
+        needs: publish
+        strategy:
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      target: x86_64-unknown-linux-gnu
+                    - os: windows-latest
+                      target: x86_64-pc-windows-msvc
+                    - os: macos-latest
+                      target: aarch64-apple-darwin
+        runs-on: ${{ matrix.os }}
+        env:
+            GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+            GH_REPO: ${{ github.repository }}
+            VERSION: ${{ needs.publish.outputs.version }}
+            TARGET: ${{ matrix.target }}
+        steps:
+            - uses: actions/checkout@v4
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: ${{ matrix.target }}
+            - uses: Swatinem/rust-cache@v2
+            - run: cargo build --release --locked --target ${{ matrix.target }} -p apeirogond -p a7n
+            # Unsigned archives; signing is tracked in #28.
+            - name: Archive binaries and compute SHA-256
+              shell: bash
+              run: |
+                  python - <<'PY'
+                  import hashlib
+                  import os
+                  import pathlib
+                  import tarfile
+                  import zipfile
+
+                  target = os.environ['TARGET']
+                  name = f"apeirogon-{os.environ['VERSION']}-{target}"
+                  windows = 'windows' in target
+                  suffix = '.exe' if windows else ''
+                  files = [pathlib.Path(f'target/{target}/release/{binary}{suffix}') for binary in ('apeirogond', 'a7n')]
+                  files.append(pathlib.Path('LICENSE'))
+                  archive = pathlib.Path(name + ('.zip' if windows else '.tar.gz'))
+                  if windows:
+                      with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as output:
+                          for file in files:
+                              output.write(file, f'{name}/{file.name}')
+                  else:
+                      with tarfile.open(archive, 'w:gz') as output:
+                          for file in files:
+                              output.add(file, arcname=f'{name}/{file.name}')
+                  digest = hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest()
+                  pathlib.Path(f'{archive}.sha256').write_text(f'{digest}  {archive.name}\n')
+                  with open(os.environ['GITHUB_ENV'], 'a') as env:
+                      env.write(f'ARCHIVE={archive}\n')
+                  PY
+            - name: Upload archive and checksum
+              shell: bash
+              run: gh release upload "v$VERSION" "$ARCHIVE" "$ARCHIVE.sha256" --clobber

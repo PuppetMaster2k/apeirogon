@@ -55,7 +55,7 @@ scope.
   the screens. While a peer drives a Wayland machine, its local keyboard and
   mouse are therefore not blocked and the daemon does not see that local
   activity: idle takeover does not apply there, and local and remote input
-  can mix. Accepted for v0.1; the portal offers no way to watch local input
+  can mix. Accepted for v1; the portal offers no way to watch local input
   without capturing it.
 - Wayland clipboard: `ext-data-control-v1`, falling back to
   `wlr-data-control-unstable-v1` (wlroots, KDE). Wayland is lazy by design:
@@ -289,9 +289,9 @@ crates/
 
 | Version | Scope |
 | ------- | ----- |
-| v0.1 | Pairing, input sharing, text clipboard (plain + HTML) on all 4 platforms; CLI + TUI |
-| v0.2 | GUI + tray, signed installers, image clipboard |
-| v0.3 | File clipboard, `a7n send` |
+| v1 | Pairing, input sharing, text clipboard (plain + HTML) on all 4 platforms; CLI + TUI |
+| v2 | GUI + tray, signed installers, image clipboard |
+| v3 | File clipboard, `a7n send` |
 | Later | Drag-and-drop (per platform); login-screen support; wake-on-LAN (MAC addresses are already exchanged at handshake) |
 
 ## Prior art
