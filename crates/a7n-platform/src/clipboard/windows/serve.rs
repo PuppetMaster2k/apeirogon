@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::System::DataExchange::{
     EmptyClipboard, GetClipboardOwner, GetClipboardSequenceNumber,
 };
+use windows_sys::Win32::System::Ole::CF_DIB;
 
 use super::State;
 use super::data::{Open, offer};
@@ -31,11 +31,16 @@ impl State {
             if let Some(format) = self.formats.format(&item.mime) {
                 if self.formats.write(format, &item.data) {
                     eager.push(format);
+                    if item.mime == a7n_core::clipboard::IMAGE_PNG
+                        && self.formats.write(u32::from(CF_DIB), &item.data)
+                    {
+                        eager.push(u32::from(CF_DIB));
+                    }
                 }
             }
         }
         for item in lazy {
-            if item.size > CLIPBOARD_TEXT_MAX as u64 {
+            if item.size > a7n_core::clipboard::limit_for(&item.mime) as u64 {
                 continue;
             }
             if let Some(format) = self.formats.format(&item.mime) {
@@ -43,6 +48,10 @@ impl State {
                     && !self.lazy.iter().any(|(existing, _)| *existing == format)
                 {
                     offer(format);
+                    if item.mime == a7n_core::clipboard::IMAGE_PNG {
+                        offer(u32::from(CF_DIB));
+                        self.lazy.push((u32::from(CF_DIB), item.clone()));
+                    }
                     self.lazy.push((format, item));
                 }
             }

@@ -10,15 +10,19 @@ use std::sync::mpsc as sync;
 use std::thread;
 use std::time::Duration;
 
-use a7n_core::clipboard::{Item, LocalChange, TEXT_HTML, TEXT_PLAIN};
-use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
+use a7n_core::clipboard::{
+    IMAGE_PNG, Item, LocalChange, TEXT_HTML, TEXT_PLAIN, limit_for, validate_png,
+};
+use a7n_proto::limits;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::ProtocolObject;
-use objc2_app_kit::{NSPasteboard, NSPasteboardItem, NSWorkspace};
+use objc2_app_kit::{
+    NSBitmapImageFileType, NSBitmapImageRep, NSPasteboard, NSPasteboardItem, NSWorkspace,
+};
 use objc2_core_foundation::{
     CFRunLoop, CFRunLoopTimer, CFRunLoopTimerContext, kCFRunLoopDefaultMode,
 };
-use objc2_foundation::{NSArray, NSData, NSString, ns_string};
+use objc2_foundation::{NSArray, NSData, NSDictionary, NSString, ns_string};
 use tokio::sync::mpsc;
 
 use super::{Clipboard, ClipboardCommand, PasteRequest};
@@ -60,6 +64,7 @@ pub(super) fn start() -> io::Result<Clipboard> {
         })?;
     ready.recv().map_err(io::Error::other)??;
     Ok(Clipboard {
+        images: true,
         changes,
         commands,
         pastes,
@@ -152,11 +157,23 @@ impl State {
         if !sensitive {
             for (mime, uti) in formats() {
                 if let Some(data) = self.board.dataForType(uti) {
-                    if data.length() <= CLIPBOARD_TEXT_MAX {
+                    if data.length() <= limit_for(mime) {
                         change.items.push(Item {
                             mime: mime.into(),
                             data: data.to_vec(),
                         });
+                    }
+                }
+            }
+            if !change.items.iter().any(|item| item.mime == IMAGE_PNG) {
+                if let Some(data) = self.board.dataForType(ns_string!("public.tiff")) {
+                    if let Some(png) = convert_image(&data, NSBitmapImageFileType::PNG) {
+                        if png.length() <= limits::IMAGE_CLIPBOARD_MAX {
+                            change.items.push(Item {
+                                mime: IMAGE_PNG.into(),
+                                data: png.to_vec(),
+                            });
+                        }
                     }
                 }
             }
@@ -175,9 +192,18 @@ impl State {
         } = command;
         let item = NSPasteboardItem::new();
         for entry in items {
-            if entry.data.len() <= CLIPBOARD_TEXT_MAX {
+            if entry.data.len() <= limit_for(&entry.mime) {
                 if let Some(uti) = uti(&entry.mime) {
-                    item.setData_forType(&NSData::with_bytes(&entry.data), uti);
+                    let data = NSData::with_bytes(&entry.data);
+                    if entry.mime == IMAGE_PNG {
+                        if validate_png(&entry.data).is_err() {
+                            continue;
+                        }
+                        if let Some(tiff) = convert_image(&data, NSBitmapImageFileType::TIFF) {
+                            item.setData_forType(&tiff, ns_string!("public.tiff"));
+                        }
+                    }
+                    item.setData_forType(&data, uti);
                 }
             }
         }
@@ -189,13 +215,16 @@ impl State {
                 let Some(uti) = uti(&entry.mime) else {
                     return false;
                 };
-                if entry.size > CLIPBOARD_TEXT_MAX as u64
+                if entry.size > limit_for(&entry.mime) as u64
                     || eager.containsObject(uti)
                     || offered.contains(&uti)
                 {
                     return false;
                 }
                 offered.push(uti);
+                if entry.mime == IMAGE_PNG {
+                    offered.push(ns_string!("public.tiff"));
+                }
                 true
             })
             .collect();
@@ -220,10 +249,11 @@ impl State {
     }
 }
 
-fn formats() -> [(&'static str, &'static NSString); 2] {
+fn formats() -> [(&'static str, &'static NSString); 3] {
     [
         (TEXT_PLAIN, ns_string!("public.utf8-plain-text")),
         (TEXT_HTML, ns_string!("public.html")),
+        (IMAGE_PNG, ns_string!("public.png")),
     ]
 }
 
@@ -231,4 +261,23 @@ fn uti(mime: &str) -> Option<&'static NSString> {
     formats()
         .into_iter()
         .find_map(|(supported, uti)| (mime == supported).then_some(uti))
+}
+
+fn convert_image(data: &NSData, kind: NSBitmapImageFileType) -> Option<Retained<NSData>> {
+    if data.length() > limits::IMAGE_DECODED_MAX {
+        return None;
+    }
+    let image = NSBitmapImageRep::imageRepWithData(data)?;
+    let width = u64::try_from(image.pixelsWide()).ok()?;
+    let height = u64::try_from(image.pixelsHigh()).ok()?;
+    if width == 0
+        || height == 0
+        || width > u64::from(limits::IMAGE_MAX_DIMENSION)
+        || height > u64::from(limits::IMAGE_MAX_DIMENSION)
+        || width * height * 4 > limits::IMAGE_DECODED_MAX as u64
+    {
+        return None;
+    }
+    // SAFETY: An empty property dictionary supplies no incorrectly typed encoder options.
+    unsafe { image.representationUsingType_properties(kind, &NSDictionary::new()) }
 }

@@ -7,7 +7,7 @@ mod serve;
 
 use std::time::{Duration, Instant};
 
-use a7n_core::clipboard::{TEXT_HTML, TEXT_PLAIN};
+use a7n_core::clipboard::{IMAGE_PNG, TEXT_HTML, TEXT_PLAIN};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use tokio::sync::mpsc;
 use x11rb::connection::{Connection, RequestConnection};
@@ -35,6 +35,7 @@ x11rb::atom_manager! {
     pub Atoms: AtomsCookie {
         CLIPBOARD, TARGETS, UTF8_STRING, INCR, WM_CLASS,
         PLAIN: TEXT_PLAIN.as_bytes(),
+        PNG: IMAGE_PNG.as_bytes(),
         HTML: HTML_ALIAS.as_bytes(),
         HTML_UTF8: HTML_UTF8_ALIAS.as_bytes(),
         SENSITIVE: SENSITIVE_MARKER.as_bytes(),
@@ -161,6 +162,7 @@ pub(super) fn start() -> Result<Clipboard, InputError> {
         })
         .map_err(InputError::Thread)?;
     Ok(Clipboard {
+        images: true,
         changes,
         commands,
         pastes,
@@ -170,6 +172,8 @@ pub(super) fn start() -> Result<Clipboard, InputError> {
 fn mime(atoms: &Atoms, target: u32) -> Option<&'static str> {
     if target == atoms.UTF8_STRING || target == atoms.PLAIN {
         Some(TEXT_PLAIN)
+    } else if target == atoms.PNG {
+        Some(IMAGE_PNG)
     } else if target == atoms.HTML || target == atoms.HTML_UTF8 {
         Some(TEXT_HTML)
     } else {
@@ -199,6 +203,9 @@ fn select_targets(atoms: &Atoms, targets: &[u32]) -> Vec<u32> {
     {
         selected.push(target);
     }
+    if targets.contains(&atoms.PNG) {
+        selected.push(atoms.PNG);
+    }
     selected
 }
 
@@ -214,6 +221,7 @@ mod tests {
             INCR: 4,
             WM_CLASS: 5,
             PLAIN: 6,
+            PNG: 11,
             HTML: 7,
             HTML_UTF8: 8,
             SENSITIVE: 9,
@@ -234,6 +242,7 @@ mod tests {
                 vec![atoms.PLAIN, atoms.HTML_UTF8],
                 vec![atoms.PLAIN, atoms.HTML_UTF8],
             ),
+            (vec![atoms.PNG], vec![atoms.PNG]),
             (vec![atoms.SENSITIVE], vec![]),
             (vec![], vec![]),
         ];
@@ -255,6 +264,7 @@ mod tests {
             (atoms.PLAIN, Some(TEXT_PLAIN)),
             (atoms.HTML, Some(TEXT_HTML)),
             (atoms.HTML_UTF8, Some(TEXT_HTML)),
+            (atoms.PNG, Some(IMAGE_PNG)),
             (atoms.SENSITIVE, None),
         ];
         for (target, expected) in cases {

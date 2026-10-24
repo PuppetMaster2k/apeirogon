@@ -121,6 +121,7 @@ pub(super) fn start() -> Result<Clipboard, StartError> {
         .spawn(move || run_thread(&connection, queue, state, commands_rx))
         .map_err(WaylandError::Thread)?;
     Ok(Clipboard {
+        images: true,
         changes,
         commands,
         pastes,

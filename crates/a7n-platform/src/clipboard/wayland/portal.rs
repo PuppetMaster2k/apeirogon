@@ -135,6 +135,7 @@ impl Service {
             commands: commands_rx,
             pastes: pastes_tx,
             handle: Some(Clipboard {
+                images: true,
                 changes,
                 commands,
                 pastes,

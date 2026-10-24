@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_core::clipboard::{Item, LocalChange, TEXT_HTML, TEXT_PLAIN};
-use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
+use a7n_core::clipboard::{IMAGE_PNG, Item, LocalChange, TEXT_HTML, TEXT_PLAIN, limit_for};
 use windows_sys::Win32::Foundation::{CloseHandle, HWND};
 use windows_sys::Win32::System::DataExchange::{
     GetClipboardOwner, GetClipboardSequenceNumber, IsClipboardFormatAvailable,
@@ -46,6 +45,22 @@ impl State {
             source_app: source_app(owner),
         };
         if !sensitive {
+            let image = if available(self.formats.png) {
+                read_global(self.formats.png, limit_for(IMAGE_PNG))
+                    .filter(|data| a7n_core::clipboard::validate_png(data).is_ok())
+            } else {
+                use windows_sys::Win32::System::Ole::{CF_DIB, CF_DIBV5};
+                [CF_DIBV5, CF_DIB].into_iter().find_map(|format| {
+                    read_global(u32::from(format), super::image::MAX_DIB_BYTES)
+                        .and_then(|bytes| super::image::from_dib(&bytes))
+                })
+            };
+            if let Some(data) = image {
+                change.items.push(Item {
+                    mime: IMAGE_PNG.into(),
+                    data,
+                });
+            }
             if let Some(data) = plain_text() {
                 change.items.push(Item {
                     mime: TEXT_PLAIN.into(),
@@ -54,7 +69,7 @@ impl State {
             }
             if let Some(bytes) = read_global(self.formats.html, MAX_OS_BYTES) {
                 if let Some(fragment) =
-                    cf_html::decode(&bytes).filter(|data| data.len() <= CLIPBOARD_TEXT_MAX)
+                    cf_html::decode(&bytes).filter(|data| data.len() <= limit_for(TEXT_HTML))
                 {
                     change.items.push(Item {
                         mime: TEXT_HTML.into(),
@@ -94,7 +109,7 @@ fn plain_text() -> Option<Vec<u8>> {
         return None;
     }
     let text = String::from_utf16(&units).ok()?;
-    (text.len() <= CLIPBOARD_TEXT_MAX).then(|| text.into_bytes())
+    (text.len() <= limit_for(TEXT_PLAIN)).then(|| text.into_bytes())
 }
 
 fn source_app(owner: HWND) -> Option<String> {

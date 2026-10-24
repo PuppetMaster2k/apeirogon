@@ -130,8 +130,9 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 - Small items are pushed eagerly in `inline_data`, as long as the announce's total inline bytes stay at or below 64 KiB. Other items carry only `size` and `sha256` and are **fetched on paste**: the OS paste request on the receiving machine triggers `TransferRequest{clipboard = (origin, generation), item_index}`. Where the OS cannot delay a paste, the receiver fetches eagerly when the item is below a configurable limit.
 - On Linux, files are delivered on paste as `text/uri-list` pointing into the receive directory: the paste request triggers the transfer, and the paths are handed out once the files are verified. Above a size threshold the receiver shows progress.
 - Text is offered as `text/plain;charset=utf-8` and, when the source has it, `text/html;charset=utf-8`.
-- Limits (defaults): text 256 KiB, image 8 MiB with validation before decode (decompression-bomb checks). Files are limited only by policy.
-- Text fetches use file index 0, contiguous offsets, and a final length and SHA-256 matching the announced item. The whole fetch, including waiting for its stream, MUST finish within 10 s.
+- Images are exchanged as `image/png` only when both peers advertise `CAPABILITY_CLIPBOARD_IMAGE` and follow the same inline budget and fetch-on-paste rules as text. Before decoding, receivers MUST validate the PNG signature and IHDR, require nonzero dimensions at most 16384 pixels each, and require `width * height * 4` at most 256 MiB. Decoders MUST also bound allocations to 256 MiB.
+- Limits (defaults): text 256 KiB, encoded image 8 MiB. Files are limited only by policy.
+- Text and image fetches use file index 0, contiguous offsets, and a final length and SHA-256 matching the announced item. The whole fetch, including waiting for its stream, MUST finish within 10 s.
 - A source that no longer holds the generation answers `ABORT_REASON_NOT_FOUND`.
 - Files: the item with MIME `application/x-apeirogon-files` carries a `FileManifest`. Paths are relative, `/`-separated, NFC normalised, and the receiver MUST reject `..`, absolute paths, and reserved names.
 
@@ -156,7 +157,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 
 - `SettingsSync` shares convenience settings (hotkeys, speed multipliers and the like) across the desk. Receivers MUST apply only keys on a fixed allow-list and ignore everything else.
 - Security settings are never synced and never changeable by a peer: `allow_drive`, per-peer clipboard and file policy, the clipboard app deny-list, and the sensitive-content check.
-- Per peer, the user controls `allow_drive` (announced with `Accepts`) and clipboard and file policy. Text clipboard policy is local config `peers.<id>.clipboard`: `both` (default), `send`, `receive`, or `off`. The app deny-list is local config `clipboard.deny_apps`, edited in the file. Interactive `ask` policy is deferred to the GUI (#26).
+- Per peer, the user controls `allow_drive` (announced with `Accepts`) and clipboard and file policy. Clipboard policy is local config `peers.<id>.clipboard`: `both` (default), `send`, `receive`, or `off`. The app deny-list is local config `clipboard.deny_apps`, edited in the file. Interactive `ask` policy is deferred to the GUI (#26).
 
 ## 14. Limits and defaults
 
@@ -179,6 +180,8 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 | Clipboard fetch timeout | 10 s |
 | Text clipboard | 256 KiB |
 | Image clipboard | 8 MiB |
+| Image dimension max | 16384 pixels |
+| Decoded image max (RGBA) | 256 MiB |
 | Inline clipboard total per announce | 64 KiB |
 | Machines per layout | 64 |
 

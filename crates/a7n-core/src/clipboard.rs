@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Text clipboard ordering, exclusion and validation without platform I/O.
+//! Clipboard ordering, exclusion and validation without platform I/O.
 
 use a7n_proto::v1::{ClipboardAnnounce, ClipboardItem};
 use a7n_proto::{MachineId, limits};
 use sha2::{Digest, Sha256};
 
 pub const TEXT_PLAIN: &str = "text/plain;charset=utf-8";
+pub const IMAGE_PNG: &str = "image/png";
 pub const TEXT_HTML: &str = "text/html;charset=utf-8";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -64,7 +65,51 @@ impl Exclusion {
 }
 
 fn supported(mime: &str) -> bool {
-    matches!(mime, TEXT_PLAIN | TEXT_HTML)
+    matches!(mime, TEXT_PLAIN | TEXT_HTML | IMAGE_PNG)
+}
+
+/// Maximum encoded bytes for a clipboard format.
+#[must_use]
+pub fn limit_for(mime: &str) -> usize {
+    if mime == IMAGE_PNG {
+        limits::IMAGE_CLIPBOARD_MAX
+    } else {
+        limits::CLIPBOARD_TEXT_MAX
+    }
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum ImageError {
+    #[error("invalid PNG header")]
+    Header,
+    #[error("PNG dimensions exceed clipboard limits")]
+    Dimensions,
+}
+
+/// Check the PNG header before a platform decoder allocates pixel storage.
+/// # Errors
+/// Rejects truncated headers, invalid signatures/IHDR and unsafe dimensions.
+pub fn validate_png(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
+    const SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+    const IHDR_LENGTH: [u8; 4] = 13_u32.to_be_bytes();
+    if bytes.len() < 33
+        || &bytes[..8] != SIGNATURE
+        || bytes[8..12] != IHDR_LENGTH
+        || &bytes[12..16] != b"IHDR"
+    {
+        return Err(ImageError::Header);
+    }
+    let width = u32::from_be_bytes(bytes[16..20].try_into().map_err(|_| ImageError::Header)?);
+    let height = u32::from_be_bytes(bytes[20..24].try_into().map_err(|_| ImageError::Header)?);
+    if width == 0
+        || height == 0
+        || width > limits::IMAGE_MAX_DIMENSION
+        || height > limits::IMAGE_MAX_DIMENSION
+        || u64::from(width) * u64::from(height) * 4 > limits::IMAGE_DECODED_MAX as u64
+    {
+        return Err(ImageError::Dimensions);
+    }
+    Ok((width, height))
 }
 
 #[must_use]
@@ -75,7 +120,7 @@ pub fn announce(items: Vec<Item>, generation: Generation) -> Option<ClipboardAnn
         .into_iter()
         .filter(|item| supported(&item.mime) && !item.data.is_empty())
     {
-        if item.data.len() > limits::CLIPBOARD_TEXT_MAX {
+        if item.data.len() > limit_for(&item.mime) {
             return None;
         }
         let size = item.data.len();
@@ -105,7 +150,7 @@ pub fn announce(items: Vec<Item>, generation: Generation) -> Option<ClipboardAnn
 pub enum ClipboardError {
     #[error("clipboard origin must be 16 bytes")]
     Origin,
-    #[error("clipboard item exceeds the text limit")]
+    #[error("clipboard item exceeds its format limit")]
     Size,
     #[error("clipboard inline total exceeds the limit")]
     InlineLimit,
@@ -138,7 +183,7 @@ pub fn accept(
     let mut items = Vec::new();
     let mut pending = Vec::new();
     for (index, item) in incoming.items.iter().enumerate() {
-        if item.size > limits::CLIPBOARD_TEXT_MAX as u64 {
+        if item.size > limit_for(&item.mime) as u64 {
             return Err(ClipboardError::Size);
         }
         if item.sha256.len() != Sha256::output_size() {

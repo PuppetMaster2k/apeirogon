@@ -7,7 +7,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use a7n_core::clipboard::{Item, LocalChange};
-use a7n_proto::limits::{CLIPBOARD_FETCH_TIMEOUT, CLIPBOARD_TEXT_MAX};
+use a7n_proto::limits::CLIPBOARD_FETCH_TIMEOUT;
+#[cfg(test)]
+use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
 use futures_util::future::join_all;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
@@ -35,7 +37,11 @@ impl Limiter {
 /// that fails is left out, like in the X11 backend.
 async fn read_items(reads: Vec<(&'static str, OwnedFd)>) -> Vec<Item> {
     join_all(reads.into_iter().map(|(mime, fd)| async move {
-        let read = timeout(READ_TIMEOUT, pipe::read_limited(fd, CLIPBOARD_TEXT_MAX)).await;
+        let read = timeout(
+            READ_TIMEOUT,
+            pipe::read_limited(fd, a7n_core::clipboard::limit_for(mime)),
+        )
+        .await;
         match read {
             Ok(Ok(Some(data))) if !data.is_empty() => Some(Item {
                 mime: mime.to_owned(),
@@ -95,7 +101,14 @@ pub(super) async fn answer(
             }
             fetched = timeout(CLIPBOARD_FETCH_TIMEOUT, receiver).await;
             match &fetched {
-                Ok(Ok(Some(data))) if data.len() <= CLIPBOARD_TEXT_MAX => data,
+                Ok(Ok(Some(data)))
+                    if data.len()
+                        <= a7n_core::clipboard::limit_for(
+                            crate::clipboard::formats::item_mime_of(requested).unwrap_or(""),
+                        ) =>
+                {
+                    data
+                }
                 _ => return false,
             }
         }
