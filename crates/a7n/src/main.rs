@@ -40,6 +40,10 @@ enum Command {
     Layout,
     /// Show this machine, its paired peers and nearby unpaired machines.
     Status,
+    /// Pause outgoing input sharing and return focus home.
+    Pause,
+    /// Resume outgoing input sharing.
+    Resume,
     /// Show clipboard availability, current copy metadata and paired-peer policies.
     #[command(
         after_help = "Change a peer's policy with: a7n config set peers.<id>.clipboard <both|send|receive|off>"
@@ -96,6 +100,8 @@ async fn run(command: Command) -> Result<()> {
         Command::Config { command } => return config::run(command).await,
         Command::Layout => return layout::run().await,
         Command::Status => Request::Status,
+        Command::Pause => Request::SetPaused { paused: true },
+        Command::Resume => Request::SetPaused { paused: false },
         Command::Clip => Request::ClipboardStatus,
         Command::Pair { target: None } => Request::PairHost,
         Command::Pair {
@@ -221,6 +227,9 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
     match response {
         Response::Clipboard(info) => clip::write_status(output, info)?,
         Response::Status(status) => {
+            if status.paused {
+                writeln!(output, "input sharing: paused")?;
+            }
             if let Some(reason) = &status.input {
                 writeln!(output, "input: unavailable ({reason})")?;
             }

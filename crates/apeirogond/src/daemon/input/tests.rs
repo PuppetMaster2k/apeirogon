@@ -15,6 +15,7 @@ use crate::pin_store::Entry;
 
 mod config;
 mod hotkeys;
+mod pause;
 
 struct FakeInput {
     capture: mpsc::Sender<Captured>,

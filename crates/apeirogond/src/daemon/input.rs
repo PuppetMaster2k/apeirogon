@@ -24,6 +24,7 @@ pub(super) struct Input {
     pub(super) capture: Option<Capture>,
     pub(super) injector: Option<Injector>,
     pub(super) unavailable: Option<String>,
+    pub(super) paused: bool,
     trace_keys: bool,
     counter: MotionCounter,
     tracker: MotionTracker,
@@ -42,6 +43,7 @@ impl Input {
             capture: None,
             injector: None,
             unavailable: None,
+            paused: false,
             trace_keys: false,
             counter: MotionCounter::default(),
             tracker: MotionTracker::default(),
@@ -266,7 +268,9 @@ impl Daemon {
             Some(Body::Accept(accept)) => self.input.focus.on_accept(peer, accept),
             Some(Body::Accepts(accepts)) => self.input.focus.on_accepts(peer, accepts.accepts),
             Some(Body::Refuse(refuse)) => self.input.focus.on_refuse(peer, refuse),
-            Some(Body::Handover(handover)) => self.input.focus.on_handover(peer, handover, now()),
+            Some(Body::Handover(handover)) if !self.input.paused => {
+                self.input.focus.on_handover(peer, handover, now())
+            }
             Some(Body::Ack(ack)) => self.input.focus.on_ack(peer, ack),
             Some(Body::Motion(motion)) => {
                 if self
@@ -396,7 +400,7 @@ impl Daemon {
     }
 
     async fn cross_edge(&mut self, bounds: Bounds, x: i32, y: i32, dx: i32, dy: i32, driven: bool) {
-        if !driven && self.input.focus.is_locked() {
+        if self.input.paused || (!driven && self.input.focus.is_locked()) {
             return;
         }
         let Some((edge, overshoot, along)) = edge_push(

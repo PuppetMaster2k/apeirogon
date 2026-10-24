@@ -30,3 +30,6 @@ fn os_host_name() -> Option<String> {
 fn os_host_name() -> Option<String> {
     std::env::var("COMPUTERNAME").ok()
 }
+
+#[cfg(feature = "tray")]
+pub mod tray;

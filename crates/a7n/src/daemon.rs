@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
-use a7n_ipc::{IpcClient, Request, Response};
+use a7n_ipc::Request;
 use a7n_platform::autostart;
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use clap::Subcommand;
-
-const START_TIMEOUT: Duration = Duration::from_secs(3);
-const START_POLL: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
@@ -22,7 +18,7 @@ pub(crate) enum Command {
 
 pub(crate) async fn run(command: Command) -> Result<()> {
     match command {
-        Command::Start => start().await?,
+        Command::Start => println!("running (pid {})", a7n_ipc::daemon::start().await?),
         Command::Stop => {
             let mut client = super::connect_client().await?;
             super::write_response(
@@ -31,7 +27,7 @@ pub(crate) async fn run(command: Command) -> Result<()> {
             )?;
         }
         Command::Status => {
-            if let Some(pid) = status().await {
+            if let Some(pid) = a7n_ipc::daemon::status().await {
                 println!("running (pid {pid})");
             } else {
                 println!("not running");
@@ -57,45 +53,6 @@ pub(crate) async fn run(command: Command) -> Result<()> {
             }
         }
     }
-    Ok(())
-}
-
-async fn status() -> Option<u32> {
-    tokio::time::timeout(START_TIMEOUT, async {
-        let mut client = IpcClient::connect().await.ok()?;
-        match client.request(&Request::Status).await.ok()? {
-            Response::Status(status) => Some(status.pid),
-            _ => None,
-        }
-    })
-    .await
-    .ok()
-    .flatten()
-}
-
-async fn start() -> Result<()> {
-    if let Some(pid) = status().await {
-        println!("running (pid {pid})");
-        return Ok(());
-    }
-    autostart::start(&autostart::daemon_executable()?).context("cannot start apeirogond")?;
-    tokio::time::timeout(START_TIMEOUT, async {
-        loop {
-            if let Some(pid) = status().await {
-                println!("running (pid {pid})");
-                return;
-            }
-            tokio::time::sleep(START_POLL).await;
-        }
-    })
-    .await
-    .with_context(|| {
-        if a7n_ipc::default_location().is_ok_and(|location| location.as_path().exists()) {
-            "apeirogond is starting (it may be waiting for a desktop permission dialog); check a7n logs"
-        } else {
-            "apeirogond did not start within 3 s; check a7n logs"
-        }
-    })?;
     Ok(())
 }
 

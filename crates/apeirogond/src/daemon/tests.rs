@@ -247,6 +247,8 @@ async fn status_ipc_round_trip_returns_own_machine() {
         a7n_ipc::StatusInfo {
             input: None,
             pid: std::process::id(),
+            paused: false,
+            focused: peer.machine,
             machine: peer.machine,
             name: "own machine".into(),
             nearby: vec![],

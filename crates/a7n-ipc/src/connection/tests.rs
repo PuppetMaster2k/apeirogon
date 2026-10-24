@@ -11,6 +11,8 @@ async fn request_status_returns_same_status_info() {
     let (client_stream, server_stream) = tokio::io::duplex(1024);
     let status = StatusInfo {
         input: None,
+        paused: false,
+        focused: MachineId::try_from([1; MachineId::LEN].as_slice()).unwrap(),
         pid: std::process::id(),
         machine: MachineId::try_from([1; MachineId::LEN].as_slice()).unwrap(),
         name: "own".to_owned(),

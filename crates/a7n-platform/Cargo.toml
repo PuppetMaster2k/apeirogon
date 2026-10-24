@@ -44,3 +44,10 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+tray = ["dep:tray-icon"]
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies.tray-icon]
+workspace = true
+optional = true

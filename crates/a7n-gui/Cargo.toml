@@ -6,7 +6,14 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["tray"]
+tray = ["a7n-platform/tray"]
+
 [dependencies]
+eframe.workspace = true
+a7n-platform.workspace = true
+tokio.workspace = true
 a7n-ipc.workspace = true
 
 [lints]

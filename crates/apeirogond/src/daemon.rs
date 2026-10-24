@@ -78,6 +78,8 @@ pub(crate) enum DaemonError {
     Clock(#[from] std::time::SystemTimeError),
     #[error("pairing exchange already active")]
     PairingBusy,
+    #[error("input sharing is paused")]
+    Paused,
     #[error("machine is not paired")]
     NotPaired,
     #[error("machine is not connected")]
@@ -283,6 +285,10 @@ impl Daemon {
             Command::Switch { machine, reply } => {
                 let _ = reply.send(self.switch_machine(machine).await);
             }
+            Command::SetPaused { paused, reply } => {
+                self.set_paused(paused).await;
+                let _ = reply.send(Ok(()));
+            }
             Command::ReloadConfig(reply) => {
                 let result = self.reload_config().await;
                 let _ = reply.send(result);
@@ -322,6 +328,11 @@ impl Daemon {
         Status {
             input: self.input.unavailable.clone(),
             pid: std::process::id(),
+            paused: self.input.paused,
+            focused: match self.input.focus.cursor() {
+                a7n_core::focus::Cursor::Home => self.identity.machine_id,
+                a7n_core::focus::Cursor::Driving(peer) => peer,
+            },
             machine: self.identity.machine_id,
             name: self.info.name.clone(),
             peers: self
