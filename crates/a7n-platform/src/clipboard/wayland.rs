@@ -32,8 +32,6 @@ const CHANNEL_CAPACITY: usize = 16;
 const READ_TIMEOUT: Duration = Duration::from_secs(2);
 /// Per paste, for the reader to drain what we write.
 const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
-/// How long a paste waits for the origin machine to send a lazy item.
-const PASTE_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_TRANSFERS: usize = 16;
 
 #[derive(Debug, thiserror::Error)]

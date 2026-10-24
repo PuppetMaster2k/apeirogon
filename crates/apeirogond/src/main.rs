@@ -43,6 +43,9 @@ async fn main() -> Result<()> {
     let dirs = ProjectDirs::from("", "", "apeirogon").context("no home directory found")?;
     let config_path = Config::path()?;
     let config = Config::load(&config_path)?;
+    let server = a7n_ipc::IpcServer::bind()
+        .await
+        .context("cannot open the control socket; is apeirogond already running?")?;
     let (input, input_error) = match a7n_platform::input::start() {
         Ok(handles) => (Some(handles), None),
         Err(error) => {
@@ -63,9 +66,6 @@ async fn main() -> Result<()> {
     let (machine, port) = daemon.discovery_identity()?;
     let discovery_task = tokio::spawn(discovery::run(machine, port, discoveries));
     let (commands, receiver) = mpsc::channel(1);
-    let server = a7n_ipc::IpcServer::bind()
-        .await
-        .context("cannot open the control socket; is apeirogond already running?")?;
     let ipc_task = tokio::spawn(ipc_server::serve(server, commands));
     tokio::select! {
         result = daemon.run(receiver, discovery_rx) => {

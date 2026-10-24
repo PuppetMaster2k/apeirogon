@@ -179,10 +179,12 @@ async fn run(
                 let mut ready = ready.map_err(connection_error)?;
                 match guard.read() {
                     Ok(_) => {}
-                    Err(BackendError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                    Err(BackendError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        // Edge-triggered readiness must stay set until all pending reads are drained.
+                        ready.clear_ready();
+                    }
                     Err(error) => return Err(connection_error(error)),
                 }
-                ready.clear_ready();
             }
             command = commands.recv() => {
                 drop(guard);

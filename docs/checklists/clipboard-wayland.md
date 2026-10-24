@@ -48,5 +48,8 @@ portal versions in the release notes. The backend cannot be tested in CI.
 
 ## Safety
 
+Wayland provides no source app identity, so `clipboard.deny_apps` has no effect
+there. Sensitive-content markers still prevent clipboard announcements.
+
 - [ ] Primary selection (middle click) is never synchronised.
 - [ ] Logs contain event kinds and sizes only, never clipboard text.
