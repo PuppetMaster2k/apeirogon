@@ -83,7 +83,8 @@ jobs:
                   test -s "$RUNNER_TEMP/release-notes.md"
                   git tag "v$version"
                   git push origin "v$version"
-                  gh release create "v$version" --verify-tag --title "v$version" --notes-file "$RUNNER_TEMP/release-notes.md"
+                  # Draft first: immutable releases reject assets once published.
+                  gh release create "v$version" --draft --verify-tag --title "v$version" --notes-file "$RUNNER_TEMP/release-notes.md"
 
     build:
         needs: publish
@@ -143,3 +144,12 @@ jobs:
             - name: Upload archive and checksum
               shell: bash
               run: gh release upload "v$VERSION" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
+
+    finalize:
+        needs: [publish, build]
+        runs-on: ubuntu-latest
+        env:
+            GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+            GH_REPO: ${{ github.repository }}
+        steps:
+            - run: gh release edit "v${{ needs.publish.outputs.version }}" --draft=false --latest
