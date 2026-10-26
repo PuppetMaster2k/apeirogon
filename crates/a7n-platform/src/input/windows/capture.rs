@@ -24,6 +24,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use super::{INJECTION_MARKER, keymap, mouse, pointer_position};
 use crate::input::{CaptureControl, Captured, DeadMan, InputError};
 
+mod raw_input;
+
 const WAKE_INTERVAL_MS: u32 = 50;
 const SCAN_CODE_COUNT: usize = 256;
 const HELD_KEY_COUNT: usize = SCAN_CODE_COUNT * 3;
@@ -36,6 +38,8 @@ struct CaptureState {
     events: Sender<Captured>,
     deadman: DeadMan,
     grabbed: bool,
+    // ponytail: last raw device selects fallback; track devices if mixed mice/tablets need it.
+    absolute_motion: bool,
     queue_full: bool,
     last: POINT,
     keys: [bool; HELD_KEY_COUNT],
@@ -55,6 +59,7 @@ pub(super) fn spawn(
                         events,
                         deadman: DeadMan::new(Instant::now()),
                         grabbed: false,
+                        absolute_motion: false,
                         queue_full: false,
                         last,
                         keys: [false; HELD_KEY_COUNT],
@@ -86,6 +91,7 @@ struct Hooks {
     keyboard: HHOOK,
     mouse: HHOOK,
     timer: usize,
+    raw_input: Option<raw_input::Window>,
 }
 
 impl Hooks {
@@ -94,12 +100,14 @@ impl Hooks {
             keyboard: null_mut(),
             mouse: null_mut(),
             timer: 0,
+            raw_input: None,
         };
         // SAFETY: Null requests the current executable's module; it stays loaded.
         let module = unsafe { GetModuleHandleW(std::ptr::null()) };
         if module.is_null() {
             return Err(io::Error::last_os_error());
         }
+        hooks.raw_input = Some(raw_input::Window::install(module)?);
         // SAFETY: Callbacks have the required ABI and remain valid for the hooks'
         // lifetime; this thread pumps messages until Drop removes both hooks.
         unsafe {
@@ -257,22 +265,49 @@ impl CaptureState {
             return false;
         }
         if message == WM_MOUSEMOVE {
-            // ponytail: low-level hooks expose accelerated deltas; use Raw Input
-            // if users need unaccelerated motion.
-            let event = self.motion(mouse.pt);
-            self.emit(event);
+            if let Some(event) = self.motion(mouse.pt) {
+                self.emit(event);
+            }
         } else if let Some(event) = mouse::translate(message, mouse.mouseData) {
             self.emit(Captured::Input(InputEvent { event: Some(event) }));
         }
         self.grabbed
     }
 
-    fn motion(&mut self, point: POINT) -> Captured {
+    fn motion(&mut self, point: POINT) -> Option<Captured> {
         let dx = point.x.saturating_sub(self.last.x);
         let dy = point.y.saturating_sub(self.last.y);
         if !self.grabbed {
             self.last = point;
         }
+        let (dx, dy) = select_delta(
+            self.grabbed,
+            self.absolute_motion,
+            MotionSource::Hook,
+            (dx, dy),
+        )?;
+        Some(self.pointer(dx, dy))
+    }
+
+    fn raw_motion(&mut self, has_device: bool, absolute: bool, dx: i32, dy: i32) {
+        if has_device {
+            self.absolute_motion = absolute;
+        }
+        if let Some((dx, dy)) = select_delta(
+            self.grabbed,
+            self.absolute_motion,
+            MotionSource::Raw {
+                has_device,
+                absolute,
+            },
+            (dx, dy),
+        ) {
+            let event = self.pointer(dx, dy);
+            self.emit(event);
+        }
+    }
+
+    fn pointer(&self, dx: i32, dy: i32) -> Captured {
         Captured::Pointer {
             x: self.last.x,
             y: self.last.y,
@@ -280,6 +315,28 @@ impl CaptureState {
             dy,
         }
     }
+}
+
+#[derive(Clone, Copy)]
+enum MotionSource {
+    Hook,
+    Raw { has_device: bool, absolute: bool },
+}
+
+fn select_delta(
+    grabbed: bool,
+    absolute_motion: bool,
+    source: MotionSource,
+    delta: (i32, i32),
+) -> Option<(i32, i32)> {
+    let selected = match source {
+        MotionSource::Hook => !grabbed || absolute_motion,
+        MotionSource::Raw {
+            has_device,
+            absolute,
+        } => grabbed && has_device && !absolute,
+    };
+    selected.then_some(delta)
 }
 
 fn own_injection(injected: bool, marker: usize) -> bool {

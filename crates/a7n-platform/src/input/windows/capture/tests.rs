@@ -12,6 +12,7 @@ fn tick_full_queue_and_expired_keepalive_releases_grab() {
         events,
         deadman: DeadMan::new(now),
         grabbed: true,
+        absolute_motion: false,
         queue_full: false,
         last: POINT { x: 100, y: 200 },
         keys: [false; HELD_KEY_COUNT],
@@ -47,6 +48,7 @@ fn tick_disconnected_control_stops_capture() {
         events,
         deadman: DeadMan::new(now),
         grabbed: true,
+        absolute_motion: false,
         queue_full: false,
         last: POINT::default(),
         keys: [false; HELD_KEY_COUNT],
@@ -68,6 +70,7 @@ fn key_repeated_down_is_dropped_but_release_and_other_injection_are_captured() {
         events,
         deadman: DeadMan::new(Instant::now()),
         grabbed: true,
+        absolute_motion: false,
         queue_full: false,
         last: POINT::default(),
         keys: [false; HELD_KEY_COUNT],
@@ -107,6 +110,7 @@ fn mouse_own_warp_updates_baseline_without_reporting_local_activity() {
         events,
         deadman: DeadMan::new(Instant::now()),
         grabbed: false,
+        absolute_motion: false,
         queue_full: false,
         last: POINT::default(),
         keys: [false; HELD_KEY_COUNT],
@@ -160,13 +164,14 @@ fn own_injection_only_our_injected_marker_is_ignored() {
 }
 
 #[test]
-fn motion_grabbed_keeps_anchor_and_reports_each_swallowed_delta() {
+fn motion_absolute_fallback_keeps_anchor_and_reports_each_swallowed_delta() {
     // Arrange
     let (events, _) = tokio::sync::mpsc::channel(1);
     let mut state = CaptureState {
         events,
         deadman: DeadMan::new(Instant::now()),
         grabbed: true,
+        absolute_motion: true,
         queue_full: false,
         last: POINT { x: 100, y: 200 },
         keys: [false; HELD_KEY_COUNT],
@@ -178,20 +183,91 @@ fn motion_grabbed_keeps_anchor_and_reports_each_swallowed_delta() {
     // Assert
     assert!(matches!(
         reports[0],
-        Captured::Pointer {
+        Some(Captured::Pointer {
             x: 100,
             y: 200,
             dx: 3,
             dy: -2
-        }
+        })
     ));
     assert!(matches!(
         reports[1],
-        Captured::Pointer {
+        Some(Captured::Pointer {
             x: 100,
             y: 200,
             dx: 4,
             dy: 1
-        }
+        })
     ));
+}
+
+#[test]
+fn select_delta_capture_modes_choose_one_motion_source() {
+    // Arrange
+    let sources = [
+        MotionSource::Hook,
+        MotionSource::Raw {
+            has_device: true,
+            absolute: false,
+        },
+        MotionSource::Raw {
+            has_device: true,
+            absolute: true,
+        },
+        MotionSource::Raw {
+            has_device: false,
+            absolute: false,
+        },
+        MotionSource::Raw {
+            has_device: false,
+            absolute: true,
+        },
+    ];
+    let cases = [
+        (false, false, [true, false, false, false, false]),
+        (false, true, [true, false, false, false, false]),
+        (true, false, [false, true, false, false, false]),
+        (true, true, [true, true, false, false, false]),
+    ];
+
+    for (grabbed, absolute, expected) in cases {
+        // Act
+        let deltas = sources.map(|source| select_delta(grabbed, absolute, source, (3, -2)));
+
+        // Assert
+        assert_eq!(deltas, expected.map(|selected| selected.then_some((3, -2))));
+    }
+}
+
+#[test]
+fn raw_motion_grabbed_emits_relative_deltas_and_ignores_synthetic_motion() {
+    // Arrange
+    let (events, mut receiver) = tokio::sync::mpsc::channel(4);
+    let mut state = CaptureState {
+        events,
+        deadman: DeadMan::new(Instant::now()),
+        grabbed: true,
+        absolute_motion: false,
+        queue_full: false,
+        last: POINT { x: 100, y: 200 },
+        keys: [false; HELD_KEY_COUNT],
+    };
+
+    // Act
+    state.raw_motion(true, false, 3, -2);
+    state.raw_motion(false, true, 500, 100);
+    let hook = state.motion(POINT { x: 110, y: 210 });
+
+    // Assert
+    assert!(matches!(
+        receiver.try_recv(),
+        Ok(Captured::Pointer {
+            x: 100,
+            y: 200,
+            dx: 3,
+            dy: -2,
+        })
+    ));
+    assert!(receiver.try_recv().is_err());
+    assert!(hook.is_none());
 }
