@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "a7n"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "a7n-ipc",
  "a7n-platform",
@@ -18,7 +18,7 @@ dependencies = [
 
 [[package]]
 name = "a7n-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "a7n-proto",
  "curve25519-dalek",
@@ -32,7 +32,7 @@ dependencies = [
 
 [[package]]
 name = "a7n-gui"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "a7n-ipc",
  "a7n-platform",
@@ -42,7 +42,7 @@ dependencies = [
 
 [[package]]
 name = "a7n-ipc"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "a7n-core",
  "a7n-platform",
@@ -59,7 +59,7 @@ dependencies = [
 
 [[package]]
 name = "a7n-platform"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "a7n-core",
  "a7n-proto",
@@ -89,7 +89,7 @@ dependencies = [
 
 [[package]]
 name = "a7n-proto"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "prost",
  "prost-build",
@@ -331,7 +331,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "apeirogond"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "a7n-core",
  "a7n-ipc",
