@@ -15,8 +15,9 @@ and secure desktops are out of scope; input must release there.
 - [ ] Shortcuts: Ctrl+C / Ctrl+V, Alt+Tab and a Win-key combination work on
   the peer and do nothing locally while driving.
 - [ ] Mouse: motion is smooth, left/middle/right and back/forward buttons
-  work, drag and double click work, slow motion is not lost. Capture uses
-  Windows' accelerated pointer deltas.
+  work, drag and double click work, slow motion is not lost.
+- [ ] Motion while driving is unaccelerated: toggle "Enhance pointer precision"
+  on the driving machine; peer motion speed must not change.
 - [ ] Scroll: line scroll from a wheel goes the right way on both axes;
   high-resolution wheel or touchpad deltas keep fractional lines. Windows
   capture sends line units, not native pixel scroll.
