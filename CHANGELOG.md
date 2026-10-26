@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.3.0...v0.4.0) (2026-10-26)
+
+
+### Features
+
+* **platform:** capture unaccelerated Windows pointer deltas via Raw Input ([#86](https://github.com/PuppetMaster2k/apeirogon/issues/86)) ([b40e8c0](https://github.com/PuppetMaster2k/apeirogon/commit/b40e8c0ab6a3aa916917edf4f07e2c231459b18f))
+
 ## [0.3.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.2.0...v0.3.0) (2026-10-24)
 
 
