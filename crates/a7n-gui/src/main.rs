@@ -9,6 +9,7 @@ use eframe::egui;
 
 mod canvas;
 mod screens;
+mod theme;
 mod worker;
 
 use worker::{Command, Update, Worker};
@@ -40,6 +41,7 @@ struct App {
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Result<Self, std::io::Error> {
+        theme::install(&cc.egui_ctx);
         let worker = Worker::new(cc.egui_ctx.clone())?;
         #[cfg(not(feature = "tray"))]
         let message = String::new();
@@ -128,20 +130,38 @@ impl App {
         egui::Window::new("Clipboard confirmation")
             .collapsible(false)
             .show(ctx, |ui| {
-                ui.label(format!(
-                    "Clipboard from {}: {} items, {} B, {}",
-                    held.name,
-                    held.items,
-                    held.size,
-                    held.kinds_label()
-                ));
-                ui.horizontal(|ui| {
-                    if ui.button("Accept").clicked() {
-                        action = Some(Request::ClipboardAccept);
-                    }
-                    if ui.button("Reject").clicked() {
-                        action = Some(Request::ClipboardReject);
-                    }
+                theme::card(ui, |ui| {
+                    ui.label(format!(
+                        "Clipboard from {}: {} items, {} B, {}",
+                        held.name,
+                        held.items,
+                        held.size,
+                        held.kinds_label()
+                    ));
+                    ui.horizontal(|ui| {
+                        if theme::button(
+                            ui,
+                            theme::ButtonKind::Primary,
+                            theme::ButtonSize::Md,
+                            None,
+                            "Accept",
+                        )
+                        .clicked()
+                        {
+                            action = Some(Request::ClipboardAccept);
+                        }
+                        if theme::button(
+                            ui,
+                            theme::ButtonKind::Ghost,
+                            theme::ButtonSize::Md,
+                            None,
+                            "Reject",
+                        )
+                        .clicked()
+                        {
+                            action = Some(Request::ClipboardReject);
+                        }
+                    });
                 });
             });
         if let Some(request) = action {
@@ -221,55 +241,104 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.clipboard_prompt(ui.ctx());
-        egui::Panel::left("navigation").show(ui, |ui| {
-            ui.heading("Apeirogon");
-            for (screen, name) in [
-                (Screen::Machines, "Machines"),
-                (Screen::Layout, "Layout"),
-                (Screen::Hotkeys, "Hotkeys"),
-                (Screen::Policies, "Peers / policies"),
-            ] {
-                if ui.selectable_label(self.screen == screen, name).clicked() {
-                    self.screen = screen;
-                    self.edits.clear();
-                    if screen == Screen::Layout {
-                        self.send(Command::Request(Request::GetLayout));
-                    }
-                    if matches!(screen, Screen::Hotkeys | Screen::Policies) {
-                        self.send(Command::Config);
-                    }
-                }
-            }
-        });
-        egui::CentralPanel::default().show(ui, |ui| {
-            ui.label(&self.message);
-            if self.worker.commands.capacity() == 0 {
-                ui.label("Waiting for daemon…");
-            }
-            ui.add_enabled_ui(self.worker.commands.capacity() > 0, |ui| {
-                if self.status.is_none() {
-                    ui.heading("Daemon not running or unavailable");
-                    if ui.button("Start daemon").clicked() {
-                        self.send(Command::Start);
-                    }
-                    return;
-                }
-                egui::ScrollArea::vertical().show(ui, |ui| match self.screen {
-                    Screen::Machines => self.machines(ui),
-                    Screen::Layout => {
-                        if ui.button("Reload layout (discard edits)").clicked() {
+        let p = theme::Palette::of(ui.ctx());
+        egui::Panel::left("navigation")
+            .exact_size(theme::size::SIDEBAR_W)
+            .resizable(false)
+            .frame(
+                egui::Frame::new()
+                    .fill(p.sidebar)
+                    .stroke(egui::Stroke::new(1.0, p.border))
+                    .inner_margin(egui::Margin::symmetric(12, 16)),
+            )
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Apeirogon").font(theme::font_semibold(15.0)));
+                    ui.label(
+                        egui::RichText::new("a7n")
+                            .font(theme::font_mono(11.0))
+                            .color(p.text3),
+                    );
+                });
+                ui.add_space(20.0);
+                ui.spacing_mut().item_spacing.y = 2.0;
+                for (screen, icon, name) in [
+                    (Screen::Machines, theme::icon::MONITOR, "Machines"),
+                    (
+                        Screen::Layout,
+                        theme::icon::SQUARE_SPLIT_HORIZONTAL,
+                        "Layout",
+                    ),
+                    (Screen::Hotkeys, theme::icon::KEYBOARD, "Hotkeys"),
+                    (
+                        Screen::Policies,
+                        theme::icon::SHIELD_CHECK,
+                        "Peers & policies",
+                    ),
+                ] {
+                    if theme::nav_item(ui, icon, name, self.screen == screen).clicked() {
+                        self.screen = screen;
+                        self.edits.clear();
+                        if screen == Screen::Layout {
                             self.send(Command::Request(Request::GetLayout));
                         }
-                        if let Some(canvas) = &mut self.layout
-                            && let Some(placed) = canvas.show(ui)
-                        {
-                            self.send(Command::Request(Request::SetLayout { placed }));
+                        if matches!(screen, Screen::Hotkeys | Screen::Policies) {
+                            self.send(Command::Config);
                         }
                     }
-                    Screen::Hotkeys | Screen::Policies => self.settings(ui),
+                }
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    theme::card(ui, |ui| {
+                        let (kind, label) = self.status.as_ref().map_or(
+                            (theme::BadgeKind::Danger, "Daemon stopped"),
+                            |status| {
+                                if status.paused {
+                                    (theme::BadgeKind::Warning, "Paused")
+                                } else {
+                                    (theme::BadgeKind::Online, "Daemon running")
+                                }
+                            },
+                        );
+                        theme::badge(ui, kind, label);
+                    });
                 });
             });
-        });
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::new()
+                    .fill(p.bg)
+                    .inner_margin(egui::Margin::symmetric(40, 32)),
+            )
+            .show(ui, |ui| {
+                ui.set_max_width(theme::size::CONTENT_MAX_W);
+                ui.label(&self.message);
+                if self.worker.commands.capacity() == 0 {
+                    ui.label("Waiting for daemon…");
+                }
+                ui.add_enabled_ui(self.worker.commands.capacity() > 0, |ui| {
+                    if self.status.is_none() {
+                        ui.heading("Daemon not running or unavailable");
+                        if ui.button("Start daemon").clicked() {
+                            self.send(Command::Start);
+                        }
+                        return;
+                    }
+                    egui::ScrollArea::vertical().show(ui, |ui| match self.screen {
+                        Screen::Machines => self.machines(ui),
+                        Screen::Layout => {
+                            if ui.button("Reload layout (discard edits)").clicked() {
+                                self.send(Command::Request(Request::GetLayout));
+                            }
+                            if let Some(canvas) = &mut self.layout
+                                && let Some(placed) = canvas.show(ui)
+                            {
+                                self.send(Command::Request(Request::SetLayout { placed }));
+                            }
+                        }
+                        Screen::Hotkeys | Screen::Policies => self.settings(ui),
+                    });
+                });
+            });
     }
 }
 

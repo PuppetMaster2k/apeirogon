@@ -10,6 +10,7 @@ repository = "https://github.com/PuppetMaster2k/apeirogon"
 rust-version = "1.85"
 
 [workspace.dependencies]
+egui-phosphor = { version = "=0.14.0", default-features = false, features = ["regular"] }
 eframe = { version = "=0.36.2", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
 tray-icon = { version = "=0.19.2", default-features = false }
 a7n-proto    = { path = "crates/a7n-proto" }

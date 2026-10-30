@@ -11,6 +11,7 @@ default = ["tray"]
 tray = ["a7n-platform/tray"]
 
 [dependencies]
+egui-phosphor.workspace = true
 eframe.workspace = true
 a7n-platform.workspace = true
 tokio.workspace = true
