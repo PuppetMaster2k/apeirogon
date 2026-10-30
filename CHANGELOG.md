@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.6.0...v0.7.0) (2026-10-30)
+
+
+### Features
+
+* guide macOS permission onboarding ([#106](https://github.com/PuppetMaster2k/apeirogon/issues/106)) ([4c99cfa](https://github.com/PuppetMaster2k/apeirogon/commit/4c99cfa950f7bb59dd4cc2ae090f44b5deacf381))
+
 ## [0.6.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.5.0...v0.6.0) (2026-10-30)
 
 
