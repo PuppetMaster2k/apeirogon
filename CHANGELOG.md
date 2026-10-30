@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.5.0...v0.6.0) (2026-10-30)
+
+
+### Features
+
+* **gui:** add design theme, fonts, icons and sidebar shell ([#103](https://github.com/PuppetMaster2k/apeirogon/issues/103)) ([da33aac](https://github.com/PuppetMaster2k/apeirogon/commit/da33aacce21ebbbb69e26dc9be80c38be83b93ba))
+* **gui:** rebuild screens to the new design ([#104](https://github.com/PuppetMaster2k/apeirogon/issues/104)) ([9251d79](https://github.com/PuppetMaster2k/apeirogon/commit/9251d795cddceddd77ab5b44d4374a5ef3616566))
+
 ## [0.5.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.4.0...v0.5.0) (2026-10-30)
 
 
