@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::future::pending;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use a7n_core::clipboard::{self, Clock, Exclusion, Generation, LocalChange};
 use a7n_ipc::config::ClipboardPolicy;
@@ -13,6 +14,18 @@ use a7n_proto::{MachineId, limits};
 use tokio::sync::{Semaphore, oneshot};
 
 use super::Daemon;
+
+mod ask;
+pub(super) use ask::deadline;
+
+// A local UX limit keeps unattended confirmations from lingering; this is not a wire limit.
+const CLIPBOARD_ASK_TIMEOUT: Duration = Duration::from_secs(60);
+
+pub(super) struct Held {
+    peer: MachineId,
+    wire: ClipboardAnnounce,
+    pub deadline: Instant,
+}
 
 mod fetch;
 
@@ -41,6 +54,7 @@ impl Transfers {
 #[derive(Default)]
 pub(super) struct State {
     pub handle: Option<Clipboard>,
+    pub held: Option<Held>,
     clock: Clock,
     current: Option<Generation>,
     announce: Option<ClipboardAnnounce>,
@@ -88,6 +102,7 @@ impl Daemon {
         ClipboardInfo {
             available: self.clipboard.handle.is_some(),
             current,
+            held: self.held_clipboard(),
             peers: self
                 .status()
                 .peers
@@ -127,7 +142,7 @@ impl Daemon {
         self.clipboard.handle.is_some()
             && matches!(
                 self.clipboard_policy(peer),
-                ClipboardPolicy::Both | ClipboardPolicy::Send
+                ClipboardPolicy::Both | ClipboardPolicy::Send | ClipboardPolicy::Ask
             )
             && self
                 .links
@@ -179,6 +194,7 @@ impl Daemon {
     }
 
     pub(super) fn clipboard_changed(&mut self, change: Option<LocalChange>) {
+        self.clipboard.drop_held();
         self.clipboard.own_items.clear();
         let Some(change) = change else {
             self.clipboard.handle = None;
@@ -231,11 +247,19 @@ impl Daemon {
         if self.clipboard.handle.is_none()
             || !matches!(
                 self.clipboard_policy(peer),
-                ClipboardPolicy::Both | ClipboardPolicy::Receive
+                ClipboardPolicy::Both | ClipboardPolicy::Receive | ClipboardPolicy::Ask
             )
         {
             return;
         }
+        if self.clipboard_policy(peer) == ClipboardPolicy::Ask {
+            self.hold_clipboard(peer, wire);
+            return;
+        }
+        self.apply_clipboard(wire);
+    }
+
+    fn apply_clipboard(&mut self, wire: &ClipboardAnnounce) {
         let mut received = match clipboard::accept(self.clipboard.current, wire) {
             Ok(Some(received)) => received,
             Ok(None) => return,
@@ -256,6 +280,7 @@ impl Daemon {
         }) {
             return;
         }
+        self.clipboard.drop_held();
         self.clipboard.current = Some(received.generation);
         self.clipboard.announce = Some(wire.clone());
         self.clipboard.own_items.clear();

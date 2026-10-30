@@ -10,6 +10,7 @@ async fn request_status_returns_same_status_info() {
     // Arrange
     let (client_stream, server_stream) = tokio::io::duplex(1024);
     let status = StatusInfo {
+        held_clipboard: None,
         input: None,
         paused: false,
         focused: MachineId::try_from([1; MachineId::LEN].as_slice()).unwrap(),

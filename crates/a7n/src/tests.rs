@@ -58,6 +58,7 @@ fn write_response_status_displays_identity_and_peer_states() {
     // Arrange
     let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let response = Response::Status(StatusInfo {
+        held_clipboard: None,
         input: Some("Accessibility permission missing".to_owned()),
         paused: false,
         focused: machine,
@@ -143,6 +144,7 @@ fn write_response_status_with_nearby_displays_machine_ids_and_addresses() {
     // Arrange
     let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let response = Response::Status(StatusInfo {
+        held_clipboard: None,
         input: None,
         paused: false,
         focused: machine,

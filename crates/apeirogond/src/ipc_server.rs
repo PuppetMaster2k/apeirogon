@@ -71,6 +71,12 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
         Request::ClipboardStatus => {
             execute(commands, Command::ClipboardStatus, Response::Clipboard).await
         }
+        Request::ClipboardAccept => {
+            execute(commands, Command::ClipboardAccept, |()| Response::Done).await
+        }
+        Request::ClipboardReject => {
+            execute(commands, Command::ClipboardReject, |()| Response::Done).await
+        }
         Request::PairHost => {
             execute(commands, Command::PairHost, |code| Response::PairCode {
                 code,
@@ -136,6 +142,7 @@ fn error_response(error: &DaemonError) -> Response {
         DaemonError::Config(_) => ErrorKind::InvalidConfig,
         DaemonError::Layout(_) => ErrorKind::InvalidLayout,
         DaemonError::PairingBusy | DaemonError::Paused => ErrorKind::Busy,
+        DaemonError::InvalidRequest(_) => ErrorKind::InvalidRequest,
         DaemonError::NotConnected => ErrorKind::NotConnected,
         DaemonError::NotPaired => ErrorKind::NotPaired,
         DaemonError::Pairing(_) => ErrorKind::PairingRefused,

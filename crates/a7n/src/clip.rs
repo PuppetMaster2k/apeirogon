@@ -5,6 +5,14 @@ use std::io::{self, Write};
 use a7n_ipc::ClipboardInfo;
 use a7n_ipc::config::ClipboardPolicy;
 
+#[derive(Debug, clap::Subcommand)]
+pub(super) enum Command {
+    /// Apply the clipboard copy waiting for confirmation.
+    Accept,
+    /// Discard the clipboard copy waiting for confirmation.
+    Reject,
+}
+
 const KIBIBYTE: u64 = 1024;
 
 pub(super) fn write_status(output: &mut impl Write, info: &ClipboardInfo) -> io::Result<()> {
@@ -37,6 +45,16 @@ pub(super) fn write_status(output: &mut impl Write, info: &ClipboardInfo) -> io:
     } else {
         writeln!(output, "current copy: none")?;
     }
+    if let Some(held) = &info.held {
+        writeln!(
+            output,
+            "waiting for confirmation: {}, {} items, {} B, {}",
+            held.name,
+            held.items,
+            held.size,
+            held.kinds_label()
+        )?;
+    }
     write!(output, "peers:")?;
     if info.peers.is_empty() {
         write!(output, " none")?;
@@ -47,6 +65,7 @@ pub(super) fn write_status(output: &mut impl Write, info: &ClipboardInfo) -> io:
             ClipboardPolicy::Both => "both",
             ClipboardPolicy::Send => "send",
             ClipboardPolicy::Receive => "receive",
+            ClipboardPolicy::Ask => "ask",
             ClipboardPolicy::Off => "off",
         };
         let link = if peer.linked { "linked" } else { "not linked" };

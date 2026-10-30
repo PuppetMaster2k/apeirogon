@@ -103,6 +103,7 @@ pub enum ClipboardPolicy {
     Both,
     Send,
     Receive,
+    Ask,
     Off,
 }
 

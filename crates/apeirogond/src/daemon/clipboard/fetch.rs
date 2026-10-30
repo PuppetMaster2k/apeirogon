@@ -27,7 +27,9 @@ impl Daemon {
             || peer == self.identity.machine_id
             || !matches!(
                 self.clipboard_policy(peer),
-                super::ClipboardPolicy::Both | super::ClipboardPolicy::Receive
+                super::ClipboardPolicy::Both
+                    | super::ClipboardPolicy::Receive
+                    | super::ClipboardPolicy::Ask
             )
             || !self.links.by_peer.contains_key(&peer)
             || item.is_none()
@@ -105,7 +107,9 @@ impl Daemon {
             && self.clipboard.announce.is_some()
             && matches!(
                 self.clipboard_policy(peer),
-                super::ClipboardPolicy::Both | super::ClipboardPolicy::Receive
+                super::ClipboardPolicy::Both
+                    | super::ClipboardPolicy::Receive
+                    | super::ClipboardPolicy::Ask
             );
         if valid {
             let _ = request.reply.send(data);

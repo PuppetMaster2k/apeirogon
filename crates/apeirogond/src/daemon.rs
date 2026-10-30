@@ -82,6 +82,8 @@ pub(crate) enum DaemonError {
     Paused,
     #[error("machine is not paired")]
     NotPaired,
+    #[error("{0}")]
+    InvalidRequest(&'static str),
     #[error("machine is not connected")]
     NotConnected,
     #[error("trust snapshot lock poisoned")]
@@ -233,6 +235,7 @@ impl Daemon {
         keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             let deadline = self.input.focus.next_deadline();
+            let clipboard_deadline = self.clipboard.held.as_ref().map(|held| held.deadline);
             tokio::select! {
                 command = commands.recv() => {
                     let Some(command) = command else { return Ok(()); };
@@ -250,6 +253,7 @@ impl Daemon {
                 _ = retry.tick() => self.retry_nearby(),
                 _ = keepalive.tick() => self.input.keepalive(),
                 () = input::deadline(deadline) => self.poll_focus().await,
+                () = clipboard::deadline(clipboard_deadline) => self.clipboard.expire_held_clipboard(Instant::now()),
                 Some(stream) = self.transfer_rx.recv() => self.clipboard_stream(stream),
                 event = clipboard::next(&mut self.clipboard.handle) => match event {
                     clipboard::Event::Changed(change) => self.clipboard_changed(change),
@@ -299,6 +303,12 @@ impl Daemon {
             Command::ClipboardStatus(reply) => {
                 let _ = reply.send(Ok(self.clipboard_status()));
             }
+            Command::ClipboardAccept(reply) => {
+                let _ = reply.send(self.accept_clipboard());
+            }
+            Command::ClipboardReject(reply) => {
+                let _ = reply.send(self.reject_clipboard());
+            }
             Command::GetLayout(reply) => {
                 let _ = reply.send(Ok(self.layout_info()));
             }
@@ -327,6 +337,7 @@ impl Daemon {
     fn status(&self) -> Status {
         Status {
             input: self.input.unavailable.clone(),
+            held_clipboard: self.held_clipboard(),
             pid: std::process::id(),
             paused: self.input.paused,
             focused: match self.input.focus.cursor() {

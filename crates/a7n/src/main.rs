@@ -46,9 +46,12 @@ enum Command {
     Resume,
     /// Show clipboard availability, current copy metadata and paired-peer policies.
     #[command(
-        after_help = "Change a peer's policy with: a7n config set peers.<id>.clipboard <both|send|receive|off>"
+        after_help = "Change a peer's policy with: a7n config set peers.<id>.clipboard <both|send|receive|ask|off>"
     )]
-    Clip,
+    Clip {
+        #[command(subcommand)]
+        command: Option<clip::Command>,
+    },
     /// Show a pairing code, or join a target using a code read from stdin.
     Pair {
         /// Peer IP, IP:port, or nearby machine id / unique hex prefix (at least 4 digits).
@@ -102,7 +105,11 @@ async fn run(command: Command) -> Result<()> {
         Command::Status => Request::Status,
         Command::Pause => Request::SetPaused { paused: true },
         Command::Resume => Request::SetPaused { paused: false },
-        Command::Clip => Request::ClipboardStatus,
+        Command::Clip { command } => match command {
+            None => Request::ClipboardStatus,
+            Some(clip::Command::Accept) => Request::ClipboardAccept,
+            Some(clip::Command::Reject) => Request::ClipboardReject,
+        },
         Command::Pair { target: None } => Request::PairHost,
         Command::Pair {
             target: Some(target),
