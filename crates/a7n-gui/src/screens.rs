@@ -146,7 +146,7 @@ impl App {
         if self.screen == Screen::Hotkeys {
             ui.label("Home: comma-separated chords. Jump: modifiers for machine keys 1–9.");
         } else {
-            ui.label("allow_drive: true/false. Clipboard: both, send, receive, off. Modifier remaps use physical modifier names; mapping a modifier to itself restores normal behavior.");
+            ui.label("allow_drive: true/false. Clipboard: both, send, receive, ask, off. Modifier remaps use physical modifier names; mapping a modifier to itself restores normal behavior.");
         }
         for (key, value) in &mut self.edits {
             if let Some(status) = &self.status {
@@ -210,6 +210,7 @@ impl App {
                     a7n_ipc::config::ClipboardPolicy::Both => "both",
                     a7n_ipc::config::ClipboardPolicy::Send => "send",
                     a7n_ipc::config::ClipboardPolicy::Receive => "receive",
+                    a7n_ipc::config::ClipboardPolicy::Ask => "ask",
                     a7n_ipc::config::ClipboardPolicy::Off => "off",
                 };
                 self.edits

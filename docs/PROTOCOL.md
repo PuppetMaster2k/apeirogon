@@ -157,7 +157,9 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 
 - `SettingsSync` shares convenience settings (hotkeys, speed multipliers and the like) across the desk. Receivers MUST apply only keys on a fixed allow-list and ignore everything else.
 - Security settings are never synced and never changeable by a peer: `allow_drive`, per-peer clipboard and file policy, the clipboard app deny-list, and the sensitive-content check.
-- Per peer, the user controls `allow_drive` (announced with `Accepts`) and clipboard and file policy. Clipboard policy is local config `peers.<id>.clipboard`: `both` (default), `send`, `receive`, or `off`. The app deny-list is local config `clipboard.deny_apps`, edited in the file. Interactive `ask` policy is deferred to the GUI (#26).
+- Per peer, the user controls `allow_drive` (announced with `Accepts`) and clipboard and file policy. Clipboard policy is local config `peers.<id>.clipboard`: `both` (default), `send`, `receive`, `ask`, or `off`. The app deny-list is local config `clipboard.deny_apps`, edited in the file.
+
+With `ask`, sending behaves like `both`, while incoming copies are validated and held without changing the local clipboard until accepted through the GUI or `a7n clip accept` (`a7n clip reject` discards them). At most one copy is held; a newer held copy replaces it. Acceptance rechecks that the generation is still newest and the peer is connected. A local copy, another applied announce, loss of the holding peer's link, rejection, or the local 60 s confirmation timeout drops the held copy. Prompts show only the peer, item count, total size and text/image kinds; contents and raw MIME types are never shown.
 
 ## 14. Limits and defaults
 

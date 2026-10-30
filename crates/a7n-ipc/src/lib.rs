@@ -25,8 +25,9 @@ pub use a7n_proto::limits::DEFAULT_UDP_PORT;
 pub use connection::{IpcClient, IpcConnection, IpcServer};
 pub use error::IpcError;
 pub use types::{
-    ClipboardCopy, ClipboardInfo, ErrorKind, LayoutInfo, LayoutPlacement, NearbyMachine,
-    PeerClipboard, PeerInfo, PlacedMachine, Request, Response, StatusInfo, UnplacedMachine,
+    ClipboardCopy, ClipboardInfo, ClipboardKind, ErrorKind, HeldClipboard, LayoutInfo,
+    LayoutPlacement, NearbyMachine, PeerClipboard, PeerInfo, PlacedMachine, Request, Response,
+    StatusInfo, UnplacedMachine,
 };
 
 /// Local API major version, independent of the peer protobuf protocol.

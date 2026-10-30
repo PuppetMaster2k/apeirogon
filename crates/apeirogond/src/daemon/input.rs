@@ -164,7 +164,7 @@ impl Daemon {
     }
 
     pub(super) fn input_link_lost(&mut self, peer: MachineId) {
-        self.clipboard.links.remove(&peer);
+        self.clipboard_link_down(peer);
         self.input.lost.push(peer);
     }
 

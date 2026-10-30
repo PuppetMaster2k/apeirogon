@@ -120,6 +120,36 @@ impl App {
         }
     }
 
+    fn clipboard_prompt(&mut self, ctx: &egui::Context) {
+        let Some(held) = self.status.as_ref().and_then(|s| s.held_clipboard.as_ref()) else {
+            return;
+        };
+        let mut action = None;
+        egui::Window::new("Clipboard confirmation")
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.label(format!(
+                    "Clipboard from {}: {} items, {} B, {}",
+                    held.name,
+                    held.items,
+                    held.size,
+                    held.kinds_label()
+                ));
+                ui.horizontal(|ui| {
+                    if ui.button("Accept").clicked() {
+                        action = Some(Request::ClipboardAccept);
+                    }
+                    if ui.button("Reject").clicked() {
+                        action = Some(Request::ClipboardReject);
+                    }
+                });
+            });
+        if let Some(request) = action {
+            self.send(Command::Request(request));
+            self.send(Command::Request(Request::Status));
+        }
+    }
+
     #[cfg(feature = "tray")]
     fn tray(&mut self, ctx: &egui::Context) {
         use a7n_platform::tray::Action;
@@ -148,7 +178,12 @@ impl App {
                         s.paused,
                     )
                 });
-        tray.update(status, &focused, paused);
+        let waiting = self
+            .status
+            .as_ref()
+            .and_then(|s| s.held_clipboard.as_ref())
+            .map(|held| format!("Clipboard waiting from {}", held.name));
+        tray.update(waiting.as_deref().unwrap_or(status), &focused, paused);
         while let Some(action) = self
             .tray
             .as_ref()
@@ -178,6 +213,7 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.updates();
+        self.clipboard_prompt(ctx);
         #[cfg(feature = "tray")]
         self.tray(ctx);
         // Keeps the pairing expiry and native tray responsive while idle.

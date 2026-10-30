@@ -49,6 +49,7 @@ fn wire(origin: MachineId, generation: u64, text: &str) -> ClipboardAnnounce {
     clipboard::announce(change(text).items, Generation { origin, generation }).unwrap()
 }
 
+mod ask;
 mod fetch;
 
 #[tokio::test]
@@ -96,6 +97,7 @@ async fn clipboard_status_local_change_returns_metadata_only() {
     assert_eq!(
         info,
         ClipboardInfo {
+            held: None,
             available: true,
             current: Some(ClipboardCopy {
                 origin: peer.machine,

@@ -23,6 +23,8 @@ pub enum Request {
     },
     Status,
     ClipboardStatus,
+    ClipboardAccept,
+    ClipboardReject,
     GetLayout,
     SetLayout {
         placed: Vec<LayoutPlacement>,
@@ -87,6 +89,7 @@ pub enum ErrorKind {
 pub struct StatusInfo {
     /// None when input works, otherwise the reason it is unavailable.
     pub input: Option<String>,
+    pub held_clipboard: Option<HeldClipboard>,
     pub pid: u32,
     /// Outgoing input sharing is suspended for this daemon session.
     pub paused: bool,
@@ -106,7 +109,49 @@ pub struct StatusInfo {
 pub struct ClipboardInfo {
     pub available: bool,
     pub current: Option<ClipboardCopy>,
+    pub held: Option<HeldClipboard>,
     pub peers: Vec<PeerClipboard>,
+}
+
+/// Metadata awaiting local confirmation; never includes contents or raw MIME types.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HeldClipboard {
+    #[serde(with = "machine_id")]
+    pub machine: MachineId,
+    pub name: String,
+    pub items: u32,
+    pub size: u64,
+    pub kinds: Vec<ClipboardKind>,
+}
+
+/// Coarse content categories safe to show in confirmation prompts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClipboardKind {
+    Text,
+    Image,
+}
+
+impl std::fmt::Display for ClipboardKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Text => "text",
+            Self::Image => "image",
+        })
+    }
+}
+
+impl HeldClipboard {
+    /// Comma-separated kinds for prompts, e.g. `text, image`.
+    #[must_use]
+    pub fn kinds_label(&self) -> String {
+        self.kinds
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
 }
 
 /// Metadata of the current announced copy, without formats or payloads.

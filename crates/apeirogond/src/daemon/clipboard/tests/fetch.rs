@@ -11,52 +11,69 @@ fn with_pastes(mut daemon: Daemon) -> (Daemon, mpsc::Sender<PasteRequest>) {
 }
 
 #[tokio::test]
-async fn clipboard_paste_large_copy_fetches_source_bytes() {
-    // Arrange
-    let (mut a, a_dir, _changes, _a_commands) = daemon();
-    let (b, b_dir, _b_changes, mut commands) = daemon();
-    let (b, pastes) = with_pastes(b);
-    let text = "x".repeat(100 * 1024);
-    a.clipboard_changed(Some(change(&text)));
-    let (a, b) = (Peer::run(a, a_dir), Peer::run(b, b_dir));
-    a.pair(&b).await;
-    let ClipboardCommand::Set {
-        generation,
-        items,
-        lazy,
-    } = timeout(TEST_TIMEOUT, commands.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(items, []);
-    assert_eq!(
-        lazy,
-        vec![LazyItem {
-            mime: TEXT_PLAIN.into(),
-            size: text.len() as u64,
-            item_index: 0
-        }]
-    );
-    let (reply, receiver) = oneshot::channel();
-
-    // Act
-    pastes
-        .send(PasteRequest {
+async fn clipboard_paste_large_copy_with_both_or_ask_fetches_source_bytes() {
+    for ask in [false, true] {
+        // Arrange
+        let (mut a, a_dir, _changes, _a_commands) = daemon();
+        let (mut b, b_dir, _b_changes, mut commands) = daemon();
+        if ask {
+            a.config
+                .set(&format!("peers.{}.clipboard", b.identity.machine_id), "ask")
+                .unwrap();
+            b.config
+                .set(&format!("peers.{}.clipboard", a.identity.machine_id), "ask")
+                .unwrap();
+        }
+        let (b, pastes) = with_pastes(b);
+        let text = "x".repeat(100 * 1024);
+        a.clipboard_changed(Some(change(&text)));
+        let (a, b) = (Peer::run(a, a_dir), Peer::run(b, b_dir));
+        a.pair(&b).await;
+        if ask {
+            b.wait(|s| s.held_clipboard.is_some()).await;
+            assert!(commands.try_recv().is_err());
+            b.command(crate::command::Command::ClipboardAccept)
+                .await
+                .unwrap();
+        }
+        let ClipboardCommand::Set {
             generation,
-            item_index: 0,
-            reply,
-        })
-        .await
-        .unwrap();
-    let data = timeout(a7n_proto::limits::HANDSHAKE_TIMEOUT, receiver)
-        .await
-        .unwrap()
-        .unwrap();
+            items,
+            lazy,
+        } = timeout(TEST_TIMEOUT, commands.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(items, []);
+        assert_eq!(
+            lazy,
+            vec![LazyItem {
+                mime: TEXT_PLAIN.into(),
+                size: text.len() as u64,
+                item_index: 0
+            }]
+        );
+        let (reply, receiver) = oneshot::channel();
 
-    // Assert
-    assert_eq!(data, Some(text.into_bytes()));
-    a.stop().await;
-    b.stop().await;
+        // Act
+        pastes
+            .send(PasteRequest {
+                generation,
+                item_index: 0,
+                reply,
+            })
+            .await
+            .unwrap();
+        let data = timeout(a7n_proto::limits::HANDSHAKE_TIMEOUT, receiver)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Assert
+        assert_eq!(data, Some(text.into_bytes()));
+        a.stop().await;
+        b.stop().await;
+    }
 }
 
 #[tokio::test]

@@ -145,7 +145,6 @@ impl Daemon {
                 // An old task can finish after its replacement is registered.
                 if self.is_current(peer, id) {
                     self.links.by_peer.remove(&peer);
-                    self.clipboard.links.remove(&peer);
                     self.input_link_lost(peer);
                 }
             }

@@ -20,7 +20,7 @@ struct Hello {
 #[serde(untagged)]
 enum HelloReply {
     Hello(Hello),
-    Response(Response),
+    Response(Box<Response>),
 }
 
 /// Listener for local CLI and GUI connections.
@@ -152,10 +152,12 @@ impl<S: AsyncRead + AsyncWrite + Unpin> IpcClient<S> {
                     received: hello.ipc_version,
                     expected: IPC_VERSION,
                 }),
-                HelloReply::Response(Response::Error { kind, message }) => {
-                    Err(IpcError::HandshakeRefused { kind, message })
-                }
-                HelloReply::Response(_) => Err(IpcError::ExpectedHello),
+                HelloReply::Response(response) => match *response {
+                    Response::Error { kind, message } => {
+                        Err(IpcError::HandshakeRefused { kind, message })
+                    }
+                    _ => Err(IpcError::ExpectedHello),
+                },
             }
         })
         .await

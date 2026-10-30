@@ -245,6 +245,7 @@ async fn status_ipc_round_trip_returns_own_machine() {
     assert_eq!(
         info,
         a7n_ipc::StatusInfo {
+            held_clipboard: None,
             input: None,
             pid: std::process::id(),
             paused: false,
