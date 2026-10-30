@@ -8,6 +8,7 @@ use theme::{BadgeKind, ButtonKind, ButtonSize, IconButtonKind, icon};
 mod hotkeys;
 mod machines;
 mod peers;
+mod permissions;
 
 impl App {
     pub(super) fn settings(&mut self, ui: &mut egui::Ui) {

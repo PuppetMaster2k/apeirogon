@@ -89,6 +89,10 @@ impl App {
         while let Ok(update) = self.worker.updates.try_recv() {
             match update {
                 Update::Response(Ok(Response::Status(status))) => {
+                    let was_missing = self.missing_permissions().is_some();
+                    if was_missing && status.missing_permissions.is_empty() {
+                        self.message = "Permissions granted".into();
+                    }
                     self.status = Some(status);
                     self.daemon_error = None;
                 }
@@ -130,6 +134,12 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Permissions the daemon still needs, if any; this swaps in the onboarding screen.
+    fn missing_permissions(&self) -> Option<Vec<a7n_ipc::Permission>> {
+        let missing = &self.status.as_ref()?.missing_permissions;
+        (!missing.is_empty()).then(|| missing.clone())
     }
 
     fn clipboard_prompt(&mut self, ctx: &egui::Context) {
@@ -322,10 +332,17 @@ impl eframe::App for App {
                         self.daemon_unavailable(ui);
                         return;
                     }
-                    egui::ScrollArea::vertical().show(ui, |ui| match self.screen {
-                        Screen::Machines => self.machines(ui),
-                        Screen::Layout => self.layout_screen(ui),
-                        Screen::Hotkeys | Screen::Policies => self.settings(ui),
+                    let missing = self.missing_permissions();
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        if let Some(missing) = &missing {
+                            self.permissions(ui, missing);
+                            return;
+                        }
+                        match self.screen {
+                            Screen::Machines => self.machines(ui),
+                            Screen::Layout => self.layout_screen(ui),
+                            Screen::Hotkeys | Screen::Policies => self.settings(ui),
+                        }
                     });
                 });
             });

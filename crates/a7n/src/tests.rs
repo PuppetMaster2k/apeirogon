@@ -75,6 +75,7 @@ fn write_response_status_displays_identity_and_peer_states() {
             })
             .collect(),
         nearby: Vec::new(),
+        missing_permissions: vec![a7n_ipc::Permission::Accessibility],
     });
     let mut output = Vec::new();
 
@@ -86,6 +87,7 @@ fn write_response_status_displays_identity_and_peer_states() {
         String::from_utf8(output).unwrap(),
         concat!(
             "input: unavailable (Accessibility permission missing)\n",
+            "permission missing: Accessibility\n",
             "local 0123456789abcdef0123456789abcdef (this machine)\n",
             "peer 0123456789abcdef0123456789abcdef connected\n",
             "peer 0123456789abcdef0123456789abcdef offline\n",
@@ -156,6 +158,7 @@ fn write_response_status_with_nearby_displays_machine_ids_and_addresses() {
             id: machine,
             addr: "127.0.0.1:1234".parse().unwrap(),
         }],
+        missing_permissions: Vec::new(),
     });
     let mut output = Vec::new();
 

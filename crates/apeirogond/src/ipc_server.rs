@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use a7n_ipc::{ErrorKind, IpcConnection, IpcServer, Request, Response};
+use a7n_platform::permissions::PermissionError;
 use a7n_proto::limits;
 use tokio::sync::{mpsc, oneshot};
 
@@ -103,6 +104,15 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
             )
             .await
         }
+        Request::RequestPermission { permission } => {
+            let permission = permission.into();
+            execute(
+                commands,
+                |reply| Command::RequestPermission { permission, reply },
+                |()| Response::Done,
+            )
+            .await
+        }
         Request::Connect { addr } => {
             execute(
                 commands,
@@ -142,7 +152,9 @@ fn error_response(error: &DaemonError) -> Response {
         DaemonError::Config(_) => ErrorKind::InvalidConfig,
         DaemonError::Layout(_) => ErrorKind::InvalidLayout,
         DaemonError::PairingBusy | DaemonError::Paused => ErrorKind::Busy,
-        DaemonError::InvalidRequest(_) => ErrorKind::InvalidRequest,
+        DaemonError::InvalidRequest(_) | DaemonError::Permission(PermissionError::Unsupported) => {
+            ErrorKind::InvalidRequest
+        }
         DaemonError::NotConnected => ErrorKind::NotConnected,
         DaemonError::NotPaired => ErrorKind::NotPaired,
         DaemonError::Pairing(_) => ErrorKind::PairingRefused,

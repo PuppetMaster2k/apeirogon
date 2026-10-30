@@ -5,6 +5,7 @@ pub mod clipboard;
 pub mod fs;
 pub mod input;
 pub mod local_socket;
+pub mod permissions;
 
 /// OS host name, bounded to the peer name limit, if available and nonempty.
 #[must_use]

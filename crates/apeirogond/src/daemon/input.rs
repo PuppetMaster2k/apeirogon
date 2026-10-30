@@ -11,6 +11,7 @@ use a7n_core::input::{MotionCounter, MotionScale, MotionTracker, edge_push};
 use a7n_platform::input::{Bounds, Capture, CaptureControl, Captured, Inject, Injector};
 use a7n_proto::v1::{Edge, Envelope, InputBatch, envelope::Body};
 use a7n_proto::{MachineId, Route};
+use tokio::sync::oneshot;
 
 use super::{Daemon, DaemonError};
 
@@ -34,7 +35,13 @@ pub(super) struct Input {
     resistance: EdgeResistance,
     pub(super) failed: bool,
     lost: Vec<MachineId>,
+    /// Outcome of the startup retry task, if input began unavailable.
+    pub(super) retried: Option<oneshot::Receiver<Retried>>,
 }
+
+pub(crate) type Handles = (Capture, Injector);
+/// Started input, or why it still cannot start once nothing is missing.
+pub(crate) type Retried = Result<Handles, String>;
 
 impl Input {
     pub(super) fn new(own: MachineId) -> Self {
@@ -53,6 +60,7 @@ impl Input {
             resistance: EdgeResistance::new(0),
             failed: false,
             lost: Vec::new(),
+            retried: None,
         }
     }
 
@@ -116,6 +124,14 @@ pub(super) async fn captured(capture: &mut Option<Capture>) -> Option<Captured> 
     }
 }
 
+/// Resolves once, when the retry task finishes or is dropped.
+pub(super) async fn retried(retried: &mut Option<oneshot::Receiver<Retried>>) -> Option<Retried> {
+    match retried {
+        Some(receiver) => receiver.await.ok(),
+        None => pending().await,
+    }
+}
+
 pub(super) async fn feedback(injector: &mut Option<Injector>) -> Option<Captured> {
     match injector {
         Some(injector) => injector.pointer.recv().await,
@@ -141,12 +157,34 @@ impl Daemon {
         self
     }
 
-    pub(crate) fn with_input(mut self, handles: Option<(Capture, Injector)>) -> Self {
-        if let Some((capture, injector)) = handles {
-            self.input.capture = Some(capture);
-            self.input.injector = Some(injector);
+    pub(crate) fn with_input(mut self, handles: Option<Handles>) -> Self {
+        if let Some(handles) = handles {
+            self.attach_input(handles);
         }
         self
+    }
+
+    /// Input that could not start yet arrives here once its permissions are granted.
+    pub(crate) fn with_input_retry(mut self, retried: oneshot::Receiver<Retried>) -> Self {
+        self.input.retried = Some(retried);
+        self
+    }
+
+    /// Takes the retry outcome; `None` means the task ended without one.
+    pub(super) fn finish_input_retry(&mut self, retried: Option<Retried>) {
+        self.input.retried = None;
+        match retried {
+            Some(Ok(handles)) => self.attach_input(handles),
+            // The old reason named a permission that is granted by now.
+            Some(Err(reason)) => self.input.unavailable = Some(reason),
+            None => {}
+        }
+    }
+
+    fn attach_input(&mut self, (capture, injector): Handles) {
+        self.input.capture = Some(capture);
+        self.input.injector = Some(injector);
+        self.input.unavailable = None;
     }
 
     pub(super) async fn shutdown_input(&mut self) {

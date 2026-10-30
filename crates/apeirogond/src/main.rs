@@ -8,6 +8,7 @@ mod discovery;
 mod endpoint;
 mod handshake;
 mod identity;
+mod input_retry;
 mod ipc_server;
 mod layout_store;
 mod link;
@@ -24,7 +25,7 @@ use a7n_ipc::config::Config;
 use anyhow::{Context, Result};
 use clap::Parser;
 use directories::ProjectDirs;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Parser)]
 #[command(version, about = "Apeirogon session daemon")]
@@ -46,14 +47,19 @@ async fn main() -> Result<()> {
     let server = a7n_ipc::IpcServer::bind()
         .await
         .context("cannot open the control socket; is apeirogond already running?")?;
-    let (input, input_error) = match a7n_platform::input::start() {
-        Ok(handles) => (Some(handles), None),
+    let (input, input_error, retry) = match a7n_platform::input::start() {
+        Ok(handles) => (Some(handles), None, None),
         Err(error) => {
             crate::log::event!("kind=input_unavailable reason={error}");
-            (None, Some(error.to_string()))
+            let retry = (!a7n_platform::permissions::missing().is_empty()).then(|| {
+                let (handles, receiver) = oneshot::channel();
+                input_retry::spawn(handles);
+                receiver
+            });
+            (None, Some(error.to_string()), retry)
         }
     };
-    let daemon = daemon::Daemon::load(
+    let mut daemon = daemon::Daemon::load(
         dirs.data_local_dir(),
         SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.port)),
     )?
@@ -62,6 +68,9 @@ async fn main() -> Result<()> {
     .with_input_error(input_error)
     .with_clipboard(a7n_platform::clipboard::start().ok())
     .with_trace_input(cli.trace_input);
+    if let Some(retry) = retry {
+        daemon = daemon.with_input_retry(retry);
+    }
     let (discoveries, discovery_rx) = mpsc::channel(discovery::CHANNEL_CAPACITY);
     let (machine, port) = daemon.discovery_identity()?;
     let discovery_task = tokio::spawn(discovery::run(machine, port, discoveries));

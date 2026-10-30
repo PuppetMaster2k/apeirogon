@@ -26,11 +26,11 @@ pub use connection::{IpcClient, IpcConnection, IpcServer};
 pub use error::IpcError;
 pub use types::{
     ClipboardCopy, ClipboardInfo, ClipboardKind, ErrorKind, HeldClipboard, LayoutInfo,
-    LayoutPlacement, NearbyMachine, PeerClipboard, PeerInfo, PlacedMachine, Request, Response,
-    StatusInfo, UnplacedMachine,
+    LayoutPlacement, NearbyMachine, PeerClipboard, PeerInfo, Permission, PlacedMachine, Request,
+    Response, StatusInfo, UnplacedMachine,
 };
 
 /// Local API major version, independent of the peer protobuf protocol.
-pub const IPC_VERSION: u32 = 2;
+pub const IPC_VERSION: u32 = 3;
 /// Maximum JSON payload bytes per line, excluding the terminating newline.
 pub const MAX_LINE_LENGTH: usize = 64 * 1024;

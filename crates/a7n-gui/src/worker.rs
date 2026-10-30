@@ -18,6 +18,10 @@ pub(super) enum Command {
     Start,
 }
 
+#[allow(
+    clippy::large_enum_variant,
+    reason = "one update per second reaches the UI thread; boxing would only add noise"
+)]
 pub(super) enum Update {
     Response(Result<Response, String>),
     Config(Result<Box<Config>, String>),

@@ -50,6 +50,8 @@ const MAILBOX_CAPACITY: usize = 64;
 /// Bound the number of source-address rate-limit buckets.
 const PAIRING_SOURCES: usize = 256;
 
+pub(crate) use input::Retried as InputRetried;
+
 type TransferStream = (MachineId, usize, quinn::RecvStream);
 
 type Inbound = (MachineId, usize, Envelope);
@@ -74,6 +76,8 @@ pub(crate) enum DaemonError {
     Link(#[from] LinkError),
     #[error(transparent)]
     Pairing(#[from] PairingError),
+    #[error(transparent)]
+    Permission(#[from] a7n_platform::permissions::PermissionError),
     #[error("system time precedes the Unix epoch")]
     Clock(#[from] std::time::SystemTimeError),
     #[error("pairing exchange already active")]
@@ -259,6 +263,7 @@ impl Daemon {
                     clipboard::Event::Changed(change) => self.clipboard_changed(change),
                     clipboard::Event::Paste(request) => self.clipboard_paste(request),
                 },
+                retried = input::retried(&mut self.input.retried) => self.finish_input_retry(retried),
                 event = input::captured(&mut self.input.capture) => self.captured(event).await,
                 event = input::feedback(&mut self.input.injector) => self.pointer_feedback(event).await,
                 Some((peer, id, envelope)) = self.inbound_rx.recv() => {
@@ -330,6 +335,10 @@ impl Daemon {
             Command::Connect { addr, reply } => {
                 self.connect(addr, reply);
             }
+            Command::RequestPermission { permission, reply } => {
+                let _ =
+                    reply.send(a7n_platform::permissions::request(permission).map_err(Into::into));
+            }
         }
         Ok(())
     }
@@ -361,6 +370,10 @@ impl Daemon {
                 })
                 .collect(),
             nearby: self.nearby_status(),
+            missing_permissions: a7n_platform::permissions::missing()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         }
     }
 

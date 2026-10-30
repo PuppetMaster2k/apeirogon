@@ -6,7 +6,7 @@ use a7n_core::layout::Placement;
 use a7n_proto::v1::{InputEvent, KeyEvent, RefuseReason, input_event};
 use a7n_proto::{FrameKind, limits};
 use tempfile::TempDir;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
 use super::*;
@@ -30,6 +30,11 @@ fn daemon(input: bool) -> (Daemon, TempDir, Option<FakeInput>) {
     if !input {
         return (daemon, dir, None);
     }
+    let (handles, fake) = fake_input();
+    (daemon.with_input(Some(handles)), dir, Some(fake))
+}
+
+fn fake_input() -> (Handles, FakeInput) {
     let (capture_tx, capture_rx) = mpsc::channel(super::super::MAILBOX_CAPACITY);
     let (control_tx, control_rx) = mpsc::channel(super::super::MAILBOX_CAPACITY);
     let (inject_tx, inject_rx) = mpsc::channel(super::super::MAILBOX_CAPACITY);
@@ -40,27 +45,25 @@ fn daemon(input: bool) -> (Daemon, TempDir, Option<FakeInput>) {
         width: 100,
         height: 100,
     };
-    let daemon = daemon.with_input(Some((
-        Capture {
-            bounds,
-            events: capture_rx,
-            control: control_tx,
-        },
-        Injector {
-            bounds,
-            commands: inject_tx,
-            pointer: feedback_rx,
-        },
-    )));
     (
-        daemon,
-        dir,
-        Some(FakeInput {
+        (
+            Capture {
+                bounds,
+                events: capture_rx,
+                control: control_tx,
+            },
+            Injector {
+                bounds,
+                commands: inject_tx,
+                pointer: feedback_rx,
+            },
+        ),
+        FakeInput {
             capture: capture_tx,
             control: control_rx,
             inject: inject_rx,
             feedback: feedback_tx,
-        }),
+        },
     )
 }
 
@@ -401,4 +404,36 @@ async fn shutdown_driven_machine_releases_key_and_ungrabs_before_done() {
     b_input.grab(false).await;
     b.stop().await;
     a.stop().await;
+}
+
+#[tokio::test]
+async fn attach_input_after_unavailable_start_clears_status_and_forwards_input() {
+    // Arrange
+    let (retry, retried) = oneshot::channel();
+    let (a, b, a_input, mut b_input) = configured_pair(|a, _| {
+        a.input.capture = None;
+        a.input.injector = None;
+        a.input.unavailable = Some("Accessibility permission missing".to_owned());
+        a.input.retried = Some(retried);
+    })
+    .await;
+    assert!(a.status().await.input.is_some());
+    let (handles, mut late_input) = fake_input();
+
+    // Act
+    retry.send(Ok(handles)).unwrap();
+    let status = a.wait(|status| status.input.is_none()).await;
+    late_input.cross(true).await;
+
+    // Assert
+    assert_eq!(status.input, None);
+    late_input.grab(true).await;
+    b_input.grab(true).await;
+    assert!(matches!(
+        b_input.injected().await,
+        Inject::Warp { x: 0, y: 0..=99 }
+    ));
+    drop(a_input);
+    a.stop().await;
+    b.stop().await;
 }
