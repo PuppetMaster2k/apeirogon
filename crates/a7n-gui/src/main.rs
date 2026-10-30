@@ -211,14 +211,17 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.updates();
-        self.clipboard_prompt(ctx);
         #[cfg(feature = "tray")]
         self.tray(ctx);
         // Keeps the pairing expiry and native tray responsive while idle.
         ctx.request_repaint_after(Duration::from_secs(1));
-        egui::SidePanel::left("navigation").show(ctx, |ui| {
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.clipboard_prompt(ui.ctx());
+        egui::Panel::left("navigation").show(ui, |ui| {
             ui.heading("Apeirogon");
             for (screen, name) in [
                 (Screen::Machines, "Machines"),
@@ -238,7 +241,7 @@ impl eframe::App for App {
                 }
             }
         });
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             ui.label(&self.message);
             if self.worker.commands.capacity() == 0 {
                 ui.label("Waiting for daemon…");
@@ -257,10 +260,10 @@ impl eframe::App for App {
                         if ui.button("Reload layout (discard edits)").clicked() {
                             self.send(Command::Request(Request::GetLayout));
                         }
-                        if let Some(canvas) = &mut self.layout {
-                            if let Some(placed) = canvas.show(ui) {
-                                self.send(Command::Request(Request::SetLayout { placed }));
-                            }
+                        if let Some(canvas) = &mut self.layout
+                            && let Some(placed) = canvas.show(ui)
+                        {
+                            self.send(Command::Request(Request::SetLayout { placed }));
                         }
                     }
                     Screen::Hotkeys | Screen::Policies => self.settings(ui),

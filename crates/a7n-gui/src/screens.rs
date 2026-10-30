@@ -108,11 +108,10 @@ impl App {
                     egui::Button::new("Join pairing"),
                 )
                 .clicked()
+                && let (Ok(addr), Ok(code)) = (address, code)
             {
-                if let (Ok(addr), Ok(code)) = (address, code) {
-                    self.send(Command::Request(Request::PairJoin { addr, code }));
-                    self.code.clear();
-                }
+                self.send(Command::Request(Request::PairJoin { addr, code }));
+                self.code.clear();
             }
             if ui
                 .add_enabled(
@@ -120,10 +119,9 @@ impl App {
                     egui::Button::new("Connect to paired address"),
                 )
                 .clicked()
+                && let Ok(addr) = address
             {
-                if let Ok(addr) = address {
-                    self.send(Command::Request(Request::Connect { addr }));
-                }
+                self.send(Command::Request(Request::Connect { addr }));
             }
         });
     }
@@ -149,14 +147,13 @@ impl App {
             ui.label("allow_drive: true/false. Clipboard: both, send, receive, ask, off. Modifier remaps use physical modifier names; mapping a modifier to itself restores normal behavior.");
         }
         for (key, value) in &mut self.edits {
-            if let Some(status) = &self.status {
-                if let Some(peer) = status
+            if let Some(status) = &self.status
+                && let Some(peer) = status
                     .peers
                     .iter()
                     .find(|p| key == &format!("peers.{}.allow_drive", p.id))
-                {
-                    ui.heading(&peer.name);
-                }
+            {
+                ui.heading(&peer.name);
             }
             ui.horizontal(|ui| {
                 let label = ui.label(key.as_str());
