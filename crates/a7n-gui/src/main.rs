@@ -27,6 +27,9 @@ struct App {
     screen: Screen,
     status: Option<StatusInfo>,
     message: String,
+    daemon_error: Option<String>,
+    selected_peer: Option<a7n_ipc::MachineId>,
+    editing_hotkeys: [bool; 4],
     address: String,
     code: String,
     pairing: Option<(String, Instant)>,
@@ -58,6 +61,9 @@ impl App {
             screen: Screen::Machines,
             status: None,
             message,
+            daemon_error: None,
+            selected_peer: None,
+            editing_hotkeys: [false; 4],
             address: String::new(),
             code: String::new(),
             pairing: None,
@@ -82,7 +88,10 @@ impl App {
     fn updates(&mut self) {
         while let Ok(update) = self.worker.updates.try_recv() {
             match update {
-                Update::Response(Ok(Response::Status(status))) => self.status = Some(status),
+                Update::Response(Ok(Response::Status(status))) => {
+                    self.status = Some(status);
+                    self.daemon_error = None;
+                }
                 Update::Response(Ok(Response::Layout(info))) => {
                     match canvas::Canvas::try_from(info) {
                         Ok(canvas) => self.layout = Some(canvas),
@@ -108,11 +117,12 @@ impl App {
                 Update::Response(Ok(_)) => self.message = "Unexpected daemon response".into(),
                 Update::Response(Err(error)) => {
                     self.status = None;
-                    self.message = format!("Daemon unavailable: {error}");
+                    self.daemon_error = Some(error);
                 }
                 Update::Config(Ok(config)) => {
                     self.config = Some(*config);
                     self.edits.clear();
+                    self.editing_hotkeys = [false; 4];
                 }
                 Update::Config(Err(error)) => {
                     self.config = None;
@@ -278,12 +288,8 @@ impl eframe::App for App {
                 ] {
                     if theme::nav_item(ui, icon, name, self.screen == screen).clicked() {
                         self.screen = screen;
-                        self.edits.clear();
                         if screen == Screen::Layout {
                             self.send(Command::Request(Request::GetLayout));
-                        }
-                        if matches!(screen, Screen::Hotkeys | Screen::Policies) {
-                            self.send(Command::Config);
                         }
                     }
                 }
@@ -311,30 +317,14 @@ impl eframe::App for App {
             )
             .show(ui, |ui| {
                 ui.set_max_width(theme::size::CONTENT_MAX_W);
-                ui.label(&self.message);
-                if self.worker.commands.capacity() == 0 {
-                    ui.label("Waiting for daemon…");
-                }
                 ui.add_enabled_ui(self.worker.commands.capacity() > 0, |ui| {
                     if self.status.is_none() {
-                        ui.heading("Daemon not running or unavailable");
-                        if ui.button("Start daemon").clicked() {
-                            self.send(Command::Start);
-                        }
+                        self.daemon_unavailable(ui);
                         return;
                     }
                     egui::ScrollArea::vertical().show(ui, |ui| match self.screen {
                         Screen::Machines => self.machines(ui),
-                        Screen::Layout => {
-                            if ui.button("Reload layout (discard edits)").clicked() {
-                                self.send(Command::Request(Request::GetLayout));
-                            }
-                            if let Some(canvas) = &mut self.layout
-                                && let Some(placed) = canvas.show(ui)
-                            {
-                                self.send(Command::Request(Request::SetLayout { placed }));
-                            }
-                        }
+                        Screen::Layout => self.layout_screen(ui),
                         Screen::Hotkeys | Screen::Policies => self.settings(ui),
                     });
                 });

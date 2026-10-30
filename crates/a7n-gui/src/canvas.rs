@@ -4,6 +4,8 @@ use a7n_ipc::layout::{LayoutDraft, LayoutDraftError};
 use a7n_ipc::{LayoutInfo, LayoutPlacement, Placement, validate};
 use eframe::egui;
 
+use crate::theme;
+
 const CANVAS_HEIGHT: f32 = 350.0;
 const CANVAS_PADDING: f32 = 20.0;
 const MOVE_STEP: i32 = 100;
@@ -29,16 +31,29 @@ impl TryFrom<LayoutInfo> for Canvas {
 }
 
 impl Canvas {
-    pub(super) fn show(&mut self, ui: &mut egui::Ui) -> Option<Vec<LayoutPlacement>> {
-        ui.label("Drag machines to place them. Tab selects a machine; arrow keys move it (Shift for fine movement). Edges connect where rectangles touch.");
+    pub(super) fn fit(&mut self) {
+        self.bounds = bounds(&self.draft.placements);
+    }
+
+    pub(super) fn is_valid(&self) -> bool {
+        validate(&self.draft.placements).is_ok()
+    }
+
+    pub(super) fn placed(&self) -> Vec<LayoutPlacement> {
+        self.draft.placed()
+    }
+
+    pub(super) fn show(&mut self, ui: &mut egui::Ui) {
+        theme::small(
+            ui,
+            "Drag machines to place them. Tab selects a machine; arrow keys move it (Shift for fine movement). Edges connect where rectangles touch.",
+        );
         if self.draft.lost_edit {
-            ui.colored_label(
-                egui::Color32::YELLOW,
+            theme::badge(
+                ui,
+                theme::BadgeKind::Warning,
                 "Another machine replaced your last layout edit.",
             );
-        }
-        if ui.button("Fit machines to canvas").clicked() {
-            self.bounds = bounds(&self.draft.placements);
         }
         let (area, _) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), CANVAS_HEIGHT),
@@ -53,13 +68,16 @@ impl Canvas {
             .enumerate()
         {
             let rect = transform.rect(placement);
-            let label = format!("{name}\n({}, {})", placement.x, placement.y);
-            let response = ui.put(
-                rect,
-                egui::Button::new(label)
-                    .selected(self.selected == index)
-                    .sense(egui::Sense::click_and_drag()),
-            );
+            let response = ui.interact(rect, ui.id().with(index), egui::Sense::click_and_drag());
+            paint_machine(ui, rect, name, placement, self.selected == index);
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::WidgetType::Button,
+                    ui.is_enabled(),
+                    self.selected == index,
+                    name,
+                )
+            });
             if response.clicked() || response.drag_started() {
                 response.request_focus();
                 self.selected = index;
@@ -102,12 +120,52 @@ impl Canvas {
         }
         let validation = validate(&self.draft.placements);
         if let Err(error) = &validation {
-            ui.colored_label(egui::Color32::RED, error.to_string());
+            theme::error(ui, &error.to_string());
         }
-        ui.add_enabled(validation.is_ok(), egui::Button::new("Save layout"))
-            .clicked()
-            .then(|| self.draft.placed())
     }
+}
+
+fn paint_machine(
+    ui: &egui::Ui,
+    rect: egui::Rect,
+    name: &str,
+    placement: &Placement,
+    selected: bool,
+) {
+    let palette = theme::Palette::of(ui.ctx());
+    ui.painter().rect(
+        rect,
+        theme::size::R_CARD,
+        if selected {
+            palette.accent_subtle
+        } else {
+            palette.surface
+        },
+        egui::Stroke::new(
+            1.0,
+            if selected {
+                palette.accent
+            } else {
+                palette.border
+            },
+        ),
+        egui::StrokeKind::Inside,
+    );
+    let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
+    painter.text(
+        rect.center() - egui::vec2(0.0, 10.0),
+        egui::Align2::CENTER_CENTER,
+        name,
+        theme::font_medium(14.0),
+        palette.text,
+    );
+    painter.text(
+        rect.center() + egui::vec2(0.0, 10.0),
+        egui::Align2::CENTER_CENTER,
+        format!("({}, {})", placement.x, placement.y),
+        theme::font_mono(12.0),
+        palette.text3,
+    );
 }
 
 struct Transform {

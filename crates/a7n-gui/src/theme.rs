@@ -10,8 +10,6 @@
 //! Install with `theme::install(&cc.egui_ctx)` in `App::new`.
 //! Helpers paint navigation, buttons, inputs, settings and cards with the palette.
 
-#![expect(dead_code, reason = "used by the screens in the next #101 PR")]
-
 use std::sync::Arc;
 
 use eframe::egui;
@@ -57,13 +55,8 @@ pub(crate) struct Palette {
     pub(crate) warning: Color32,
     pub(crate) warning_subtle: Color32,
     pub(crate) danger: Color32,
-    pub(crate) danger_hover: Color32,
-    pub(crate) danger_press: Color32,
     pub(crate) danger_subtle: Color32,
-    pub(crate) on_danger: Color32,
     pub(crate) focus: Color32,
-    pub(crate) tooltip_bg: Color32,
-    pub(crate) tooltip_text: Color32,
     pub(crate) shadow: Color32,
 }
 
@@ -90,13 +83,8 @@ pub(crate) const LIGHT: Palette = Palette {
     warning: hex(0x00A3_540A),
     warning_subtle: hex(0x00FB_EFDF),
     danger: hex(0x00C4_2B26),
-    danger_hover: hex(0x00A8_231F),
-    danger_press: hex(0x008E_1D1A),
     danger_subtle: hex(0x00FB_E6E5),
-    on_danger: hex(0x00FF_FFFF),
     focus: Color32::from_rgba_premultiplied(19, 36, 94, 102), // #2F5BEA @ 40 %
-    tooltip_bg: hex(0x0012_151A),
-    tooltip_text: hex(0x00F4_F5F7),
     shadow: Color32::from_black_alpha(30),
 };
 
@@ -123,13 +111,8 @@ pub(crate) const DARK: Palette = Palette {
     warning: hex(0x00E9_A23B),
     warning_subtle: hex(0x002D_2112),
     danger: hex(0x00F0_675E),
-    danger_hover: hex(0x00F4_837B),
-    danger_press: hex(0x00E0_4F45),
     danger_subtle: hex(0x0033_1715),
-    on_danger: hex(0x001A_0A09),
     focus: Color32::from_rgba_premultiplied(50, 61, 115, 115), // #7088FF @ 45 %
-    tooltip_bg: hex(0x00E6_E9EE),
-    tooltip_text: hex(0x000E_1116),
     shadow: Color32::from_black_alpha(128),
 };
 
@@ -152,7 +135,6 @@ pub(crate) mod size {
     pub(crate) const SIDEBAR_W: f32 = 232.0;
     pub(crate) const CONTENT_MAX_W: f32 = 960.0;
     pub(crate) const ICON: f32 = 18.0;
-    pub(crate) const ICON_SM: f32 = 16.0;
     pub(crate) const ICON_LG: f32 = 20.0;
     pub(crate) const SECTION_GAP: f32 = 32.0;
     pub(crate) const ROW_GAP: f32 = 12.0;
@@ -166,6 +148,7 @@ pub(crate) mod size {
 
 /// Font family names registered by `install`.
 pub(crate) mod family {
+    pub(crate) const ICON: &str = "phosphor";
     pub(crate) const MEDIUM: &str = "inter-medium";
     pub(crate) const SEMIBOLD: &str = "inter-semibold";
 }
@@ -178,6 +161,9 @@ pub(crate) fn font_medium(size: f32) -> FontId {
 }
 pub(crate) fn font_semibold(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name(family::SEMIBOLD.into()))
+}
+pub(crate) fn font_icon(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name(family::ICON.into()))
 }
 pub(crate) fn font_mono(size: f32) -> FontId {
     FontId::new(size, FontFamily::Monospace)
@@ -229,6 +215,11 @@ fn fonts() -> FontDefinitions {
     fonts.font_data.insert(
         "phosphor".to_owned(),
         Arc::new(egui_phosphor::Variant::Regular.font_data()),
+    );
+
+    fonts.families.insert(
+        FontFamily::Name(family::ICON.into()),
+        vec!["phosphor".to_owned()],
     );
 
     let fam = |list: &[&str]| list.iter().map(ToString::to_string).collect::<Vec<_>>();
@@ -370,8 +361,6 @@ pub(crate) enum ButtonKind {
     Secondary,
     /// Toolbars, row actions, Cancel.
     Ghost,
-    /// Destructive confirmations.
-    Danger,
     /// Destructive row actions (Unpair) — quiet until hovered.
     DangerQuiet,
 }
@@ -389,7 +378,7 @@ struct Paint {
 }
 
 fn button_paint(p: &Palette, kind: ButtonKind, hovered: bool, pressed: bool) -> Paint {
-    use ButtonKind::{Danger, DangerQuiet, Ghost, Primary, Secondary};
+    use ButtonKind::{DangerQuiet, Ghost, Primary, Secondary};
     let t = Color32::TRANSPARENT;
     match (kind, pressed, hovered) {
         (Primary, true, _) => Paint {
@@ -436,21 +425,6 @@ fn button_paint(p: &Palette, kind: ButtonKind, hovered: bool, pressed: bool) -> 
             fill: t,
             stroke: t,
             text: p.text,
-        },
-        (Danger, true, _) => Paint {
-            fill: p.danger_press,
-            stroke: p.danger_press,
-            text: p.on_danger,
-        },
-        (Danger, _, true) => Paint {
-            fill: p.danger_hover,
-            stroke: p.danger_hover,
-            text: p.on_danger,
-        },
-        (Danger, _, _) => Paint {
-            fill: p.danger,
-            stroke: p.danger,
-            text: p.on_danger,
         },
         (DangerQuiet, true, _) => Paint {
             fill: p.danger_subtle,
@@ -503,13 +477,8 @@ pub(crate) fn button(
     };
     let painter = ui.painter().clone();
     let text = painter.layout_no_wrap(label.to_owned(), font, Color32::PLACEHOLDER);
-    let icon_g = icon.map(|i| {
-        painter.layout_no_wrap(
-            i.to_owned(),
-            FontId::proportional(icon_size),
-            Color32::PLACEHOLDER,
-        )
-    });
+    let icon_g = icon
+        .map(|i| painter.layout_no_wrap(i.to_owned(), font_icon(icon_size), Color32::PLACEHOLDER));
     let gap = 8.0;
     let icon_w = icon_g.as_ref().map_or(0.0, |g| g.size().x + gap);
     let pad_left = if icon.is_some() { pad_x - 2.0 } else { pad_x };
@@ -613,7 +582,7 @@ pub(crate) fn icon_button(
             rect.center(),
             Align2::CENTER_CENTER,
             icon,
-            FontId::proportional(size::ICON),
+            font_icon(size::ICON),
             fade(fg, enabled),
         );
         if resp.has_focus() {
@@ -645,7 +614,7 @@ pub(crate) fn nav_item(ui: &mut Ui, icon: &str, label: &str, selected: bool) -> 
             egui::pos2(rect.left() + 10.0, y),
             Align2::LEFT_CENTER,
             icon,
-            FontId::proportional(size::ICON),
+            font_icon(size::ICON),
             fg,
         );
         let font = if selected {
@@ -702,13 +671,23 @@ pub(crate) fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
     resp
 }
 
-/// Segmented control for small enums (≤ 4 options), e.g. clipboard both/send/receive/off.
+/// Segmented control for small enums, e.g. clipboard both/send/receive/ask/off.
 pub(crate) fn segmented<T: PartialEq + Copy>(
     ui: &mut Ui,
     value: &mut T,
     options: &[(T, &str)],
 ) -> Response {
     let p = Palette::of(ui.ctx());
+    let width: f32 = options
+        .iter()
+        .map(|(_, label)| {
+            ui.painter()
+                .layout_no_wrap((*label).to_owned(), font_medium(13.0), p.text)
+                .size()
+                .x
+                + 26.0
+        })
+        .sum();
     let inner = Frame::new()
         .fill(p.hover)
         .stroke(Stroke::new(1.0, p.border))
@@ -716,49 +695,59 @@ pub(crate) fn segmented<T: PartialEq + Copy>(
         .inner_margin(Margin::same(2))
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
-            ui.horizontal(|ui| {
-                let mut changed = false;
-                for (opt, label) in options {
-                    let selected = *value == *opt;
-                    let font = font_medium(13.0);
-                    let g =
-                        ui.painter()
-                            .layout_no_wrap(label.to_string(), font, Color32::PLACEHOLDER);
-                    let (rect, resp) = ui.allocate_exact_size(
-                        vec2(g.size().x + 24.0, size::CONTROL_H_SM),
-                        Sense::click(),
-                    );
-                    resp.widget_info(|| {
-                        WidgetInfo::selected(WidgetType::RadioButton, true, selected, *label)
-                    });
-                    if resp.clicked() && !selected {
-                        *value = *opt;
-                        changed = true;
-                    }
-                    let painter = ui.painter();
-                    if selected {
-                        painter.rect(
-                            rect,
-                            CornerRadius::same(size::R_CONTROL),
-                            p.surface,
-                            Stroke::new(1.0, p.border),
-                            StrokeKind::Inside,
+            ui.allocate_ui_with_layout(
+                vec2(width, size::CONTROL_H_SM),
+                Layout::left_to_right(Align::Center),
+                |ui| {
+                    let mut changed = false;
+                    for (opt, label) in options {
+                        let selected = *value == *opt;
+                        let font = font_medium(13.0);
+                        let g = ui.painter().layout_no_wrap(
+                            label.to_string(),
+                            font,
+                            Color32::PLACEHOLDER,
                         );
-                    } else if resp.hovered() {
-                        painter.rect_filled(rect, CornerRadius::same(size::R_CONTROL), p.pressed);
+                        let (rect, resp) = ui.allocate_exact_size(
+                            vec2(g.size().x + 24.0, size::CONTROL_H_SM),
+                            Sense::click(),
+                        );
+                        resp.widget_info(|| {
+                            WidgetInfo::selected(WidgetType::RadioButton, true, selected, *label)
+                        });
+                        if resp.clicked() && !selected {
+                            *value = *opt;
+                            changed = true;
+                        }
+                        let painter = ui.painter();
+                        if selected {
+                            painter.rect(
+                                rect,
+                                CornerRadius::same(size::R_CONTROL),
+                                p.surface,
+                                Stroke::new(1.0, p.border),
+                                StrokeKind::Inside,
+                            );
+                        } else if resp.hovered() {
+                            painter.rect_filled(
+                                rect,
+                                CornerRadius::same(size::R_CONTROL),
+                                p.pressed,
+                            );
+                        }
+                        let fg = if selected || resp.hovered() {
+                            p.text
+                        } else {
+                            p.text2
+                        };
+                        painter.galley(rect.center() - g.size() / 2.0, g, fg);
+                        if resp.has_focus() {
+                            focus_ring(ui, rect, size::R_CONTROL);
+                        }
                     }
-                    let fg = if selected || resp.hovered() {
-                        p.text
-                    } else {
-                        p.text2
-                    };
-                    painter.galley(rect.center() - g.size() / 2.0, g, fg);
-                    if resp.has_focus() {
-                        focus_ring(ui, rect, size::R_CONTROL);
-                    }
-                }
-                changed
-            })
+                    changed
+                },
+            )
             .inner
         });
     let mut resp = inner.response;
@@ -787,27 +776,60 @@ pub(crate) fn badge(ui: &mut Ui, kind: BadgeKind, text: &str) -> Response {
         BadgeKind::Warning => (p.warning_subtle, p.warning, true),
         BadgeKind::Danger => (p.danger_subtle, p.danger, true),
     };
-    Frame::new()
-        .fill(bg)
-        .corner_radius(CornerRadius::same(size::R_PILL))
-        .inner_margin(Margin::symmetric(8, 3))
-        .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            ui.horizontal(|ui| {
-                if dot {
-                    let (r, _) = ui.allocate_exact_size(vec2(6.0, 16.0), Sense::hover());
-                    let c = r.center();
-                    if kind == BadgeKind::Offline {
-                        ui.painter()
-                            .circle_stroke(c, 2.5, Stroke::new(1.5, p.text3));
-                    } else {
-                        ui.painter().circle_filled(c, 3.0, fg);
-                    }
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.to_owned(), font_medium(12.0), fg);
+    let dot_width = if dot { 12.0 } else { 0.0 };
+    let (rect, response) = ui.allocate_exact_size(
+        vec2(galley.size().x + 16.0 + dot_width, 22.0),
+        Sense::hover(),
+    );
+    ui.painter().rect_filled(rect, size::R_PILL, bg);
+    if dot {
+        let center = egui::pos2(rect.left() + 10.0, rect.center().y);
+        if kind == BadgeKind::Offline {
+            ui.painter()
+                .circle_stroke(center, 2.5, Stroke::new(1.5, p.text3));
+        } else {
+            ui.painter().circle_filled(center, 3.0, fg);
+        }
+    }
+    ui.painter().galley(
+        egui::pos2(
+            rect.left() + 8.0 + dot_width,
+            rect.center().y - galley.size().y / 2.0,
+        ),
+        galley,
+        fg,
+    );
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, ui.is_enabled(), text));
+    response
+}
+
+/// Shared display names for config keys used in chords and modifier remaps.
+pub(crate) fn key_name(key: &str) -> String {
+    key.trim()
+        .to_ascii_lowercase()
+        .split('_')
+        .map(|part| match part {
+            "left" => "L".to_owned(),
+            "right" => "R".to_owned(),
+            "meta" | "super" | "win" => match std::env::consts::OS {
+                "windows" => "Win",
+                "macos" => "Cmd",
+                _ => "Super",
+            }
+            .to_owned(),
+            other => {
+                let mut word = other.to_owned();
+                if let Some(first) = word.get_mut(..1) {
+                    first.make_ascii_uppercase();
                 }
-                ui.label(RichText::new(text).font(font_medium(12.0)).color(fg));
-            });
+                word
+            }
         })
-        .response
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A key cap ("Ctrl", "Alt", "L") for hotkeys and modifier remaps.
@@ -819,33 +841,45 @@ pub(crate) fn keycap(ui: &mut Ui, key: &str) -> Response {
         .corner_radius(CornerRadius::same(size::R_KEYCAP))
         .inner_margin(Margin::symmetric(7, 2))
         .show(ui, |ui| {
-            ui.label(RichText::new(key).font(font_mono(12.0)).color(p.text));
+            ui.label(
+                RichText::new(key_name(key))
+                    .font(font_mono(12.0))
+                    .color(p.text),
+            );
         })
         .response
 }
 
 /// A hotkey chord shown as keycaps: "ctrl+alt+shift+l" → [Ctrl] [Alt] [Shift] [L].
 pub(crate) fn chord(ui: &mut Ui, chord: &str) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
-        for part in chord.split('+') {
-            let label = match part.trim() {
-                "ctrl" => "Ctrl".to_owned(),
-                "alt" => "Alt".to_owned(),
-                "shift" => "Shift".to_owned(),
-                "meta" | "super" | "win" => "Win".to_owned(),
-                other => other.replace('_', " ").to_uppercase(),
-            };
-            keycap(ui, &label);
-        }
-    });
+    let keys: Vec<_> = chord.split('+').collect();
+    let width: f32 = keys
+        .iter()
+        .map(|key| {
+            ui.painter()
+                .layout_no_wrap(key_name(key), font_mono(12.0), Palette::of(ui.ctx()).text)
+                .size()
+                .x
+                + 18.0
+        })
+        .sum();
+    ui.allocate_ui_with_layout(
+        vec2(width, size::CONTROL_H),
+        Layout::left_to_right(Align::Center),
+        |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            for key in keys {
+                keycap(ui, key);
+            }
+        },
+    );
 }
 
 /// Bordered surface card, 20 px padding.
 pub(crate) fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let p = Palette::of(ui.ctx());
     Frame::new()
-        .fill(p.surface)
+        .fill(ui.visuals().widgets.noninteractive.bg_fill)
         .stroke(Stroke::new(1.0, p.border))
         .corner_radius(CornerRadius::same(size::R_CARD))
         .inner_margin(Margin::same(20))
@@ -870,14 +904,30 @@ pub(crate) fn overline(ui: &mut Ui, text: &str) -> Response {
 /// Page title + one-line description on the left, actions on the right.
 pub(crate) fn page_header(ui: &mut Ui, title: &str, subtitle: &str, actions: impl FnOnce(&mut Ui)) {
     let p = Palette::of(ui.ctx());
-    ui.horizontal(|ui| {
-        ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = 4.0;
-            ui.label(RichText::new(title).text_style(title_style()).color(p.text));
-            ui.label(RichText::new(subtitle).color(p.text2));
+    let heading = |ui: &mut Ui| {
+        ui.spacing_mut().item_spacing.y = 4.0;
+        ui.label(RichText::new(title).text_style(title_style()).color(p.text));
+        ui.label(RichText::new(subtitle).color(p.text2));
+    };
+    if ui.available_width() < 800.0 {
+        ui.vertical(heading);
+        ui.horizontal(|ui| {
+            ui.with_layout(Layout::right_to_left(Align::Center), actions);
         });
-        ui.with_layout(Layout::right_to_left(Align::Center), actions);
-    });
+    } else {
+        let heading_width = ui.available_width() * 0.48;
+        ui.horizontal(|ui| {
+            ui.allocate_ui_with_layout(
+                vec2(heading_width, 0.0),
+                Layout::top_down(Align::Min),
+                |ui| {
+                    ui.set_width(heading_width);
+                    heading(ui);
+                },
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), actions);
+        });
+    }
     ui.add_space(size::SECTION_GAP - 8.0);
 }
 
@@ -890,19 +940,25 @@ pub(crate) fn setting_row(
     control: impl FnOnce(&mut Ui),
 ) {
     let p = Palette::of(ui.ctx());
-    ui.horizontal(|ui| {
-        ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = 2.0;
-            ui.label(RichText::new(title).font(font_medium(14.0)).color(p.text));
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                ui.label(RichText::new(help).small().color(p.text3));
-                if let Some(k) = config_key {
-                    ui.label(RichText::new(k).font(font_mono(12.0)).color(p.text3));
-                }
-            });
+    let label = |ui: &mut Ui| {
+        ui.spacing_mut().item_spacing.y = 2.0;
+        ui.label(RichText::new(title).font(font_medium(14.0)).color(p.text));
+        ui.label(RichText::new(help).small().color(p.text3));
+        if let Some(key) = config_key {
+            ui.label(RichText::new(key).font(font_mono(12.0)).color(p.text3));
+        }
+    };
+    let label_width = ui.available_width() * 0.48;
+    ui.horizontal_top(|ui| {
+        ui.allocate_ui_with_layout(vec2(label_width, 0.0), Layout::top_down(Align::Min), |ui| {
+            ui.set_width(label_width);
+            label(ui);
         });
-        ui.with_layout(Layout::right_to_left(Align::Center), control);
+        ui.allocate_ui_with_layout(
+            vec2(ui.available_width(), size::CONTROL_H),
+            Layout::top_down(Align::Max),
+            control,
+        );
     });
 }
 
@@ -935,11 +991,113 @@ pub(crate) fn text_input(
 }
 
 /// Re-export the icons you use, so call sites read `theme::icon::MONITOR`.
-#[expect(unused_imports, reason = "used by the screens in the next #101 PR")]
 pub(crate) mod icon {
     pub(crate) use super::ph::{
-        ARROW_CLOCKWISE, ARROW_RIGHT, BROADCAST, CARET_DOWN, CARET_UP, COPY, DOTS_THREE,
-        FLOPPY_DISK, KEYBOARD, MONITOR, PAUSE, PLAY, POWER, SHIELD_CHECK, SQUARE_SPLIT_HORIZONTAL,
-        WARNING_CIRCLE, X_CIRCLE,
+        ARROW_CLOCKWISE, ARROW_RIGHT, BROADCAST, COPY, FLOPPY_DISK, KEYBOARD, MONITOR, PAUSE, PLAY,
+        POWER, SHIELD_CHECK, SQUARE_SPLIT_HORIZONTAL, WARNING_CIRCLE, X_CIRCLE,
     };
+}
+
+/// Quiet help text shared by screens.
+pub(crate) fn small(ui: &mut Ui, text: &str) {
+    ui.label(
+        RichText::new(text)
+            .small()
+            .color(Palette::of(ui.ctx()).text3),
+    );
+}
+
+pub(crate) fn error(ui: &mut Ui, text: &str) {
+    let p = Palette::of(ui.ctx());
+    ui.horizontal_wrapped(|ui| {
+        ui.label(
+            RichText::new(icon::WARNING_CIRCLE)
+                .font(font_icon(size::ICON))
+                .color(p.danger),
+        );
+        ui.label(RichText::new(text).small().color(p.danger));
+    });
+}
+
+pub(crate) fn icon_tile(ui: &mut Ui, icon: &str) {
+    let p = Palette::of(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(40.0), Sense::hover());
+    ui.painter().rect_filled(rect, size::R_CARD, p.hover);
+    ui.painter().text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        icon,
+        font_icon(size::ICON_LG),
+        p.text2,
+    );
+}
+
+/// Empty sections retain a visible boundary and an explanation.
+pub(crate) fn empty_card(ui: &mut Ui, icon: &str, sentence: &str, hint: &str) {
+    let p = Palette::of(ui.ctx());
+    let response = Frame::new()
+        .inner_margin(20)
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                icon_tile(ui, icon);
+                ui.vertical(|ui| {
+                    ui.label(sentence);
+                    small(ui, hint);
+                });
+            });
+        })
+        .response;
+    let rect = response.rect;
+    let points = [
+        rect.left_top(),
+        rect.right_top(),
+        rect.right_bottom(),
+        rect.left_bottom(),
+        rect.left_top(),
+    ];
+    ui.painter().extend(egui::Shape::dashed_line(
+        &points,
+        Stroke::new(1.0, p.border_strong),
+        4.0,
+        3.0,
+    ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_name_config_tokens_use_consistent_human_labels() {
+        // Arrange
+        let meta = match std::env::consts::OS {
+            "windows" => "Win",
+            "macos" => "Cmd",
+            _ => "Super",
+        };
+        let cases = [
+            ("right_alt", "R Alt".to_owned()),
+            ("scroll_lock", "Scroll Lock".to_owned()),
+            ("home", "Home".to_owned()),
+            ("ctrl", "Ctrl".to_owned()),
+            ("l", "L".to_owned()),
+            ("left_ctrl", "L Ctrl".to_owned()),
+            ("page_up", "Page Up".to_owned()),
+            ("f12", "F12".to_owned()),
+            ("meta", meta.to_owned()),
+            ("left_meta", format!("L {meta}")),
+            ("right_meta", format!("R {meta}")),
+            ("super", meta.to_owned()),
+            ("win", meta.to_owned()),
+        ];
+
+        for (key, expected) in cases {
+            // Act
+            let actual = key_name(key);
+
+            // Assert
+            assert_eq!(actual, expected, "{key}");
+        }
+    }
 }

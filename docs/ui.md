@@ -141,14 +141,14 @@ Labels use sentence case and a verb: "Save changes", not "Save settings" / "SAVE
 
 Label above (13 px Medium), field 32 px tall, help or error text below in 12 px (`text3` or `danger`, with a `WARNING_CIRCLE` icon for errors). Set `mono = true` for addresses, codes and IDs.
 
-**Hotkeys** are not free text. Show them as key caps with `theme::chord(ui, "ctrl+alt+shift+l")`, plus a Ghost "Record" button that captures the next key combination.
+**Hotkeys** display as keycaps with `theme::chord(ui, "ctrl+alt+shift+l")`. A Ghost "Edit" button swaps them for a mono `text_input` using the existing config syntax. Do not record chords: egui cannot distinguish left and right modifiers, which settings such as `right_alt` require.
 
 ### Choosing a selection control
 
 | Value | Control |
 |---|---|
 | bool (`allow_drive`) | `theme::toggle(ui, &mut v)` inside a `setting_row` |
-| enum with ≤ 4 options (`clipboard`) | `theme::segmented(ui, &mut v, &[(Both,"Both"),(Send,"Send"),…])` |
+| small enum (`clipboard`, including Ask) | `theme::segmented(ui, &mut v, &[(Both,"Both"),(Send,"Send"),…])` |
 | longer list (modifier remap target) | `egui::ComboBox` (styled by the theme) |
 
 ### Badges: `theme::badge(ui, kind, text)`
@@ -276,7 +276,7 @@ Rules:
 ![Peers – dark](ui/peers-dark.png)
 ![Peers – light](ui/peers-light.png)
 
-One card per peer. Its header shows the name, status badge and mono config path, and the card collapses (the chevron is a Ghost icon button). The rows inside use `setting_row`:
+Use a master-detail view: a selectable list of paired peers on the left and the selected peer’s settings in cards on the right. List peers by name with an Online/Offline status dot and text and a short mono machine ID below. Remember the selection when changing pages. An empty list shows a dashed card with an icon, a sentence and “Pair a machine on the Machines page”. The settings use `setting_row`:
 
 ```rust
 theme::setting_row(ui, "Allow drive",
@@ -286,18 +286,20 @@ ui.separator();
 theme::setting_row(ui, "Clipboard",
     "Direction clipboard contents are shared.", Some("clipboard"),
     |ui| { theme::segmented(ui, &mut peer.clipboard, &[
-        (Clip::Both, "Both"), (Clip::Send, "Send"), (Clip::Receive, "Receive"), (Clip::Off, "Off"),
+        (Clip::Both, "Both"), (Clip::Send, "Send"), (Clip::Receive, "Receive"), (Clip::Ask, "Ask"), (Clip::Off, "Off"),
     ]); });
 ```
 
+- Peer config hints use the leaf key (`allow_drive`, `clipboard`, `modifier_remap`); hotkeys keep their `hotkeys.*` hints. Setting controls stay right-aligned alongside their labels and help.
+- Use the same human key names in chords, remap keycaps and ComboBox values/options (`R Alt`, `Scroll Lock`, `Home`, `L Ctrl`). Meta is Win on Windows, Cmd on macOS and Super elsewhere; stored values keep the config syntax.
 - Show modifier remaps as a grid: `keycap("L Ctrl")` → `ARROW_RIGHT` → a ComboBox. **Draw remapped entries in accent** (accent border and `accent_text` value) so changes stand out. Add a "Reset all" Ghost button.
-- Collapsed peers show a one-line summary: "Drive allowed · Clipboard both · No remaps".
+- Clipboard offers Both, Send, Receive, Ask and Off. Ask help: "Incoming copies wait for your confirmation."
 - **Unsaved state:** when edits are pending, show a `Warning` badge "Unsaved changes" next to the header actions: a `Bordered` reload icon button (tooltip "Discard edits and reload config") and **Save changes** as the one Primary button.
 - Keep "Saving rewrites config.toml without comments, like `a7n config set`" as Small `text3` text at the bottom. It's useful, not a headline.
 
 ### Hotkeys (same pattern)
 
-Use one card with a `setting_row` per hotkey (double tap, home, lock, jump). Draw each value with `theme::chord` and give it a Ghost **Record** button. Home takes several chords, so show each as its own keycap group, with "or" in `text3` between them.
+Use one card with a `setting_row` per hotkey (double tap, home, lock, jump). Draw each value with `theme::chord` and give it a Ghost **Edit** button. Editing replaces the keycaps with a mono `text_input` using the existing string syntax; do not add a Record action because egui cannot distinguish left/right modifiers. Home takes several chords, so show each as its own keycap group, with "or" in `text3` between them.
 
 ### Layout (same pattern)
 
