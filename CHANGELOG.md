@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.4.0...v0.5.0) (2026-10-30)
+
+
+### Features
+
+* add clipboard ask policy ([#99](https://github.com/PuppetMaster2k/apeirogon/issues/99)) ([7641347](https://github.com/PuppetMaster2k/apeirogon/commit/7641347ff53e672d7347de852b0d135eb791f069))
+
 ## [0.4.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.3.0...v0.4.0) (2026-10-26)
 
 
