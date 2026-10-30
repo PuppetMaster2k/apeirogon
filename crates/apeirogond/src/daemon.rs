@@ -50,7 +50,7 @@ const MAILBOX_CAPACITY: usize = 64;
 /// Bound the number of source-address rate-limit buckets.
 const PAIRING_SOURCES: usize = 256;
 
-pub(crate) use input::Handles as InputHandles;
+pub(crate) use input::Retried as InputRetried;
 
 type TransferStream = (MachineId, usize, quinn::RecvStream);
 
@@ -263,7 +263,7 @@ impl Daemon {
                     clipboard::Event::Changed(change) => self.clipboard_changed(change),
                     clipboard::Event::Paste(request) => self.clipboard_paste(request),
                 },
-                handles = input::retried(&mut self.input.retried) => self.attach_input(handles),
+                retried = input::retried(&mut self.input.retried) => self.finish_input_retry(retried),
                 event = input::captured(&mut self.input.capture) => self.captured(event).await,
                 event = input::feedback(&mut self.input.injector) => self.pointer_feedback(event).await,
                 Some((peer, id, envelope)) = self.inbound_rx.recv() => {

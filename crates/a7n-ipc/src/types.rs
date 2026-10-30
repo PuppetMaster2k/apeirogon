@@ -115,10 +115,7 @@ impl From<Permission> for a7n_platform::permissions::Permission {
 
 impl std::fmt::Display for Permission {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Accessibility => "Accessibility",
-            Self::InputMonitoring => "Input Monitoring",
-        })
+        std::fmt::Display::fmt(&a7n_platform::permissions::Permission::from(*self), f)
     }
 }
 

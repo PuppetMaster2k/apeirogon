@@ -421,7 +421,7 @@ async fn attach_input_after_unavailable_start_clears_status_and_forwards_input()
     let (handles, mut late_input) = fake_input();
 
     // Act
-    retry.send(handles).unwrap();
+    retry.send(Ok(handles)).unwrap();
     let status = a.wait(|status| status.input.is_none()).await;
     late_input.cross(true).await;
 

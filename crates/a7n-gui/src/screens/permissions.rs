@@ -6,15 +6,13 @@ use eframe::egui;
 use crate::{App, Command, theme};
 use theme::{BadgeKind, ButtonKind, ButtonSize};
 
-const PERMISSIONS: [(Permission, &str, &str); 2] = [
+const PERMISSIONS: [(Permission, &str); 2] = [
     (
         Permission::Accessibility,
-        "Accessibility",
         "Lets Apeirogon move the pointer and type on this Mac when another machine drives it.",
     ),
     (
         Permission::InputMonitoring,
-        "Input Monitoring",
         "Lets Apeirogon see your keyboard and mouse so it can send them to another machine when the pointer crosses an edge.",
     ),
 ];
@@ -29,9 +27,9 @@ impl App {
             |_| {},
         );
         self.page_message(ui);
-        for (permission, title, reason) in PERMISSIONS {
+        for (permission, reason) in PERMISSIONS {
             theme::card(ui, |ui| {
-                theme::setting_row(ui, title, reason, None, |ui| {
+                theme::setting_row(ui, &permission.to_string(), reason, None, |ui| {
                     if !missing.contains(&permission) {
                         theme::badge(ui, BadgeKind::Online, "Granted");
                     } else if theme::button(

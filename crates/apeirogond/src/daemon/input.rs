@@ -35,11 +35,13 @@ pub(super) struct Input {
     resistance: EdgeResistance,
     pub(super) failed: bool,
     lost: Vec<MachineId>,
-    /// Handles from the startup retry task, if input began unavailable.
-    pub(super) retried: Option<oneshot::Receiver<Handles>>,
+    /// Outcome of the startup retry task, if input began unavailable.
+    pub(super) retried: Option<oneshot::Receiver<Retried>>,
 }
 
 pub(crate) type Handles = (Capture, Injector);
+/// Started input, or why it still cannot start once nothing is missing.
+pub(crate) type Retried = Result<Handles, String>;
 
 impl Input {
     pub(super) fn new(own: MachineId) -> Self {
@@ -122,8 +124,8 @@ pub(super) async fn captured(capture: &mut Option<Capture>) -> Option<Captured> 
     }
 }
 
-/// Resolves once, when the retry task delivers handles or gives up.
-pub(super) async fn retried(retried: &mut Option<oneshot::Receiver<Handles>>) -> Option<Handles> {
+/// Resolves once, when the retry task finishes or is dropped.
+pub(super) async fn retried(retried: &mut Option<oneshot::Receiver<Retried>>) -> Option<Retried> {
     match retried {
         Some(receiver) => receiver.await.ok(),
         None => pending().await,
@@ -157,23 +159,29 @@ impl Daemon {
 
     pub(crate) fn with_input(mut self, handles: Option<Handles>) -> Self {
         if let Some(handles) = handles {
-            self.attach_input(Some(handles));
+            self.attach_input(handles);
         }
         self
     }
 
     /// Input that could not start yet arrives here once its permissions are granted.
-    pub(crate) fn with_input_retry(mut self, retried: oneshot::Receiver<Handles>) -> Self {
+    pub(crate) fn with_input_retry(mut self, retried: oneshot::Receiver<Retried>) -> Self {
         self.input.retried = Some(retried);
         self
     }
 
-    /// Attaches input handles; `None` means the retry task gave up.
-    pub(super) fn attach_input(&mut self, handles: Option<Handles>) {
+    /// Takes the retry outcome; `None` means the task ended without one.
+    pub(super) fn finish_input_retry(&mut self, retried: Option<Retried>) {
         self.input.retried = None;
-        let Some((capture, injector)) = handles else {
-            return;
-        };
+        match retried {
+            Some(Ok(handles)) => self.attach_input(handles),
+            // The old reason named a permission that is granted by now.
+            Some(Err(reason)) => self.input.unavailable = Some(reason),
+            None => {}
+        }
+    }
+
+    fn attach_input(&mut self, (capture, injector): Handles) {
         self.input.capture = Some(capture);
         self.input.injector = Some(injector);
         self.input.unavailable = None;
