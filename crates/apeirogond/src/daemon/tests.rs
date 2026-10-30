@@ -253,6 +253,10 @@ async fn status_ipc_round_trip_returns_own_machine() {
             machine: peer.machine,
             name: "own machine".into(),
             nearby: vec![],
+            missing_permissions: a7n_platform::permissions::missing()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             peers: vec![a7n_ipc::PeerInfo {
                 id: offline,
                 name: "offline peer".into(),

@@ -262,6 +262,11 @@ crates/
   - Local IPC version 2 adds `SetPaused { paused }` and status fields `paused`
     and `focused` (machine id). Update the daemon and local clients together;
     the peer wire protocol is unchanged.
+  - Local IPC version 3 adds status field `missing_permissions` and
+    `RequestPermission { permission }`. The daemon owns the macOS
+    Accessibility and Input Monitoring grants, so it reports what is missing,
+    opens the matching System Settings pane on request, and starts input by
+    itself once both are granted.
   - Tray / menu-bar icon (`tray-icon`): status, focused machine, pause,
     settings, quit. Daemon starts at login (LaunchAgent / Run key).
   - Guided first-run macOS permission flow, with deep links to System Settings

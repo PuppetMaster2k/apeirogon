@@ -11,6 +11,7 @@ use a7n_core::input::{MotionCounter, MotionScale, MotionTracker, edge_push};
 use a7n_platform::input::{Bounds, Capture, CaptureControl, Captured, Inject, Injector};
 use a7n_proto::v1::{Edge, Envelope, InputBatch, envelope::Body};
 use a7n_proto::{MachineId, Route};
+use tokio::sync::oneshot;
 
 use super::{Daemon, DaemonError};
 
@@ -34,7 +35,11 @@ pub(super) struct Input {
     resistance: EdgeResistance,
     pub(super) failed: bool,
     lost: Vec<MachineId>,
+    /// Handles from the startup retry task, if input began unavailable.
+    pub(super) retried: Option<oneshot::Receiver<Handles>>,
 }
+
+pub(crate) type Handles = (Capture, Injector);
 
 impl Input {
     pub(super) fn new(own: MachineId) -> Self {
@@ -53,6 +58,7 @@ impl Input {
             resistance: EdgeResistance::new(0),
             failed: false,
             lost: Vec::new(),
+            retried: None,
         }
     }
 
@@ -116,6 +122,14 @@ pub(super) async fn captured(capture: &mut Option<Capture>) -> Option<Captured> 
     }
 }
 
+/// Resolves once, when the retry task delivers handles or gives up.
+pub(super) async fn retried(retried: &mut Option<oneshot::Receiver<Handles>>) -> Option<Handles> {
+    match retried {
+        Some(receiver) => receiver.await.ok(),
+        None => pending().await,
+    }
+}
+
 pub(super) async fn feedback(injector: &mut Option<Injector>) -> Option<Captured> {
     match injector {
         Some(injector) => injector.pointer.recv().await,
@@ -141,12 +155,28 @@ impl Daemon {
         self
     }
 
-    pub(crate) fn with_input(mut self, handles: Option<(Capture, Injector)>) -> Self {
-        if let Some((capture, injector)) = handles {
-            self.input.capture = Some(capture);
-            self.input.injector = Some(injector);
+    pub(crate) fn with_input(mut self, handles: Option<Handles>) -> Self {
+        if let Some(handles) = handles {
+            self.attach_input(Some(handles));
         }
         self
+    }
+
+    /// Input that could not start yet arrives here once its permissions are granted.
+    pub(crate) fn with_input_retry(mut self, retried: oneshot::Receiver<Handles>) -> Self {
+        self.input.retried = Some(retried);
+        self
+    }
+
+    /// Attaches input handles; `None` means the retry task gave up.
+    pub(super) fn attach_input(&mut self, handles: Option<Handles>) {
+        self.input.retried = None;
+        let Some((capture, injector)) = handles else {
+            return;
+        };
+        self.input.capture = Some(capture);
+        self.input.injector = Some(injector);
+        self.input.unavailable = None;
     }
 
     pub(super) async fn shutdown_input(&mut self) {

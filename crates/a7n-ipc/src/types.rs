@@ -42,6 +42,10 @@ pub enum Request {
     Connect {
         addr: SocketAddr,
     },
+    /// Ask the daemon to prompt for a macOS permission and open its settings pane.
+    RequestPermission {
+        permission: Permission,
+    },
 }
 
 /// Responses to one command. Pairing codes retain leading zeroes and redact Debug.
@@ -83,6 +87,41 @@ pub enum ErrorKind {
     Internal,
 }
 
+/// A macOS privacy permission the daemon needs to share input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Permission {
+    Accessibility,
+    InputMonitoring,
+}
+
+impl From<a7n_platform::permissions::Permission> for Permission {
+    fn from(permission: a7n_platform::permissions::Permission) -> Self {
+        match permission {
+            a7n_platform::permissions::Permission::Accessibility => Self::Accessibility,
+            a7n_platform::permissions::Permission::InputMonitoring => Self::InputMonitoring,
+        }
+    }
+}
+
+impl From<Permission> for a7n_platform::permissions::Permission {
+    fn from(permission: Permission) -> Self {
+        match permission {
+            Permission::Accessibility => Self::Accessibility,
+            Permission::InputMonitoring => Self::InputMonitoring,
+        }
+    }
+}
+
+impl std::fmt::Display for Permission {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Accessibility => "Accessibility",
+            Self::InputMonitoring => "Input Monitoring",
+        })
+    }
+}
+
 /// Snapshot of the daemon's own identity and known peers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -101,6 +140,8 @@ pub struct StatusInfo {
     pub name: String,
     pub peers: Vec<PeerInfo>,
     pub nearby: Vec<NearbyMachine>,
+    /// macOS permissions the daemon still needs; empty elsewhere.
+    pub missing_permissions: Vec<Permission>,
 }
 
 /// Clipboard availability and metadata; never includes contents or source apps.

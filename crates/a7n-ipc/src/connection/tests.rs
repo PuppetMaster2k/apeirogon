@@ -27,6 +27,7 @@ async fn request_status_returns_same_status_info() {
             id: MachineId::try_from([3; MachineId::LEN].as_slice()).unwrap(),
             addr: "127.0.0.1:42042".parse().unwrap(),
         }],
+        missing_permissions: vec![crate::Permission::InputMonitoring],
     };
     let expected = status.clone();
     let server = async move {

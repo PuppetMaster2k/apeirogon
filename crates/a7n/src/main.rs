@@ -240,6 +240,9 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
             if let Some(reason) = &status.input {
                 writeln!(output, "input: unavailable ({reason})")?;
             }
+            for permission in &status.missing_permissions {
+                writeln!(output, "permission missing: {permission}")?;
+            }
             writeln!(output, "{} {} (this machine)", status.name, status.machine)?;
             for peer in &status.peers {
                 let state = if peer.connected {

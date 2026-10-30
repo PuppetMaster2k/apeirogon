@@ -10,12 +10,11 @@ mod keymap;
 use std::io;
 
 use objc2_core_foundation::CGPoint;
-use objc2_core_graphics::{
-    CGDisplayBounds, CGError, CGEvent, CGGetActiveDisplayList, CGPreflightListenEventAccess,
-};
+use objc2_core_graphics::{CGDisplayBounds, CGError, CGEvent, CGGetActiveDisplayList};
 use tokio::sync::mpsc;
 
 use super::{Bounds, Capture, Injector, InputError};
+use crate::permissions;
 
 const EVENT_CAPACITY: usize = 1024;
 const CONTROL_CAPACITY: usize = 16;
@@ -26,18 +25,9 @@ const MEDIA_SUBTYPE: i16 = 8;
 const MEDIA_DOWN: u16 = 0xA;
 const MEDIA_UP: u16 = 0xB;
 
-#[link(name = "ApplicationServices", kind = "framework")]
-unsafe extern "C" {
-    fn AXIsProcessTrusted() -> bool;
-}
-
 pub(super) fn start() -> Result<(Capture, Injector), InputError> {
-    // SAFETY: This read-only permission query has no arguments or preconditions.
-    if !unsafe { AXIsProcessTrusted() } {
-        return Err(InputError::MissingPermission("Accessibility"));
-    }
-    if !CGPreflightListenEventAccess() {
-        return Err(InputError::MissingPermission("Input Monitoring"));
+    if let Some(permission) = permissions::missing().first() {
+        return Err(InputError::MissingPermission(permission.name()));
     }
     let bounds = display_bounds()?;
     let (events, events_rx) = mpsc::channel(EVENT_CAPACITY);

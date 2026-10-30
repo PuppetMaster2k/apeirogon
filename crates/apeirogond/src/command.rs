@@ -49,4 +49,8 @@ pub(crate) enum Command {
         addr: SocketAddr,
         reply: Reply<()>,
     },
+    RequestPermission {
+        permission: a7n_platform::permissions::Permission,
+        reply: Reply<()>,
+    },
 }
