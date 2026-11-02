@@ -1,9 +1,14 @@
 [package]
 name = "apeirogond"
+description = "Daemon for Apeirogon, a cross-platform software KVM"
+readme = "../../README.md"
+keywords = ["kvm", "desktop", "input-sharing", "clipboard"]
+categories = ["network-programming", "gui"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 
 [dependencies]
@@ -33,3 +38,27 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
+
+[package.metadata.deb]
+name = "apeirogon"
+maintainer = "PuppetMaster2k <marcel.fey@gmail.com>"
+depends = "$auto"
+section = "utils"
+priority = "optional"
+assets = [
+    ["target/release/apeirogond", "usr/bin/apeirogond", "755"],
+    ["target/release/a7n", "usr/bin/a7n", "755"],
+    ["target/release/a7n-gui", "usr/bin/a7n-gui", "755"],
+    ["../../LICENSE", "usr/share/doc/apeirogon/LICENSE", "644"],
+    ["../../packaging/linux/apeirogon.desktop", "usr/share/applications/apeirogon.desktop", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "apeirogon"
+assets = [
+    { source = "target/release/apeirogond", dest = "/usr/bin/apeirogond", mode = "755" },
+    { source = "target/release/a7n", dest = "/usr/bin/a7n", mode = "755" },
+    { source = "target/release/a7n-gui", dest = "/usr/bin/a7n-gui", mode = "755" },
+    { source = "../../LICENSE", dest = "/usr/share/licenses/apeirogon/LICENSE", mode = "644", doc = true },
+    { source = "../../packaging/linux/apeirogon.desktop", dest = "/usr/share/applications/apeirogon.desktop", mode = "644" },
+]

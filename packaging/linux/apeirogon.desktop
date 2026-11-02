@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Desktop Entry]
+Type=Application
+Name=Apeirogon
+Exec=a7n-gui
+Icon=input-keyboard
+Terminal=false
+Categories=Utility;Settings;
