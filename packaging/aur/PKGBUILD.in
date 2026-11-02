@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+pkgname=apeirogon-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Share a keyboard, mouse and clipboard across machines'
+arch=('x86_64')
+url='https://github.com/PuppetMaster2k/apeirogon'
+license=('GPL-3.0-or-later')
+depends=('glibc' 'gcc-libs' 'libxkbcommon' 'libxkbcommon-x11' 'libx11' 'libxcursor' 'libxi' 'libxrandr' 'libglvnd' 'wayland')
+provides=('apeirogon')
+conflicts=('apeirogon')
+source=("$url/releases/download/@TAG@/apeirogon-@TAG@-x86_64-unknown-linux-gnu.tar.gz"
+        "https://raw.githubusercontent.com/PuppetMaster2k/apeirogon/@TAG@/packaging/linux/apeirogon.desktop")
+sha256sums=('@LINUX_SHA256@' '@DESKTOP_SHA256@')
+
+package() {
+    install -Dm755 apeirogond a7n a7n-gui -t "$pkgdir/usr/bin/"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 apeirogon.desktop "$pkgdir/usr/share/applications/apeirogon.desktop"
+}

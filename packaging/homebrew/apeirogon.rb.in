@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+class Apeirogon < Formula
+  desc "Share a keyboard, mouse and clipboard across machines"
+  homepage "https://github.com/PuppetMaster2k/apeirogon"
+  version "@VERSION@"
+  license "GPL-3.0-or-later"
+
+  on_macos do
+    depends_on arch: :arm64
+    url "https://github.com/PuppetMaster2k/apeirogon/releases/download/@TAG@/apeirogon-@TAG@-aarch64-apple-darwin.tar.gz"
+    sha256 "@MAC_SHA256@"
+  end
+
+  on_linux do
+    depends_on arch: :x86_64
+    url "https://github.com/PuppetMaster2k/apeirogon/releases/download/@TAG@/apeirogon-@TAG@-x86_64-unknown-linux-gnu.tar.gz"
+    sha256 "@LINUX_SHA256@"
+  end
+
+  def install
+    bin.install "apeirogond", "a7n", "a7n-gui"
+  end
+
+  def caveats
+    return unless OS.mac?
+
+    <<~EOS
+      Releases are unsigned. Grant Accessibility and Input Monitoring
+      permissions again after every update.
+    EOS
+  end
+
+  test do
+    system "#{bin}/a7n", "--version"
+  end
+end
