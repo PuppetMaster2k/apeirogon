@@ -46,6 +46,11 @@ reason instead of hanging.
   cursor does not move while driving.
 - [ ] Edge crossing back: pushing through the peer's edge returns focus; the
   cursor reappears at the matching place and local input works at once.
+- [ ] Drag at an edge: while a reported mouse button is held, edge pushes
+  never switch machines or accumulate resistance; after release a full push
+  is needed again. Wayland does not report buttons before barrier capture,
+  so a drag can still start capture there; without a take, the normal release
+  rules must return the cursor locally.
 - [ ] Push without a neighbour: pushing against an edge that has no peer
   gives the cursor back after about one second, at the place the push began.
 - [ ] Push then retreat: pushing against an edge and moving back inside gives

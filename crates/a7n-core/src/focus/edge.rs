@@ -1,6 +1,41 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_proto::{limits, v1::Edge};
+use a7n_proto::{
+    limits,
+    v1::{Button, ButtonEvent, Edge},
+};
+
+/// Mouse buttons held for the current focus; updating it never allocates.
+#[derive(Debug, Default)]
+pub struct HeldButtons {
+    pressed: u32,
+}
+
+impl HeldButtons {
+    pub fn apply(&mut self, event: &ButtonEvent) {
+        let Ok(button) = Button::try_from(event.button) else {
+            return;
+        };
+        if button == Button::Unspecified {
+            return;
+        }
+        let mask = 1 << i32::from(button);
+        if event.down {
+            self.pressed |= mask;
+        } else {
+            self.pressed &= !mask;
+        }
+    }
+
+    #[must_use]
+    pub fn any_held(&self) -> bool {
+        self.pressed != 0
+    }
+
+    pub fn reset(&mut self) {
+        self.pressed = 0;
+    }
+}
 
 /// Accumulated overshoot on one edge; moving away or crossing resets it.
 #[derive(Debug)]
@@ -48,6 +83,76 @@ impl EdgeResistance {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn push_button_held_blocks_crossing_and_discards_overshoot() {
+        // Arrange
+        let mut resistance = EdgeResistance::new(10);
+        let mut buttons = HeldButtons::default();
+        let button = |down| ButtonEvent {
+            button: Button::Left.into(),
+            down,
+        };
+        resistance.push(Edge::Right, 9);
+        buttons.apply(&button(true));
+
+        // Act
+        let crossed = [(20, None), (9, Some(false)), (1, None)].map(|(px, down)| {
+            if let Some(down) = down {
+                buttons.apply(&button(down));
+            }
+            if buttons.any_held() {
+                return resistance.push(Edge::Unspecified, 0);
+            }
+            resistance.push(Edge::Right, px)
+        });
+
+        // Assert
+        assert_eq!(crossed, [false, false, true]);
+    }
+
+    #[test]
+    fn reset_held_buttons_clears_all() {
+        // Arrange
+        let mut buttons = HeldButtons::default();
+        for button in [Button::Left, Button::Forward] {
+            buttons.apply(&ButtonEvent {
+                button: button.into(),
+                down: true,
+            });
+        }
+        assert!(buttons.any_held());
+
+        // Act
+        buttons.reset();
+
+        // Assert
+        assert!(!buttons.any_held());
+    }
+
+    #[test]
+    fn apply_multiple_and_unknown_buttons_preserves_known_held_state() {
+        // Arrange
+        let mut buttons = HeldButtons::default();
+        let events = [
+            (Button::Left.into(), true),
+            (Button::Forward.into(), true),
+            (Button::Left.into(), false),
+            (Button::Unspecified.into(), true),
+            (-1, true),
+            (i32::MAX, true),
+            (Button::Forward.into(), false),
+        ];
+
+        // Act
+        let held = events.map(|(button, down)| {
+            buttons.apply(&ButtonEvent { button, down });
+            buttons.any_held()
+        });
+
+        // Assert
+        assert_eq!(held, [true, true, true, true, true, true, false]);
+    }
 
     #[test]
     fn push_accumulated_overshoot_crosses_at_threshold_and_resets() {
