@@ -180,8 +180,10 @@ crates/
 ## Input
 
 - **Keys:** send physical keys (USB HID usage codes); the receiver applies its
-  own keyboard layout. Optional per-target modifier remap (e.g. Mac ⌘ → Ctrl),
-  off by default, applied by the sender.
+  own keyboard layout. Cmd↔Ctrl swap by default between macOS and other systems,
+  per peer off or custom, applied by the sender. Per-peer `modifier_mode` is
+  `auto` (default), `off`, or `custom`; only `custom` uses `modifier_remap`.
+  Option is already the HID Alt key and needs no remap.
 - **Media keys:** sent as HID consumer-page usages.
 - **Pointer:** relative deltas, sent as loss-tolerant cumulative counters so a
   dropped datagram is repaired by the next; every reliable input batch

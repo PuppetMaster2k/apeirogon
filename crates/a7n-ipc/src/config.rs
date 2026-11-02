@@ -7,6 +7,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use a7n_core::modifiers::{LEFT_CTRL, LEFT_META, RIGHT_CTRL, RIGHT_META};
 use a7n_proto::{MachineId, limits};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
@@ -77,6 +78,7 @@ impl Default for InputConfig {
 pub struct PeerConfig {
     pub allow_drive: bool,
     pub clipboard: ClipboardPolicy,
+    pub modifier_mode: ModifierMode,
     pub modifier_remap: BTreeMap<Modifier, Modifier>,
 }
 
@@ -85,6 +87,7 @@ impl Default for PeerConfig {
         Self {
             allow_drive: true,
             clipboard: ClipboardPolicy::default(),
+            modifier_mode: ModifierMode::default(),
             modifier_remap: BTreeMap::new(),
         }
     }
@@ -107,19 +110,28 @@ pub enum ClipboardPolicy {
     Off,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModifierMode {
+    #[default]
+    Auto,
+    Off,
+    Custom,
+}
+
 /// Physical modifier names; enum values are their USB HID keyboard usages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", try_from = "String")]
 #[repr(u32)]
 pub enum Modifier {
-    LeftCtrl = 0x0007_00e0,
+    LeftCtrl = LEFT_CTRL,
     LeftShift,
     LeftAlt,
-    LeftMeta,
-    RightCtrl,
+    LeftMeta = LEFT_META,
+    RightCtrl = RIGHT_CTRL,
     RightShift,
     RightAlt,
-    RightMeta,
+    RightMeta = RIGHT_META,
 }
 
 impl Modifier {
@@ -275,7 +287,7 @@ impl Config {
         let value =
             match parts.as_slice() {
                 ["name"]
-                | ["peers", _, "clipboard"]
+                | ["peers", _, "clipboard" | "modifier_mode"]
                 | ["peers", _, "modifier_remap", _]
                 | ["hotkeys", "double_tap" | "lock" | "jump"] => toml::Value::String(value.into()),
                 ["hotkeys", "home"] => toml::Value::Array(

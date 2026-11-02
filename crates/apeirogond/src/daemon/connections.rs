@@ -180,6 +180,7 @@ impl Daemon {
         let id = link.connection.stable_id();
         let (sender, outbound) = mpsc::channel(super::MAILBOX_CAPACITY);
         let handle = LinkHandle {
+            platform: link.peer_info.platform(),
             capabilities: link.capabilities.clone(),
             sender: sender.clone(),
             connection: link.connection.clone(),
