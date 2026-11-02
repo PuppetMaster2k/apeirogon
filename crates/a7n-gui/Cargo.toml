@@ -1,9 +1,14 @@
 [package]
 name = "a7n-gui"
+description = "Desktop interface for the Apeirogon software KVM"
+readme = "../../README.md"
+keywords = ["kvm", "desktop", "input-sharing", "clipboard"]
+categories = ["network-programming", "gui"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 rust-version = "1.95"
 
 [features]
