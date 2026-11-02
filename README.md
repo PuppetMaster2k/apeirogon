@@ -2,6 +2,28 @@
 
 ## Install
 
+On macOS (Apple Silicon) or Linux (x86_64), use Homebrew:
+
+```sh
+brew install puppetmaster2k/tap/apeirogon
+```
+
+Releases are unsigned. On macOS, grant Accessibility and Input Monitoring
+permissions again after every update.
+
+On Windows (x86_64), use Scoop:
+
+```sh
+scoop bucket add apeirogon https://github.com/PuppetMaster2k/scoop-bucket
+scoop install apeirogon
+```
+
+On Arch Linux (x86_64), use the AUR package:
+
+```sh
+yay -S apeirogon-bin
+```
+
 Download the x86_64 `.deb` or `.rpm` package from the
 [latest release](https://github.com/PuppetMaster2k/apeirogon/releases/latest).
 Each package includes the daemon, CLI, GUI and a desktop launcher.

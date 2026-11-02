@@ -1,0 +1,25 @@
+pkgbase = apeirogon-bin
+	pkgdesc = Share a keyboard, mouse and clipboard across machines
+	pkgver = @VERSION@
+	pkgrel = 1
+	url = https://github.com/PuppetMaster2k/apeirogon
+	arch = x86_64
+	license = GPL-3.0-or-later
+	depends = glibc
+	depends = gcc-libs
+	depends = libxkbcommon
+	depends = libxkbcommon-x11
+	depends = libx11
+	depends = libxcursor
+	depends = libxi
+	depends = libxrandr
+	depends = libglvnd
+	depends = wayland
+	provides = apeirogon
+	conflicts = apeirogon
+	source = https://github.com/PuppetMaster2k/apeirogon/releases/download/@TAG@/apeirogon-@TAG@-x86_64-unknown-linux-gnu.tar.gz
+	source = https://raw.githubusercontent.com/PuppetMaster2k/apeirogon/@TAG@/packaging/linux/apeirogon.desktop
+	sha256sums = @LINUX_SHA256@
+	sha256sums = @DESKTOP_SHA256@
+
+pkgname = apeirogon-bin
