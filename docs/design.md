@@ -282,12 +282,15 @@ crates/
 
 ## Distribution
 
-- **Signing:** Apple Developer ID + notarization (needed so macOS permissions
-  survive updates); Windows via Azure Trusted Signing (or OV cert). Wired into
-  CI from the first public release.
-- **Channels:** Homebrew cask, winget, Scoop, `.deb`, `.rpm`, AUR,
-  `cargo install`. No Flatpak or Snap (sandboxing fights input capture and the
-  daemon).
+- **Signing:** none. Releases are unsigned because Apple Developer ID and
+  Windows code signing cost more than this project wants to spend. On macOS,
+  Accessibility and Input Monitoring are tied to the code signature, so users
+  grant them again after every update. Packages install through channels that
+  do not quarantine downloads (Homebrew formula, Scoop), which avoids
+  Gatekeeper and SmartScreen prompts.
+- **Channels:** Homebrew formula in our own tap, Scoop bucket, `.deb`, `.rpm`,
+  AUR, `cargo install`; winget later if users ask. No Flatpak or Snap
+  (sandboxing fights input capture and the daemon).
 
 ## Testing
 
@@ -301,7 +304,7 @@ crates/
 | Version | Scope |
 | ------- | ----- |
 | v1 | Pairing, input sharing, text clipboard (plain + HTML) on all 4 platforms; CLI + TUI |
-| v2 | GUI + tray, signed installers, image clipboard |
+| v2 | GUI + tray, packages, image clipboard |
 | v3 | File clipboard, `a7n send` |
 | Later | Drag-and-drop (per platform); login-screen support; wake-on-LAN (MAC addresses are already exchanged at handshake) |
 
