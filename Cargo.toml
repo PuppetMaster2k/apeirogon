@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/PuppetMaster2k/apeirogon"
@@ -14,10 +14,10 @@ rust-version = "1.85"
 egui-phosphor = { version = "=0.14.0", default-features = false, features = ["regular"] }
 eframe = { version = "=0.36.2", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
 tray-icon = { version = "=0.19.2", default-features = false }
-a7n-proto    = { path = "crates/a7n-proto", version = "0.7.0" }
-a7n-ipc      = { path = "crates/a7n-ipc", version = "0.7.0" }
-a7n-core     = { path = "crates/a7n-core", version = "0.7.0" }
-a7n-platform = { path = "crates/a7n-platform", version = "0.7.0" }
+a7n-proto    = { path = "crates/a7n-proto", version = "0.8.0" }
+a7n-ipc      = { path = "crates/a7n-ipc", version = "0.8.0" }
+a7n-core     = { path = "crates/a7n-core", version = "0.8.0" }
+a7n-platform = { path = "crates/a7n-platform", version = "0.8.0" }
 thiserror           = "2"
 png                 = "=0.18.0"
 prost               = "0.14"
