@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.9.0...v0.10.0) (2026-11-03)
+
+
+### Features
+
+* add per-peer file policy and receive directory settings ([#131](https://github.com/PuppetMaster2k/apeirogon/issues/131)) ([5e6c92c](https://github.com/PuppetMaster2k/apeirogon/commit/5e6c92c1c32edd3de7635be740cc970524b1bb58))
+
 ## [0.9.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.8.0...v0.9.0) (2026-11-03)
 
 
