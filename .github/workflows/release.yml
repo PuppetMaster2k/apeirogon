@@ -120,14 +120,21 @@ jobs:
             - name: Install Linux build dependencies
               run: sudo apt-get update && sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libssl-dev
             - name: Publish crates in dependency order
+              env:
+                  TAG: ${{ needs.release-please.outputs.tag_name }}
+              # Skips versions already on crates.io, so a re-run after a failure
+              # (e.g. the new-crate rate limit) continues where it stopped.
               run: |
-                  cargo publish --locked -p a7n-proto
-                  cargo publish --locked -p a7n-core
-                  cargo publish --locked -p a7n-platform
-                  cargo publish --locked -p a7n-ipc
-                  cargo publish --locked -p apeirogond
-                  cargo publish --locked -p a7n
-                  cargo publish --locked -p a7n-gui
+                  set -euo pipefail
+                  version="${TAG#v}"
+                  for crate in a7n-proto a7n-core a7n-platform a7n-ipc apeirogond a7n a7n-gui; do
+                      if curl -sfo /dev/null -A "apeirogon-release (github.com/${{ github.repository }})" \
+                          "https://crates.io/api/v1/crates/$crate/$version"; then
+                          echo "$crate $version already published"
+                          continue
+                      fi
+                      cargo publish --locked -p "$crate"
+                  done
 
     finalize:
         needs: [release-please, build, publish]
