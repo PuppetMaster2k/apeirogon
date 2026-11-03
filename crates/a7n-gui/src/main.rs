@@ -30,6 +30,7 @@ struct App {
     daemon_error: Option<String>,
     selected_peer: Option<a7n_ipc::MachineId>,
     editing_hotkeys: [bool; 4],
+    editing_receive_dir: bool,
     address: String,
     code: String,
     pairing: Option<(String, Instant)>,
@@ -64,6 +65,7 @@ impl App {
             daemon_error: None,
             selected_peer: None,
             editing_hotkeys: [false; 4],
+            editing_receive_dir: false,
             address: String::new(),
             code: String::new(),
             pairing: None,
@@ -127,6 +129,7 @@ impl App {
                     self.config = Some(*config);
                     self.edits.clear();
                     self.editing_hotkeys = [false; 4];
+                    self.editing_receive_dir = false;
                 }
                 Update::Config(Err(error)) => {
                     self.config = None;

@@ -52,10 +52,16 @@ async fn receive_settings_swapped_home_and_lock_accepts_snapshot() {
 #[tokio::test]
 async fn receive_settings_peer_security_key_keeps_local_policy() {
     // Arrange
-    let (a, _a_dir) = daemon();
+    let (a, a_dir) = daemon();
     let (mut b, b_dir) = daemon();
     let clipboard_key = format!("peers.{}.clipboard", a.identity.machine_id);
     b.config.set(&clipboard_key, "off").unwrap();
+    let files_key = format!("peers.{}.files", a.identity.machine_id);
+    b.config.set(&files_key, "off").unwrap();
+    let receive_dir = b_dir.path().join("received");
+    b.config
+        .set("files.receive_dir", receive_dir.to_str().unwrap())
+        .unwrap();
     b.config.clipboard.deny_apps = vec!["secret.app".into()];
     let key = format!("peers.{}.allow_drive", a.identity.machine_id);
     b.config.set(&key, "true").unwrap();
@@ -66,6 +72,8 @@ async fn receive_settings_peer_security_key_keeps_local_policy() {
             ("input.speed", "2"),
             (&key, "false"),
             (&clipboard_key, "both"),
+            (&files_key, "both"),
+            ("files.receive_dir", a_dir.path().to_str().unwrap()),
             ("clipboard.deny_apps", "[]"),
             ("name", "hostile"),
         ],
@@ -80,6 +88,10 @@ async fn receive_settings_peer_security_key_keeps_local_policy() {
     assert_eq!(b.config.get(&key).as_deref(), Some("true"));
     assert_eq!(saved.get(&clipboard_key).as_deref(), Some("off"));
     assert_eq!(b.config.get(&clipboard_key).as_deref(), Some("off"));
+    assert_eq!(saved.get(&files_key).as_deref(), Some("off"));
+    assert_eq!(b.config.get(&files_key).as_deref(), Some("off"));
+    assert_eq!(saved.files.receive_dir.as_ref(), Some(&receive_dir));
+    assert_eq!(b.config.files.receive_dir.as_ref(), Some(&receive_dir));
     assert_eq!(saved.clipboard.deny_apps, ["secret.app"]);
     assert!(saved.name.is_none());
     assert_eq!(saved.input.speed, 2.0);
@@ -87,6 +99,8 @@ async fn receive_settings_peer_security_key_keeps_local_policy() {
     let values = restored.state.unwrap().values;
     assert!(!values.contains_key(&key));
     assert!(!values.contains_key(&clipboard_key));
+    assert!(!values.contains_key(&files_key));
+    assert!(!values.contains_key("files.receive_dir"));
     assert!(!values.contains_key("clipboard.deny_apps"));
 }
 
@@ -242,4 +256,29 @@ async fn reload_config_sync_disabled_tracks_edits_without_sending() {
     daemon.reload_config().await.unwrap();
     assert_eq!(daemon.settings.state, Some(edited));
     assert!(daemon.settings_message().is_some());
+}
+
+#[tokio::test]
+async fn detect_settings_edit_file_settings_excludes_security_keys_from_message() {
+    // Arrange
+    let (mut daemon, dir) = daemon();
+    let key = format!("peers.{}.files", daemon.identity.machine_id);
+    daemon.config.set(&key, "both").unwrap();
+    daemon
+        .config
+        .set("files.receive_dir", dir.path().to_str().unwrap())
+        .unwrap();
+    daemon.config.input.speed = 2.0;
+
+    // Act
+    daemon.detect_settings_edit().unwrap();
+
+    // Assert
+    let message = daemon.settings_message().unwrap();
+    let Some(Body::Settings(wire)) = message.body else {
+        panic!("expected settings message");
+    };
+    assert_eq!(wire.values["input.speed"], "2.0");
+    assert!(!wire.values.contains_key(&key));
+    assert!(!wire.values.contains_key("files.receive_dir"));
 }

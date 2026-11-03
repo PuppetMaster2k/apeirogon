@@ -232,3 +232,106 @@ fn set_many_modifier_modes_round_trip_and_reject_invalid_value() {
     assert_eq!(config.to_toml().unwrap(), before);
     assert!(Config::parse(&format!("[peers.{id}]\nmodifier_mode = 'invalid'")).is_err());
 }
+
+#[test]
+fn parse_peer_without_file_policy_defaults_to_ask() {
+    // Arrange
+    let id = "01010101010101010101010101010101";
+
+    // Act
+    let config = Config::parse(&format!("[peers.{id}]\nclipboard = 'off'")).unwrap();
+
+    // Assert
+    assert_eq!(
+        config.get(&format!("peers.{id}.files")).as_deref(),
+        Some("ask")
+    );
+}
+
+#[test]
+fn set_file_policy_round_trips_valid_values_and_rejects_invalid_value() {
+    // Arrange
+    let mut config = Config::default();
+    let key = "peers.01010101010101010101010101010101.files";
+    for policy in ["both", "send", "receive", "ask", "off"] {
+        // Act
+        config.set(key, policy).unwrap();
+        let restored = Config::parse(&config.to_toml().unwrap()).unwrap();
+
+        // Assert
+        assert_eq!(restored.get(key).as_deref(), Some(policy));
+        assert_eq!(
+            restored.peers.values().next().unwrap().clipboard,
+            ClipboardPolicy::Both
+        );
+    }
+
+    // Act
+    let result = config.set(key, "unknown");
+
+    // Assert
+    assert!(result.is_err());
+    assert_eq!(config.get(key).as_deref(), Some("off"));
+    assert!(Config::parse("[peers.01010101010101010101010101010101]\nfiles = 'unknown'").is_err());
+}
+
+#[test]
+fn set_receive_dir_absolute_path_round_trips_without_creating_directory() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("incoming files");
+    let mut config = Config::default();
+
+    // Act
+    config
+        .set("files.receive_dir", path.to_str().unwrap())
+        .unwrap();
+    let restored = Config::parse(&config.to_toml().unwrap()).unwrap();
+
+    // Assert
+    assert_eq!(restored.files.receive_dir.as_ref(), Some(&path));
+    assert_eq!(
+        restored.get("files.receive_dir"),
+        Some(path.display().to_string())
+    );
+    assert!(!path.exists());
+}
+
+#[test]
+fn set_receive_dir_relative_path_rejects_without_mutation() {
+    // Arrange
+    let mut config = Config::default();
+    let before = config.to_toml().unwrap();
+    for path in ["incoming", "../incoming", ""] {
+        // Act
+        let result = config.set("files.receive_dir", path);
+
+        // Assert
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("files.receive_dir")
+        );
+        assert_eq!(config.to_toml().unwrap(), before);
+        assert!(Config::parse(&format!("[files]\nreceive_dir = '{path}'")).is_err());
+    }
+}
+
+#[test]
+fn get_receive_dir_unset_returns_effective_download_directory() {
+    // Arrange
+    let config = Config::parse("").unwrap();
+    let dirs = directories::UserDirs::new().unwrap();
+    let expected = dirs
+        .download_dir()
+        .map_or_else(|| dirs.home_dir().join("Downloads"), Path::to_path_buf)
+        .join("Apeirogon");
+
+    // Act
+    let value = config.get("files.receive_dir");
+
+    // Assert
+    assert_eq!(value, Some(expected.display().to_string()));
+    assert!(config.files.receive_dir.is_none());
+}

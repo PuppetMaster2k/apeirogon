@@ -290,11 +290,13 @@ theme::setting_row(ui, "Clipboard",
     ]); });
 ```
 
-- Peer config hints use the leaf key (`allow_drive`, `clipboard`, `modifier_remap`); hotkeys keep their `hotkeys.*` hints. Setting controls stay right-aligned alongside their labels and help.
+- Peer config hints use the leaf key (`allow_drive`, `clipboard`, `files`, `modifier_remap`); hotkeys keep their `hotkeys.*` hints. Setting controls stay right-aligned alongside their labels and help.
 - Use the same human key names in chords, remap keycaps and ComboBox values/options (`R Alt`, `Scroll Lock`, `Home`, `L Ctrl`). Meta is Win on Windows, Cmd on macOS and Super elsewhere; stored values keep the config syntax.
 - Choose modifier mode with an Auto / Off / Custom segmented control. Auto swaps Cmd and Ctrl between a Mac and a PC. Only Custom shows the remap grid and "Reset all".
 - Show custom modifier remaps as a grid: `keycap("L Ctrl")` → `ARROW_RIGHT` → a ComboBox. **Draw remapped entries in accent** (accent border and `accent_text` value) so changes stand out. Add a "Reset all" Ghost button.
 - Clipboard offers Both, Send, Receive, Ask and Off. Ask help: "Incoming copies wait for your confirmation."
+- Files sits below Clipboard with Both, Send, Receive, Ask (default) and Off. Help: "Ask shows a confirmation before files are saved."
+- A machine-wide Receive directory `setting_row` sits above the peer list, including when no peers are paired. Show the effective path in mono with a Ghost "Change…" button that opens a mono text input and "Done". Hint: `files.receive_dir`. Require an absolute path; use the existing validation error and Save changes flow. The default is the OS downloads directory plus `Apeirogon`, falling back to `~/Downloads/Apeirogon`.
 - **Unsaved state:** when edits are pending, show a `Warning` badge "Unsaved changes" next to the header actions: a `Bordered` reload icon button (tooltip "Discard edits and reload config") and **Save changes** as the one Primary button.
 - Keep "Saving rewrites config.toml without comments, like `a7n config set`" as Small `text3` text at the bottom. It's useful, not a headline.
 
