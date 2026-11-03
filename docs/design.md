@@ -261,7 +261,7 @@ crates/
 ## User interface
 
 - **CLI** (`a7n`): `init`, `pair`, `unpair`, `layout`, `switch`, `status`,
-  `clip`, `send`, `config`, `daemon`, `logs`, `pause`, `resume`. Config is TOML, managed via
+  `clip`, `send`, `files`, `config`, `daemon`, `logs`, `pause`, `resume`. Config is TOML, managed via
   `a7n config`. `a7n layout` is an interactive TUI.
 - **GUI** (`a7n-gui`, egui/eframe) for Windows and macOS:
   - Thin client of the daemon over `a7n-ipc`; no logic of its own.

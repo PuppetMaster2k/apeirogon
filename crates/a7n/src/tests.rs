@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_ipc::{ErrorKind, PeerInfo, StatusInfo};
+use a7n_ipc::{ErrorKind, FileTransfer, HeldFiles, PeerInfo, StatusInfo, TransferDirection};
 
 use super::*;
 
@@ -59,8 +59,21 @@ fn write_response_status_displays_identity_and_peer_states() {
     let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let response = Response::Status(StatusInfo {
         held_clipboard: None,
-        transfers: Vec::new(),
-        held_files: Vec::new(),
+        transfers: vec![FileTransfer {
+            id: 7,
+            peer: machine,
+            direction: TransferDirection::Send,
+            files_done: 1,
+            files_total: 3,
+            bytes_done: 1536,
+            bytes_total: 5 * 1024 * 1024,
+        }],
+        held_files: vec![HeldFiles {
+            peer: machine,
+            files: 2,
+            top_level_entries: 1,
+            total_size: 100,
+        }],
         input: Some("Accessibility permission missing".to_owned()),
         paused: false,
         focused: machine,
@@ -93,6 +106,8 @@ fn write_response_status_displays_identity_and_peer_states() {
             "local 0123456789abcdef0123456789abcdef (this machine)\n",
             "peer 0123456789abcdef0123456789abcdef connected\n",
             "peer 0123456789abcdef0123456789abcdef offline\n",
+            "files waiting for confirmation: peer wants to send 2 files, 100 B (a7n files accept 0123456789abcdef0123456789abcdef)\n",
+            "transfer 7 send peer: 1/3 files, 1.5 KiB / 5.0 MiB\n",
         )
     );
 }
@@ -248,5 +263,41 @@ fn resolve_machine_id_names_and_prefixes_resolve_or_reject() {
 
         // Assert
         assert_eq!(result.ok(), expected);
+    }
+}
+
+#[test]
+fn poll_transfer_tracked_transfer_gone_is_finished() {
+    // Arrange
+    let peer = "0123456789abcdef0123456789abcdef".parse().unwrap();
+    let transfer = FileTransfer {
+        id: 3,
+        peer,
+        direction: TransferDirection::Send,
+        files_done: 0,
+        files_total: 1,
+        bytes_done: 0,
+        bytes_total: 1,
+    };
+    let cases = [
+        (&[][..], None, files::Poll::Waiting),
+        (
+            &[transfer.clone()][..],
+            None,
+            files::Poll::Progress(&transfer),
+        ),
+        (
+            &[transfer.clone()][..],
+            Some(3),
+            files::Poll::Progress(&transfer),
+        ),
+        (&[][..], Some(3), files::Poll::Finished),
+    ];
+    for (transfers, tracked, expected) in cases {
+        // Act
+        let result = files::poll_transfer(transfers, peer, tracked);
+
+        // Assert
+        assert_eq!(result, expected);
     }
 }

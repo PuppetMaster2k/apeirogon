@@ -5,6 +5,7 @@ use eframe::egui;
 use super::{App, Command, Screen, theme};
 use theme::{BadgeKind, ButtonKind, ButtonSize, IconButtonKind, icon};
 
+mod files;
 mod hotkeys;
 mod machines;
 mod peers;
