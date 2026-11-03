@@ -199,6 +199,9 @@ crates/
   overlaps work. One desk-wide layout is synced to all members; concurrent
   edits resolve by last-writer-wins with a version counter (ties by machine
   id) and a notice to the loser.
+- **Edge resistance:** while any captured local button (or the remote owner's
+  injected button on a driven machine) is held, edge pushes cannot cross and
+  discard accumulated resistance; after release a full push is required again.
 - **Safety hotkeys** (all rebindable):
   - Return to the local machine: double-tap Right Alt / Right Option (within
     400 ms), or Scroll Lock / `Ctrl+Alt+Shift+Home`
