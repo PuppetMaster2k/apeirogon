@@ -272,7 +272,9 @@ crates/
     and `focused` (machine id). Update the daemon and local clients together;
     the peer wire protocol is unchanged.
   - Local IPC version 4 adds explicit file offers, accept/reject and cancellation,
-    plus held offer counts and active file/byte progress. File offers use an
+    plus held offer counts, active file/byte progress (sends carry their
+    offer id) and the outcome of recently ended sends (`finished_sends`, session
+    state, at most 16; link loss is not an outcome because the offer resumes). File offers use an
     independent generation namespace and do not change the receiving clipboard.
   - Local IPC version 3 adds status field `missing_permissions` and
     `RequestPermission { permission }`. The daemon owns the macOS

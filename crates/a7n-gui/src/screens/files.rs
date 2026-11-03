@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_ipc::{FileTransfer, HeldFiles, MachineId, Request, StatusInfo, TransferDirection};
+use a7n_ipc::{
+    FileTransfer, HeldFiles, MachineId, Request, StatusInfo, TransferDirection, format_size,
+};
 use eframe::egui;
 
 use crate::{App, Command, theme};
 use theme::{ButtonKind, ButtonSize, icon};
-
-const KIBIBYTE: u64 = 1024;
-const SIZE_UNITS: [&str; 4] = ["KiB", "MiB", "GiB", "TiB"];
-const TENTHS: u128 = 10;
 
 impl App {
     pub(super) fn held_files(&mut self, ui: &mut egui::Ui, status: &StatusInfo) {
@@ -30,7 +28,7 @@ impl App {
                     "{} wants to send {} files ({})",
                     peer_name(status, held.peer),
                     held.files,
-                    human_size(held.total_size),
+                    format_size(held.total_size),
                 ));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if theme::button(ui, ButtonKind::Primary, ButtonSize::Md, None, "Accept")
@@ -93,8 +91,8 @@ impl App {
                     "{}/{} files, {} / {}",
                     transfer.files_done,
                     transfer.files_total,
-                    human_size(transfer.bytes_done),
-                    human_size(transfer.bytes_total),
+                    format_size(transfer.bytes_done),
+                    format_size(transfer.bytes_total),
                 ),
             );
         });
@@ -119,21 +117,4 @@ fn fraction(transfer: &FileTransfer) -> f32 {
         return 0.0;
     }
     (transfer.bytes_done as f64 / transfer.bytes_total as f64).clamp(0.0, 1.0) as f32
-}
-
-/// Binary units with one decimal, using integer math so nothing is rounded up.
-fn human_size(bytes: u64) -> String {
-    if bytes < KIBIBYTE {
-        return format!("{bytes} B");
-    }
-    let mut tenths = u128::from(bytes) * TENTHS;
-    let mut unit = "";
-    for next in SIZE_UNITS {
-        tenths /= u128::from(KIBIBYTE);
-        unit = next;
-        if tenths < u128::from(KIBIBYTE) * TENTHS {
-            break;
-        }
-    }
-    format!("{}.{} {unit}", tenths / TENTHS, tenths % TENTHS)
 }

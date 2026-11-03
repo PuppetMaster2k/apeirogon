@@ -149,6 +149,8 @@ pub struct StatusInfo {
     pub held_clipboard: Option<HeldClipboard>,
     pub transfers: Vec<FileTransfer>,
     pub held_files: Vec<HeldFiles>,
+    /// Most recent ended sends, oldest first; session state only.
+    pub finished_sends: Vec<FinishedSend>,
     pub pid: u32,
     /// Outgoing input sharing is suspended for this daemon session.
     pub paused: bool,
@@ -180,6 +182,8 @@ pub struct HeldFiles {
 #[serde(deny_unknown_fields)]
 pub struct FileTransfer {
     pub id: u64,
+    /// The local offer a send belongs to; `None` for receives.
+    pub offer_id: Option<u64>,
     #[serde(with = "machine_id")]
     pub peer: MachineId,
     pub direction: TransferDirection,
@@ -187,6 +191,24 @@ pub struct FileTransfer {
     pub files_total: u32,
     pub bytes_done: u64,
     pub bytes_total: u64,
+}
+
+/// How a send transfer ended. Link loss is not an outcome: the offer stays live and resumes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FinishedSend {
+    pub offer_id: u64,
+    #[serde(with = "machine_id")]
+    pub peer: MachineId,
+    pub outcome: SendOutcome,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SendOutcome {
+    Completed,
+    Failed,
+    Cancelled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

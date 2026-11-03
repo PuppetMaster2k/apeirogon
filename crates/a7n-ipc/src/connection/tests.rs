@@ -13,6 +13,7 @@ async fn request_status_returns_same_status_info() {
         held_clipboard: None,
         transfers: Vec::new(),
         held_files: Vec::new(),
+        finished_sends: Vec::new(),
         input: None,
         paused: false,
         focused: MachineId::try_from([1; MachineId::LEN].as_slice()).unwrap(),

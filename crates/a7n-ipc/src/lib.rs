@@ -13,6 +13,7 @@ pub mod config;
 mod connection;
 pub mod daemon;
 mod error;
+mod format;
 mod framing;
 pub mod layout;
 mod types;
@@ -24,10 +25,12 @@ pub use a7n_proto::MachineId;
 pub use a7n_proto::limits::DEFAULT_UDP_PORT;
 pub use connection::{IpcClient, IpcConnection, IpcServer};
 pub use error::IpcError;
+pub use format::format_size;
 pub use types::{
-    ClipboardCopy, ClipboardInfo, ClipboardKind, ErrorKind, FileTransfer, HeldClipboard, HeldFiles,
-    LayoutInfo, LayoutPlacement, NearbyMachine, PeerClipboard, PeerInfo, Permission, PlacedMachine,
-    Request, Response, StatusInfo, TransferDirection, UnplacedMachine,
+    ClipboardCopy, ClipboardInfo, ClipboardKind, ErrorKind, FileTransfer, FinishedSend,
+    HeldClipboard, HeldFiles, LayoutInfo, LayoutPlacement, NearbyMachine, PeerClipboard, PeerInfo,
+    Permission, PlacedMachine, Request, Response, SendOutcome, StatusInfo, TransferDirection,
+    UnplacedMachine,
 };
 
 /// Local API major version, independent of the peer protobuf protocol.

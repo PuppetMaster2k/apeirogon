@@ -248,6 +248,7 @@ async fn status_ipc_round_trip_returns_own_machine() {
             held_clipboard: None,
             transfers: Vec::new(),
             held_files: Vec::new(),
+            finished_sends: Vec::new(),
             input: None,
             pid: std::process::id(),
             paused: false,

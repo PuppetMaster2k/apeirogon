@@ -394,6 +394,7 @@ impl Daemon {
             held_clipboard: self.held_clipboard(),
             transfers: self.file_transfers(),
             held_files: self.held_files(),
+            finished_sends: self.finished_sends(),
             pid: std::process::id(),
             paused: self.input.paused,
             focused: match self.input.focus.cursor() {

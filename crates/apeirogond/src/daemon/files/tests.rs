@@ -70,10 +70,16 @@ async fn offer_files_receive_policy_verifies_tree_and_preserves_collisions() {
     a.pair(&b).await;
 
     // Act
-    offer(&a, &b, source).await;
+    let offer_id = offer(&a, &b, source).await;
     landed(&b, &receive_dir.join("tree (2)")).await;
+    let sender = a.wait(|status| !status.finished_sends.is_empty()).await;
 
     // Assert
+    assert_eq!(sender.finished_sends[0].offer_id, offer_id);
+    assert_eq!(
+        sender.finished_sends[0].outcome,
+        a7n_ipc::SendOutcome::Completed
+    );
     assert_eq!(
         fs::read(receive_dir.join("tree (2)/data.bin")).unwrap(),
         data

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{
     Arc,
@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use a7n_core::files::ValidManifest;
 use a7n_ipc::config::ClipboardPolicy;
-use a7n_ipc::{FileTransfer, HeldFiles, TransferDirection};
+use a7n_ipc::{FileTransfer, FinishedSend, HeldFiles, SendOutcome, TransferDirection};
 use a7n_proto::MachineId;
 use a7n_proto::v1::{Capability, ClipboardAnnounce, TransferCancel, envelope::Body};
 use tokio::sync::watch;
@@ -28,6 +28,8 @@ pub(super) use staging::cleanup;
 const FILES_MIME: &str = "application/x-apeirogon-files";
 const OFFERS_PER_PEER: usize = 4;
 const ASK_TIMEOUT: Duration = Duration::from_secs(60);
+/// Ended sends kept for clients to read; older ones are dropped.
+const FINISHED_SENDS_KEPT: usize = 16;
 const PARTIAL_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 #[derive(Default)]
@@ -38,6 +40,7 @@ pub(super) struct State {
     building: HashMap<MachineId, usize>,
     incoming: HashMap<(MachineId, u64), Incoming>,
     active: HashMap<u64, Active>,
+    finished_sends: VecDeque<FinishedSend>,
 }
 
 struct Incoming {
@@ -135,6 +138,7 @@ impl Daemon {
             .iter()
             .map(|(&id, active)| FileTransfer {
                 id,
+                offer_id: (active.direction == TransferDirection::Send).then_some(active.offer),
                 peer: active.peer,
                 direction: active.direction,
                 files_done: active.progress.files.load(Ordering::Relaxed),
@@ -145,6 +149,28 @@ impl Daemon {
             .collect();
         result.sort_by_key(|item| item.id);
         result
+    }
+
+    pub(in crate::daemon) fn finished_sends(&self) -> Vec<FinishedSend> {
+        self.files.finished_sends.iter().cloned().collect()
+    }
+
+    fn record_finished_send(&mut self, active: &Active, result: Result<()>) {
+        // Link loss keeps the offer live, so the receiver may resume it.
+        let outcome = match result {
+            Ok(()) => SendOutcome::Completed,
+            Err(Failure::LinkLost) => return,
+            Err(Failure::Cancelled) => SendOutcome::Cancelled,
+            Err(Failure::Integrity | Failure::Invalid | Failure::Io) => SendOutcome::Failed,
+        };
+        if self.files.finished_sends.len() == FINISHED_SENDS_KEPT {
+            self.files.finished_sends.pop_front();
+        }
+        self.files.finished_sends.push_back(FinishedSend {
+            offer_id: active.offer,
+            peer: active.peer,
+            outcome,
+        });
     }
 
     pub(in crate::daemon) fn held_files(&self) -> Vec<HeldFiles> {
@@ -306,6 +332,7 @@ impl Daemon {
             if result != Err(Failure::LinkLost) {
                 self.files.offers.remove(&(active.peer, active.offer));
             }
+            self.record_finished_send(&active, result);
         } else if result == Err(Failure::LinkLost) {
             if let Some(incoming) = self.files.incoming.get_mut(&(active.peer, active.offer)) {
                 incoming.active = false;

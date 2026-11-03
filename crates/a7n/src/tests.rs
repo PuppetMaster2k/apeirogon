@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_ipc::{ErrorKind, FileTransfer, HeldFiles, PeerInfo, StatusInfo, TransferDirection};
+use a7n_ipc::{
+    ErrorKind, FileTransfer, FinishedSend, HeldFiles, PeerInfo, SendOutcome, StatusInfo,
+    TransferDirection,
+};
 
 use super::*;
 
@@ -61,6 +64,7 @@ fn write_response_status_displays_identity_and_peer_states() {
         held_clipboard: None,
         transfers: vec![FileTransfer {
             id: 7,
+            offer_id: Some(2),
             peer: machine,
             direction: TransferDirection::Send,
             files_done: 1,
@@ -68,6 +72,7 @@ fn write_response_status_displays_identity_and_peer_states() {
             bytes_done: 1536,
             bytes_total: 5 * 1024 * 1024,
         }],
+        finished_sends: Vec::new(),
         held_files: vec![HeldFiles {
             peer: machine,
             files: 2,
@@ -166,6 +171,7 @@ fn write_response_status_with_nearby_displays_machine_ids_and_addresses() {
         held_clipboard: None,
         transfers: Vec::new(),
         held_files: Vec::new(),
+        finished_sends: Vec::new(),
         input: None,
         paused: false,
         focused: machine,
@@ -267,11 +273,12 @@ fn resolve_machine_id_names_and_prefixes_resolve_or_reject() {
 }
 
 #[test]
-fn poll_transfer_tracked_transfer_gone_is_finished() {
+fn poll_send_offer_states_map_to_progress_outcome_or_waiting() {
     // Arrange
     let peer = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let transfer = FileTransfer {
         id: 3,
+        offer_id: Some(9),
         peer,
         direction: TransferDirection::Send,
         files_done: 0,
@@ -279,25 +286,49 @@ fn poll_transfer_tracked_transfer_gone_is_finished() {
         bytes_done: 0,
         bytes_total: 1,
     };
+    let finished = |offer_id, outcome| FinishedSend {
+        offer_id,
+        peer,
+        outcome,
+    };
+    let status = |transfers: Vec<FileTransfer>, finished_sends: Vec<FinishedSend>| StatusInfo {
+        held_clipboard: None,
+        transfers,
+        held_files: Vec::new(),
+        finished_sends,
+        input: None,
+        paused: false,
+        focused: peer,
+        pid: 0,
+        machine: peer,
+        name: "local".into(),
+        peers: Vec::new(),
+        nearby: Vec::new(),
+        missing_permissions: Vec::new(),
+    };
     let cases = [
-        (&[][..], None, files::Poll::Waiting),
+        (status(vec![], vec![]), files::Poll::Waiting),
         (
-            &[transfer.clone()][..],
-            None,
+            status(vec![transfer.clone()], vec![]),
             files::Poll::Progress(&transfer),
         ),
         (
-            &[transfer.clone()][..],
-            Some(3),
+            status(vec![], vec![finished(9, SendOutcome::Failed)]),
+            files::Poll::Finished(SendOutcome::Failed),
+        ),
+        (
+            status(
+                vec![transfer.clone()],
+                vec![finished(8, SendOutcome::Completed)],
+            ),
             files::Poll::Progress(&transfer),
         ),
-        (&[][..], Some(3), files::Poll::Finished),
     ];
-    for (transfers, tracked, expected) in cases {
+    for (status, expected) in &cases {
         // Act
-        let result = files::poll_transfer(transfers, peer, tracked);
+        let result = files::poll_send(status, 9);
 
         // Assert
-        assert_eq!(result, expected);
+        assert_eq!(&result, expected);
     }
 }
