@@ -6,7 +6,9 @@
 #[path = "x11_clipboard/support.rs"]
 mod support;
 
-use a7n_core::clipboard::{Item, TEXT_HTML, TEXT_PLAIN};
+use std::path::PathBuf;
+
+use a7n_core::clipboard::{FILES, Item, TEXT_HTML, TEXT_PLAIN};
 use a7n_platform::clipboard::{LazyItem, start};
 
 use support::{Client, LARGE_SIZE, generation, lock_selection, receive, set, wait_owned};
@@ -96,6 +98,7 @@ fn set_lazy_text_requests_paste_and_delivers_reply() {
             mime: TEXT_PLAIN.into(),
             size: 9,
             item_index: 3,
+            top_level: 0,
         }],
     );
     wait_owned(&client);
@@ -156,4 +159,59 @@ fn set_large_text_serves_incremental_chunks() {
     // Assert
     assert!(incremental);
     assert_eq!(received, data);
+}
+
+#[test]
+#[ignore = "needs an X server"]
+fn watch_external_uri_list_reports_decoded_files() {
+    // Arrange
+    let _selection = lock_selection();
+    let mut clipboard = start().unwrap();
+    let mut client = Client::new();
+    client.files = true;
+    client.own();
+
+    // Act
+    let change = client.change(
+        &mut clipboard,
+        b"file:///tmp/a%20b\r\nfile:///tmp/c\r\n",
+        false,
+        false,
+    );
+
+    // Assert
+    assert_eq!(change.files, ["/tmp/a b", "/tmp/c"].map(PathBuf::from));
+}
+
+#[test]
+#[ignore = "needs an X server"]
+fn set_lazy_files_gnome_target_answers_copy_verb_with_uris() {
+    // Arrange
+    let _selection = lock_selection();
+    let mut clipboard = start().unwrap();
+    let client = Client::new();
+    client.own();
+    set(
+        &clipboard,
+        vec![],
+        vec![LazyItem {
+            mime: FILES.into(),
+            size: u64::MAX,
+            item_index: 1,
+            top_level: 0,
+        }],
+    );
+    wait_owned(&client);
+
+    // Act
+    client.convert(client.atoms.GNOME_FILES);
+    let paste = receive(&client, &mut clipboard.pastes);
+    paste
+        .reply
+        .send(Some(b"file:///tmp/a%20b\r\nfile:///tmp/c\r\n".to_vec()))
+        .unwrap();
+    let (data, _) = client.read();
+
+    // Assert
+    assert_eq!(data, b"copy\nfile:///tmp/a%20b\nfile:///tmp/c");
 }

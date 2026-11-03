@@ -43,6 +43,8 @@ impl App {
             },
         );
         self.page_message(ui);
+        self.held_files(ui, &status);
+        self.active_transfers(ui, &status);
         theme::overline(ui, "This machine");
         theme::card(ui, |ui| {
             machine_identity(

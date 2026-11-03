@@ -2,14 +2,14 @@
 
 use std::time::Instant;
 
-use a7n_core::clipboard::limit_for;
-use a7n_core::clipboard::{Item, LocalChange};
+use a7n_core::clipboard::{FILES, Item, LocalChange, limit_for};
 use tokio::sync::mpsc::Sender;
 use x11rb::NONE;
 use x11rb::protocol::Event;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _, Property, Window};
 
 use super::{CONVERSION_TIMEOUT, Session, create_window, mime, select_targets};
+use crate::clipboard::uri_list;
 
 #[derive(Default)]
 pub(super) struct Receiver {
@@ -52,6 +52,7 @@ impl Receiver {
             target: session.atoms.TARGETS,
             remaining: Vec::new(),
             change: LocalChange {
+                files: Vec::new(),
                 items: Vec::new(),
                 sensitive: false,
                 source_app: source_app(session, owner),
@@ -167,11 +168,13 @@ impl Receiver {
         }
         read.data.extend_from_slice(&reply.value);
         if !chunk || reply.value.is_empty() {
-            if let Some(mime) = mime(&session.atoms, read.target) {
-                read.change.items.push(Item {
+            match mime(&session.atoms, read.target) {
+                Some(FILES) => read.change.files = uri_list::decode(&read.data),
+                Some(mime) => read.change.items.push(Item {
                     mime: mime.into(),
                     data: std::mem::take(&mut read.data),
-                });
+                }),
+                None => {}
             }
             self.advance(session);
         }

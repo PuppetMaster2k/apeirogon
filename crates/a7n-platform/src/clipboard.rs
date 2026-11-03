@@ -11,6 +11,7 @@ mod fetch;
 mod formats;
 #[cfg(target_os = "macos")]
 mod macos;
+pub mod uri_list;
 #[cfg(all(unix, not(target_os = "macos")))]
 pub(crate) mod wayland;
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -22,6 +23,9 @@ mod cf_html;
 #[cfg(windows)]
 mod windows;
 #[cfg(all(test, not(windows)))]
+#[path = "clipboard/windows/drop_files.rs"]
+mod windows_drop_files;
+#[cfg(all(test, not(windows)))]
 #[path = "clipboard/windows/image.rs"]
 mod windows_image;
 
@@ -31,6 +35,10 @@ mod windows_image;
 pub struct Clipboard {
     /// The backend can read and offer PNG images.
     pub images: bool,
+    /// The backend can read copied file lists into `LocalChange::files` and
+    /// offer a [`LazyItem`] of mime `a7n_core::clipboard::FILES`. Its paste
+    /// reply is a `text/uri-list` ([`uri_list`]) of local paths.
+    pub files: bool,
     pub changes: mpsc::Receiver<LocalChange>,
     pub commands: mpsc::Sender<ClipboardCommand>,
     /// The OS asked to paste an item that was offered without data.
@@ -54,7 +62,23 @@ pub struct LazyItem {
     pub size: u64,
     /// Index in the origin's `ClipboardAnnounce.items`.
     pub item_index: u32,
+    /// For a file list: how many top-level entries a paste publishes, so a
+    /// backend that offers one pasteboard item per entry knows the count up
+    /// front. 0 for every other item.
+    pub top_level: u32,
 }
+
+impl LazyItem {
+    /// Files are limited by policy, not by the clipboard size limits.
+    pub(crate) fn within_limit(&self) -> bool {
+        self.mime == a7n_core::clipboard::FILES
+            || self.size <= a7n_core::clipboard::limit_for(&self.mime) as u64
+    }
+}
+
+/// How long a backend waits for a pasted file list: the reply arrives only
+/// after the files are downloaded. The daemon answers `None` earlier on failure.
+pub(crate) const FILE_PASTE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 
 /// Backends block the paste until `reply` answers; `None` means the data is
 /// gone (newer generation, peer unreachable, integrity failure).

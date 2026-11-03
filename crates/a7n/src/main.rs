@@ -3,6 +3,7 @@
 
 use std::io::{self, Write};
 use std::net::{IpAddr, SocketAddr};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use a7n_ipc::{
@@ -14,6 +15,7 @@ use clap::{Parser, Subcommand};
 mod clip;
 mod config;
 mod daemon;
+mod files;
 mod layout;
 mod logs;
 
@@ -73,6 +75,21 @@ enum Command {
         #[arg(short = 'n', default_value_t = 50)]
         lines: usize,
     },
+    /// Offer files or folders to a paired peer and follow the transfer.
+    Send {
+        /// Peer name, machine id or unique hex prefix (at least 4 digits).
+        peer: String,
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+        /// Return once the offer is made instead of following the transfer.
+        #[arg(long)]
+        no_wait: bool,
+    },
+    /// Answer or cancel file transfers.
+    Files {
+        #[command(subcommand)]
+        command: files::Command,
+    },
     /// Dial a paired peer by address when automatic discovery is unavailable.
     Connect {
         /// Peer IP or IP:port; IPv6 ports use [IP]:port.
@@ -99,6 +116,12 @@ async fn run(command: Command) -> Result<()> {
         Command::Switch { machine } => Request::Switch {
             machine: resolve_machine(&machine).await?,
         },
+        Command::Send {
+            peer,
+            paths,
+            no_wait,
+        } => return files::send(&peer, &paths, !no_wait).await,
+        Command::Files { command } => return files::run(command).await,
         Command::Init => return config::init(),
         Command::Config { command } => return config::run(command).await,
         Command::Layout => return layout::run().await,
@@ -252,6 +275,12 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
                 };
                 writeln!(output, "{} {} {state}", peer.name, peer.id)?;
             }
+            for held in &status.held_files {
+                files::write_held(output, status, held)?;
+            }
+            for transfer in &status.transfers {
+                files::write_transfer(output, status, transfer)?;
+            }
             if !status.nearby.is_empty() {
                 writeln!(output, "nearby")?;
                 for machine in &status.nearby {
@@ -269,6 +298,7 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
             writeln!(output, "Paired with {name} ({machine})")?;
         }
         Response::Done => {}
+        Response::FilesOffered { .. } => bail!("unexpected file offer response from daemon"),
         Response::Layout(_) => bail!("unexpected layout response from daemon"),
         Response::Error { message, .. } => bail!("{message}"),
     }

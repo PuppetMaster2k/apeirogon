@@ -58,6 +58,7 @@ impl Daemon {
         }
         self.input.hotkeys = HotkeyMatcher::new(config.bindings());
         self.config = config;
+        self.recheck_files_policy();
         for (peer, was_allowed) in before {
             let accepts = self.allow_drive(peer);
             if accepts == was_allowed {

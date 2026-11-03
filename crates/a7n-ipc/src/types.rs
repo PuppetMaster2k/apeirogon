@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use a7n_core::pairing::PairingCode;
 use a7n_proto::MachineId;
@@ -22,6 +23,22 @@ pub enum Request {
         machine: MachineId,
     },
     Status,
+    SendFiles {
+        #[serde(with = "machine_id")]
+        peer: MachineId,
+        paths: Vec<PathBuf>,
+    },
+    FilesAccept {
+        #[serde(with = "machine_id")]
+        peer: MachineId,
+    },
+    FilesReject {
+        #[serde(with = "machine_id")]
+        peer: MachineId,
+    },
+    CancelTransfer {
+        id: u64,
+    },
     ClipboardStatus,
     ClipboardAccept,
     ClipboardReject,
@@ -64,6 +81,10 @@ pub enum Response {
         #[serde(with = "machine_id")]
         machine: MachineId,
         name: String,
+    },
+    FilesOffered {
+        offer_id: u64,
+        skipped_symlinks: usize,
     },
     Done,
     Error {
@@ -126,6 +147,10 @@ pub struct StatusInfo {
     /// None when input works, otherwise the reason it is unavailable.
     pub input: Option<String>,
     pub held_clipboard: Option<HeldClipboard>,
+    pub transfers: Vec<FileTransfer>,
+    pub held_files: Vec<HeldFiles>,
+    /// Most recent ended sends, oldest first; session state only.
+    pub finished_sends: Vec<FinishedSend>,
     pub pid: u32,
     /// Outgoing input sharing is suspended for this daemon session.
     pub paused: bool,
@@ -139,6 +164,58 @@ pub struct StatusInfo {
     pub nearby: Vec<NearbyMachine>,
     /// macOS permissions the daemon still needs; empty elsewhere.
     pub missing_permissions: Vec<Permission>,
+}
+
+/// Coarse file offer metadata; paths and names are never exposed here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HeldFiles {
+    #[serde(with = "machine_id")]
+    pub peer: MachineId,
+    pub files: u32,
+    pub top_level_entries: u32,
+    pub total_size: u64,
+}
+
+/// Progress for an active transfer. Ids are local to this daemon session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FileTransfer {
+    pub id: u64,
+    /// The local offer a send belongs to; `None` for receives.
+    pub offer_id: Option<u64>,
+    #[serde(with = "machine_id")]
+    pub peer: MachineId,
+    pub direction: TransferDirection,
+    pub files_done: u32,
+    pub files_total: u32,
+    pub bytes_done: u64,
+    pub bytes_total: u64,
+}
+
+/// How a send transfer ended. Link loss is not an outcome: the offer stays live and resumes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FinishedSend {
+    pub offer_id: u64,
+    #[serde(with = "machine_id")]
+    pub peer: MachineId,
+    pub outcome: SendOutcome,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SendOutcome {
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransferDirection {
+    Send,
+    Receive,
 }
 
 /// Clipboard availability and metadata; never includes contents or source apps.

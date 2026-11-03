@@ -14,6 +14,7 @@ use a7n_proto::{MachineId, limits};
 use tokio::sync::{Semaphore, oneshot};
 
 use super::Daemon;
+use super::files::files_top_level;
 
 mod ask;
 pub(super) use ask::deadline;
@@ -27,26 +28,31 @@ pub(super) struct Held {
     pub deadline: Instant,
 }
 
-mod fetch;
+pub(super) mod fetch;
 
 pub(super) struct Transfers {
-    id: usize,
-    next: u64,
-    pending: HashMap<u64, oneshot::Sender<(quinn::RecvStream, Vec<u8>)>>,
-    send_slots: Arc<Semaphore>,
+    pub(in crate::daemon) id: usize,
+    pub(in crate::daemon) next: u64,
+    pub(in crate::daemon) pending: HashMap<u64, oneshot::Sender<(quinn::RecvStream, Vec<u8>)>>,
+    pub(in crate::daemon) send_slots: Arc<Semaphore>,
     read_slots: Arc<Semaphore>,
-    fetch_slots: Arc<Semaphore>,
+    send_tasks: HashMap<u64, tokio::task::AbortHandle>,
+    fetch_tasks: HashMap<u64, tokio::task::AbortHandle>,
+    pub(in crate::daemon) fetch_slots: Arc<Semaphore>,
 }
 
 impl Transfers {
-    fn new(id: usize) -> Self {
+    fn new(id: usize, next: u64) -> Self {
+        let slots = Arc::new(Semaphore::new(limits::CONCURRENT_TRANSFERS_PER_LINK));
         Self {
             id,
-            next: 0,
+            next,
             pending: HashMap::new(),
-            send_slots: Arc::new(Semaphore::new(limits::CONCURRENT_TRANSFERS_PER_LINK)),
+            send_slots: slots.clone(),
+            send_tasks: HashMap::new(),
+            fetch_tasks: HashMap::new(),
             read_slots: Arc::new(Semaphore::new(limits::CONCURRENT_TRANSFERS_PER_LINK)),
-            fetch_slots: Arc::new(Semaphore::new(limits::CONCURRENT_TRANSFERS_PER_LINK)),
+            fetch_slots: slots,
         }
     }
 }
@@ -56,8 +62,8 @@ pub(super) struct State {
     pub handle: Option<Clipboard>,
     pub held: Option<Held>,
     clock: Clock,
-    current: Option<Generation>,
-    announce: Option<ClipboardAnnounce>,
+    pub(in crate::daemon) current: Option<Generation>,
+    pub(in crate::daemon) announce: Option<ClipboardAnnounce>,
     own_items: Vec<clipboard::Item>,
     pub links: HashMap<MachineId, Transfers>,
 }
@@ -123,6 +129,11 @@ impl Daemon {
                 .capabilities
                 .push(Capability::ClipboardImage.into());
         }
+        if handle.as_ref().is_some_and(|handle| handle.files) {
+            self.info
+                .capabilities
+                .push(Capability::ClipboardFiles.into());
+        }
         if handle.is_some() {
             self.info
                 .capabilities
@@ -138,7 +149,7 @@ impl Daemon {
             .map_or(ClipboardPolicy::Both, |policy| policy.clipboard)
     }
 
-    fn clipboard_can_send(&self, peer: MachineId) -> bool {
+    pub(super) fn clipboard_can_send(&self, peer: MachineId) -> bool {
         self.clipboard.handle.is_some()
             && matches!(
                 self.clipboard_policy(peer),
@@ -167,18 +178,61 @@ impl Daemon {
                 .is_some_and(|link| link.capabilities.contains(&Capability::ClipboardImage))
     }
 
-    fn clipboard_announce_to(&mut self, peer: MachineId, mut wire: ClipboardAnnounce) {
+    /// What this peer is allowed to see of an announce. The files item is
+    /// appended last, so dropping other items never changes its meaning.
+    fn clipboard_wire_for(
+        &self,
+        peer: MachineId,
+        mut wire: ClipboardAnnounce,
+    ) -> ClipboardAnnounce {
         if !self.clipboard_can_send_image(peer) {
             wire.items.retain(|item| item.mime != clipboard::IMAGE_PNG);
         }
+        if !self.clipboard_can_send_files(peer) {
+            wire.items.retain(|item| item.mime != clipboard::FILES);
+            wire.files = None;
+        }
+        wire
+    }
+
+    fn clipboard_announce_to(&mut self, peer: MachineId, wire: ClipboardAnnounce) {
+        let wire = self.clipboard_wire_for(peer, wire);
         if !wire.items.is_empty() {
             self.send_input(peer, Body::ClipboardAnnounce(wire));
         }
     }
 
+    /// Whether `item_index` of what `peer` was shown is this copy's file list.
+    pub(super) fn clipboard_files_item(&self, peer: MachineId, item_index: u32) -> bool {
+        let Some(wire) = self.clipboard.announce.clone() else {
+            return false;
+        };
+        self.clipboard_wire_for(peer, wire)
+            .items
+            .get(item_index as usize)
+            .is_some_and(|item| item.mime == clipboard::FILES)
+    }
+
+    /// Announces the copy to every peer allowed to see it and keeps it as the current one.
+    pub(super) fn clipboard_publish(&mut self, wire: ClipboardAnnounce) {
+        let peers: Vec<_> = self
+            .links
+            .by_peer
+            .keys()
+            .copied()
+            .filter(|peer| self.clipboard_can_send(*peer))
+            .collect();
+        for peer in peers {
+            self.clipboard_announce_to(peer, wire.clone());
+        }
+        self.clipboard.announce = Some(wire);
+    }
+
     pub(super) fn clipboard_link_up(&mut self, peer: MachineId) {
         let id = self.links.by_peer[&peer].connection.stable_id();
-        self.clipboard.links.insert(peer, Transfers::new(id));
+        // Disjoint requester ids make cancellation unambiguous in both directions.
+        let next = u64::from(self.identity.machine_id > peer);
+        self.clipboard.links.insert(peer, Transfers::new(id, next));
         if !self.clipboard_can_send(peer) {
             return;
         }
@@ -196,6 +250,7 @@ impl Daemon {
     pub(super) fn clipboard_changed(&mut self, change: Option<LocalChange>) {
         self.clipboard.drop_held();
         self.clipboard.own_items.clear();
+        self.files_clipboard_superseded();
         let Some(change) = change else {
             self.clipboard.handle = None;
             self.clipboard.announce = None;
@@ -210,7 +265,16 @@ impl Daemon {
         let generation = self.clipboard.clock.next(self.identity.machine_id);
         // The previous copy is no longer available, even if this copy has no supported formats.
         self.clipboard.announce = None;
-        let Some(wire) = clipboard::announce(change.items.clone(), generation) else {
+        let files = self.clipboard_files_to_offer(change.files);
+        // A file copy may have no other format, but still needs a generation.
+        let wire = clipboard::announce(change.items.clone(), generation).or_else(|| {
+            (!files.is_empty()).then(|| ClipboardAnnounce {
+                origin: generation.origin.as_bytes().to_vec(),
+                generation: generation.generation,
+                ..ClipboardAnnounce::default()
+            })
+        });
+        let Some(wire) = wire else {
             return;
         };
         self.clipboard.own_items = change
@@ -225,17 +289,14 @@ impl Daemon {
             })
             .collect();
         self.clipboard.current = Some(generation);
-        let peers: Vec<_> = self
-            .links
-            .by_peer
-            .keys()
-            .copied()
-            .filter(|peer| self.clipboard_can_send(*peer))
-            .collect();
-        for peer in peers {
-            self.clipboard_announce_to(peer, wire.clone());
+        if files.is_empty() {
+            self.clipboard_publish(wire);
+        } else {
+            // The manifest hashes every file, so peers learn of this copy only
+            // once it is built: a same-generation re-announce would be ignored
+            // as not newer, and a newer generation would lose the paste.
+            self.clipboard_files_build(generation, wire, files);
         }
-        self.clipboard.announce = Some(wire);
     }
 
     pub(super) fn receive_clipboard(&mut self, peer: MachineId, wire: &ClipboardAnnounce) {
@@ -272,15 +333,21 @@ impl Daemon {
         received
             .items
             .retain(|item| item.mime != clipboard::IMAGE_PNG || images);
+        let files_index = self.announced_files_index(received.generation.origin, wire);
         received
             .pending
-            .retain(|&index| images || wire.items[index as usize].mime != clipboard::IMAGE_PNG);
+            .retain(|&index| match wire.items[index as usize].mime.as_str() {
+                clipboard::IMAGE_PNG => images,
+                clipboard::FILES => files_index == Some(index),
+                _ => true,
+            });
         if received.items.iter().any(|item| {
             item.mime == clipboard::IMAGE_PNG && clipboard::validate_png(&item.data).is_err()
         }) {
             return;
         }
         self.clipboard.drop_held();
+        self.files_clipboard_superseded();
         self.clipboard.current = Some(received.generation);
         self.clipboard.announce = Some(wire.clone());
         self.clipboard.own_items.clear();
@@ -293,6 +360,11 @@ impl Daemon {
                     mime: item.mime.clone(),
                     size: item.size,
                     item_index,
+                    top_level: if item.mime == clipboard::FILES {
+                        wire.files.as_ref().map_or(0, files_top_level)
+                    } else {
+                        0
+                    },
                 }
             })
             .collect();

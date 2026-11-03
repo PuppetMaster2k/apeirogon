@@ -256,12 +256,17 @@ crates/
 - **Files on Linux paste:** apps expect `text/uri-list` with local paths, so
   the paste triggers the download into the receive directory and the paths
   are handed out afterwards; above a size threshold a progress indicator is
-  shown.
+  shown. Copied files travel with the clipboard when both peers advertise
+  `CAPABILITY_CLIPBOARD_FILES`; the source builds the manifest (it hashes every
+  file) before announcing, and only while a peer that could paste is linked.
+  A paste is an explicit local action, so the `ask` files policy does not hold
+  it: `receive`, `both` and `ask` allow it, `send` and `off` hide the files
+  from the clipboard. Sending a copy needs `send`, `both` or `ask`.
 
 ## User interface
 
 - **CLI** (`a7n`): `init`, `pair`, `unpair`, `layout`, `switch`, `status`,
-  `clip`, `send`, `config`, `daemon`, `logs`, `pause`, `resume`. Config is TOML, managed via
+  `clip`, `send`, `files`, `config`, `daemon`, `logs`, `pause`, `resume`. Config is TOML, managed via
   `a7n config`. `a7n layout` is an interactive TUI.
 - **GUI** (`a7n-gui`, egui/eframe) for Windows and macOS:
   - Thin client of the daemon over `a7n-ipc`; no logic of its own.
@@ -271,6 +276,11 @@ crates/
   - Local IPC version 2 adds `SetPaused { paused }` and status fields `paused`
     and `focused` (machine id). Update the daemon and local clients together;
     the peer wire protocol is unchanged.
+  - Local IPC version 4 adds explicit file offers, accept/reject and cancellation,
+    plus held offer counts, active file/byte progress (sends carry their
+    offer id) and the outcome of recently ended sends (`finished_sends`, session
+    state, at most 16; link loss is not an outcome because the offer resumes). File offers use an
+    independent generation namespace and do not change the receiving clipboard.
   - Local IPC version 3 adds status field `missing_permissions` and
     `RequestPermission { permission }`. The daemon owns the macOS
     Accessibility and Input Monitoring grants, so it reports what is missing,

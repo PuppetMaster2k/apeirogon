@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_ipc::{ErrorKind, PeerInfo, StatusInfo};
+use a7n_ipc::{
+    ErrorKind, FileTransfer, FinishedSend, HeldFiles, PeerInfo, SendOutcome, StatusInfo,
+    TransferDirection,
+};
 
 use super::*;
 
@@ -59,6 +62,23 @@ fn write_response_status_displays_identity_and_peer_states() {
     let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let response = Response::Status(StatusInfo {
         held_clipboard: None,
+        transfers: vec![FileTransfer {
+            id: 7,
+            offer_id: Some(2),
+            peer: machine,
+            direction: TransferDirection::Send,
+            files_done: 1,
+            files_total: 3,
+            bytes_done: 1536,
+            bytes_total: 5 * 1024 * 1024,
+        }],
+        finished_sends: Vec::new(),
+        held_files: vec![HeldFiles {
+            peer: machine,
+            files: 2,
+            top_level_entries: 1,
+            total_size: 100,
+        }],
         input: Some("Accessibility permission missing".to_owned()),
         paused: false,
         focused: machine,
@@ -91,6 +111,8 @@ fn write_response_status_displays_identity_and_peer_states() {
             "local 0123456789abcdef0123456789abcdef (this machine)\n",
             "peer 0123456789abcdef0123456789abcdef connected\n",
             "peer 0123456789abcdef0123456789abcdef offline\n",
+            "files waiting for confirmation: peer wants to send 2 files, 100 B (a7n files accept 0123456789abcdef0123456789abcdef)\n",
+            "transfer 7 send peer: 1/3 files, 1.5 KiB / 5.0 MiB\n",
         )
     );
 }
@@ -147,6 +169,9 @@ fn write_response_status_with_nearby_displays_machine_ids_and_addresses() {
     let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
     let response = Response::Status(StatusInfo {
         held_clipboard: None,
+        transfers: Vec::new(),
+        held_files: Vec::new(),
+        finished_sends: Vec::new(),
         input: None,
         paused: false,
         focused: machine,
@@ -244,5 +269,66 @@ fn resolve_machine_id_names_and_prefixes_resolve_or_reject() {
 
         // Assert
         assert_eq!(result.ok(), expected);
+    }
+}
+
+#[test]
+fn poll_send_offer_states_map_to_progress_outcome_or_waiting() {
+    // Arrange
+    let peer = "0123456789abcdef0123456789abcdef".parse().unwrap();
+    let transfer = FileTransfer {
+        id: 3,
+        offer_id: Some(9),
+        peer,
+        direction: TransferDirection::Send,
+        files_done: 0,
+        files_total: 1,
+        bytes_done: 0,
+        bytes_total: 1,
+    };
+    let finished = |offer_id, outcome| FinishedSend {
+        offer_id,
+        peer,
+        outcome,
+    };
+    let status = |transfers: Vec<FileTransfer>, finished_sends: Vec<FinishedSend>| StatusInfo {
+        held_clipboard: None,
+        transfers,
+        held_files: Vec::new(),
+        finished_sends,
+        input: None,
+        paused: false,
+        focused: peer,
+        pid: 0,
+        machine: peer,
+        name: "local".into(),
+        peers: Vec::new(),
+        nearby: Vec::new(),
+        missing_permissions: Vec::new(),
+    };
+    let cases = [
+        (status(vec![], vec![]), files::Poll::Waiting),
+        (
+            status(vec![transfer.clone()], vec![]),
+            files::Poll::Progress(&transfer),
+        ),
+        (
+            status(vec![], vec![finished(9, SendOutcome::Failed)]),
+            files::Poll::Finished(SendOutcome::Failed),
+        ),
+        (
+            status(
+                vec![transfer.clone()],
+                vec![finished(8, SendOutcome::Completed)],
+            ),
+            files::Poll::Progress(&transfer),
+        ),
+    ];
+    for (status, expected) in &cases {
+        // Act
+        let result = files::poll_send(status, 9);
+
+        // Assert
+        assert_eq!(&result, expected);
     }
 }

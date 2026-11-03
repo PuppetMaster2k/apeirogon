@@ -104,6 +104,10 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
             )
             .await
         }
+        files @ (Request::SendFiles { .. }
+        | Request::FilesAccept { .. }
+        | Request::FilesReject { .. }
+        | Request::CancelTransfer { .. }) => dispatch_files(files, commands).await,
         Request::RequestPermission { permission } => {
             let permission = permission.into();
             execute(
@@ -121,6 +125,47 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
             )
             .await
         }
+    }
+}
+
+async fn dispatch_files(request: Request, commands: &mpsc::Sender<Command>) -> Response {
+    match request {
+        Request::SendFiles { peer, paths } => {
+            execute(
+                commands,
+                |reply| Command::SendFiles { peer, paths, reply },
+                |(offer_id, skipped_symlinks)| Response::FilesOffered {
+                    offer_id,
+                    skipped_symlinks,
+                },
+            )
+            .await
+        }
+        Request::FilesAccept { peer } => {
+            execute(
+                commands,
+                |reply| Command::FilesAccept { peer, reply },
+                |()| Response::Done,
+            )
+            .await
+        }
+        Request::FilesReject { peer } => {
+            execute(
+                commands,
+                |reply| Command::FilesReject { peer, reply },
+                |()| Response::Done,
+            )
+            .await
+        }
+        Request::CancelTransfer { id } => {
+            execute(
+                commands,
+                |reply| Command::CancelTransfer { id, reply },
+                |()| Response::Done,
+            )
+            .await
+        }
+        _ => unreachable!("only file requests are dispatched here"),
     }
 }
 

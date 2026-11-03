@@ -133,6 +133,7 @@ fn allows_sensitive_or_denied_app_rejects_change() {
         (false, None, true),
     ] {
         let change = LocalChange {
+            files: Vec::new(),
             items: vec![item(IMAGE_PNG, 1)],
             sensitive,
             source_app: app.map(str::to_owned),
@@ -288,4 +289,42 @@ fn accept_image_above_limit_rejects_metadata() {
 
     // Assert
     assert_eq!(result.unwrap_err(), ClipboardError::Size);
+}
+
+#[test]
+fn accept_files_item_without_digest_is_pending_whatever_its_size() {
+    // Arrange
+    let mut wire = announce(vec![item(TEXT_PLAIN, 1)], generation(1, 1)).unwrap();
+    wire.items.push(ClipboardItem {
+        mime: FILES.into(),
+        size: u64::MAX,
+        ..ClipboardItem::default()
+    });
+
+    // Act
+    let received = accept(None, &wire).unwrap().unwrap();
+
+    // Assert
+    assert_eq!(received.pending, [1]);
+    assert_eq!(received.items.len(), 1);
+}
+
+#[test]
+fn accept_files_item_with_digest_or_inline_data_is_rejected() {
+    // Arrange
+    for (sha256, inline_data) in [(vec![0; 32], vec![]), (vec![], vec![1])] {
+        let mut wire = announce(vec![item(TEXT_PLAIN, 1)], generation(1, 1)).unwrap();
+        wire.items.push(ClipboardItem {
+            mime: FILES.into(),
+            size: 1,
+            sha256,
+            inline_data,
+        });
+
+        // Act
+        let result = accept(None, &wire);
+
+        // Assert
+        assert_eq!(result.unwrap_err(), ClipboardError::Digest);
+    }
 }

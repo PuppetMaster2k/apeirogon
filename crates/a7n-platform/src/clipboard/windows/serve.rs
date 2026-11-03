@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use a7n_proto::limits::CLIPBOARD_FETCH_TIMEOUT;
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::System::DataExchange::{
     EmptyClipboard, GetClipboardOwner, GetClipboardSequenceNumber,
 };
-use windows_sys::Win32::System::Ole::CF_DIB;
+use windows_sys::Win32::System::Ole::{CF_DIB, CF_HDROP, DROPEFFECT_COPY};
 
 use super::State;
-use super::data::{Open, offer};
-use crate::clipboard::ClipboardCommand;
+use super::data::{Open, offer, write_global};
+use crate::clipboard::{ClipboardCommand, FILE_PASTE_TIMEOUT};
 
 impl State {
     pub(super) fn set(&mut self, hwnd: HWND, command: ClipboardCommand) {
@@ -40,7 +41,7 @@ impl State {
             }
         }
         for item in lazy {
-            if item.size > a7n_core::clipboard::limit_for(&item.mime) as u64 {
+            if !item.within_limit() {
                 continue;
             }
             if let Some(format) = self.formats.format(&item.mime) {
@@ -48,6 +49,10 @@ impl State {
                     && !self.lazy.iter().any(|(existing, _)| *existing == format)
                 {
                     offer(format);
+                    if format == u32::from(CF_HDROP) {
+                        // Without it Explorer may move the files out of the receive directory.
+                        write_global(self.formats.drop_effect, &DROPEFFECT_COPY.to_ne_bytes());
+                    }
                     if item.mime == a7n_core::clipboard::IMAGE_PNG {
                         offer(u32::from(CF_DIB));
                         self.lazy.push((u32::from(CF_DIB), item.clone()));
@@ -69,11 +74,20 @@ impl State {
             return;
         };
         let item = &self.lazy[index].1;
-        let Some(bytes) = crate::clipboard::fetch::fetch(generation, item.item_index, &self.pastes)
+        let timeout = if format == u32::from(CF_HDROP) {
+            // The reply arrives only after the files are downloaded.
+            FILE_PASTE_TIMEOUT
+        } else {
+            CLIPBOARD_FETCH_TIMEOUT
+        };
+        let Some(bytes) =
+            crate::clipboard::fetch::fetch(generation, item.item_index, timeout, &self.pastes)
         else {
             return;
         };
-        if bytes.len() as u64 == item.size && self.formats.write(format, &bytes) {
+        // The size of a file list is the files', not the uri-list's.
+        let sized = format == u32::from(CF_HDROP) || bytes.len() as u64 == item.size;
+        if sized && self.formats.write(format, &bytes) {
             self.lazy.swap_remove(index);
         }
     }
@@ -86,7 +100,15 @@ impl State {
         if unsafe { GetClipboardOwner() } != hwnd {
             return;
         }
-        let formats: Vec<_> = self.lazy.iter().map(|(format, _)| *format).collect();
+        // Not the file list: WM_RENDERALLFORMATS runs as the owner exits, and a
+        // download of unbounded length would hold the shutdown. The files stay
+        // in the receive directory; only the paste is lost.
+        let formats: Vec<_> = self
+            .lazy
+            .iter()
+            .map(|(format, _)| *format)
+            .filter(|format| *format != u32::from(CF_HDROP))
+            .collect();
         for format in formats {
             self.render(format);
         }

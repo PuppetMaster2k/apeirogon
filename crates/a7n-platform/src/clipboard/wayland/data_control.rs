@@ -122,6 +122,7 @@ pub(super) fn start() -> Result<Clipboard, StartError> {
         .map_err(WaylandError::Thread)?;
     Ok(Clipboard {
         images: true,
+        files: true,
         changes,
         commands,
         pastes,

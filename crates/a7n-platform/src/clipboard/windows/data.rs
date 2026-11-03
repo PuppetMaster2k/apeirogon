@@ -5,7 +5,7 @@ use std::ptr::null_mut;
 use std::thread;
 use std::time::Duration;
 
-use a7n_core::clipboard::{IMAGE_PNG, TEXT_HTML, TEXT_PLAIN, limit_for, validate_png};
+use a7n_core::clipboard::{FILES, IMAGE_PNG, TEXT_HTML, TEXT_PLAIN, limit_for, validate_png};
 use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
 use windows_sys::Win32::Foundation::{GlobalFree, HWND};
 use windows_sys::Win32::System::DataExchange::{
@@ -14,7 +14,7 @@ use windows_sys::Win32::System::DataExchange::{
 use windows_sys::Win32::System::Memory::{
     GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock,
 };
-use windows_sys::Win32::System::Ole::{CF_DIB, CF_UNICODETEXT};
+use windows_sys::Win32::System::Ole::{CF_DIB, CF_HDROP, CF_UNICODETEXT};
 use windows_sys::core::w;
 
 use crate::clipboard::cf_html;
@@ -31,6 +31,8 @@ pub(super) struct Formats {
     pub exclude: u32,
     pub history: u32,
     pub cloud: u32,
+    /// Tells Explorer whether a paste of files copies or moves them.
+    pub drop_effect: u32,
 }
 
 impl Formats {
@@ -45,6 +47,7 @@ impl Formats {
                 )),
                 history: RegisterClipboardFormatW(w!("CanIncludeInClipboardHistory")),
                 cloud: RegisterClipboardFormatW(w!("CanUploadToCloudClipboard")),
+                drop_effect: RegisterClipboardFormatW(w!("Preferred DropEffect")),
             }
         };
         if [
@@ -53,6 +56,7 @@ impl Formats {
             formats.exclude,
             formats.history,
             formats.cloud,
+            formats.drop_effect,
         ]
         .contains(&0)
         {
@@ -66,6 +70,7 @@ impl Formats {
             IMAGE_PNG => Some(self.png),
             TEXT_PLAIN => Some(u32::from(CF_UNICODETEXT)),
             TEXT_HTML => Some(self.html),
+            FILES => Some(u32::from(CF_HDROP)),
             _ => None,
         }
     }
@@ -80,6 +85,13 @@ impl Formats {
             } else {
                 super::image::to_dib(data).is_some_and(|dib| write_global(format, &dib))
             };
+        }
+        if format == u32::from(CF_HDROP) {
+            if data.len() > limit_for(FILES) {
+                return false;
+            }
+            return super::drop_files::build(&crate::clipboard::uri_list::decode(data))
+                .is_some_and(|drop| write_global(format, &drop));
         }
         if data.len() > limit_for(TEXT_PLAIN) {
             return false;
@@ -149,7 +161,7 @@ pub(super) fn read_global(format: u32, maximum: usize) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-fn write_global(format: u32, bytes: &[u8]) -> bool {
+pub(super) fn write_global(format: u32, bytes: &[u8]) -> bool {
     // SAFETY: Requests a movable allocation of the exact buffer size.
     let handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, bytes.len()) };
     if handle.is_null() {

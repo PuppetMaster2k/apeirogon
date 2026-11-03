@@ -32,6 +32,7 @@ use crate::tls::{self, TlsError, TrustSnapshot, TrustedPins};
 mod clipboard;
 mod config;
 mod connections;
+mod files;
 mod input;
 mod layout;
 mod nearby;
@@ -98,6 +99,26 @@ enum Event {
     Link(Result<Box<Link>, LinkError>, Option<Reply<()>>),
     Ended(MachineId, usize),
     PairingEnded,
+    FilesBuilt {
+        peer: MachineId,
+        link: usize,
+        result: Result<files::Offer, &'static str>,
+        reply: Reply<(u64, usize)>,
+    },
+    FilesReady {
+        id: u64,
+        resume: Vec<a7n_proto::v1::FileResume>,
+    },
+    FilesFinished {
+        id: u64,
+        result: Result<Vec<std::path::PathBuf>, files::Failure>,
+    },
+    ClipboardFilesBuilt {
+        generation: a7n_core::clipboard::Generation,
+        wire: a7n_proto::v1::ClipboardAnnounce,
+        result: Result<files::Offer, &'static str>,
+    },
+    TransferSlotFreed(MachineId, usize),
     ClipboardOpened(TransferStream, u64, Vec<u8>),
     ClipboardFetched {
         peer: MachineId,
@@ -144,6 +165,7 @@ pub(crate) struct Daemon {
     transfer_rx: mpsc::Receiver<TransferStream>,
     input: input::Input,
     clipboard: clipboard::State,
+    files: files::State,
     config: Config,
     config_path: PathBuf,
     shutdown_reply: Option<Reply<()>>,
@@ -170,7 +192,10 @@ impl Daemon {
         let info = PeerInfo {
             platform: a7n_platform::platform().into(),
             name: identity.machine_id.to_string(),
-            capabilities: vec![a7n_proto::v1::Capability::SettingsSync.into()],
+            capabilities: vec![
+                a7n_proto::v1::Capability::SettingsSync.into(),
+                a7n_proto::v1::Capability::Files.into(),
+            ],
             listen_port: u32::from(endpoint.local_addr()?.port()),
             ..PeerInfo::default()
         };
@@ -203,6 +228,7 @@ impl Daemon {
             transfer_rx,
             input,
             clipboard: clipboard::State::default(),
+            files: files::State::default(),
             config: Config::default(),
             config_path: path.join("config.toml"),
             shutdown_reply: None,
@@ -228,6 +254,10 @@ impl Daemon {
         mut discoveries: mpsc::Receiver<crate::discovery::Event>,
     ) -> Result<(), DaemonError> {
         self.detect_settings_edit()?;
+        if let Ok(receive_dir) = self.config.files.receive_dir() {
+            self.tasks
+                .spawn_blocking(move || files::cleanup(&receive_dir, SystemTime::now()));
+        }
         if self.clipboard.handle.is_none() {
             crate::log::event!("kind=clipboard_unavailable");
         }
@@ -240,6 +270,7 @@ impl Daemon {
         keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             let deadline = self.input.focus.next_deadline();
+            let files_deadline = self.files_deadline();
             let clipboard_deadline = self.clipboard.held.as_ref().map(|held| held.deadline);
             tokio::select! {
                 command = commands.recv() => {
@@ -259,6 +290,7 @@ impl Daemon {
                 _ = keepalive.tick() => self.input.keepalive(),
                 () = input::deadline(deadline) => self.poll_focus().await,
                 () = clipboard::deadline(clipboard_deadline) => self.clipboard.expire_held_clipboard(Instant::now()),
+                () = clipboard::deadline(files_deadline) => self.expire_files(Instant::now()),
                 Some(stream) = self.transfer_rx.recv() => self.clipboard_stream(stream),
                 event = clipboard::next(&mut self.clipboard.handle) => match event {
                     clipboard::Event::Changed(change) => self.clipboard_changed(change),
@@ -276,7 +308,11 @@ impl Daemon {
                         crate::log::event!("kind=desk_failed");
                     }
                 }
-                Some(_) = self.tasks.join_next(), if !self.tasks.is_empty() => {}
+                Some(_) = self.tasks.join_next(), if !self.tasks.is_empty() => {
+                    // Aborted clipboard tasks release slots without a completion event.
+                    let peers: Vec<_> = self.links.by_peer.keys().copied().collect();
+                    for peer in peers { self.start_waiting_files(peer); }
+                }
             }
             self.flush_link_losses().await;
             if self.input.failed && !a7n_platform::permissions::missing().is_empty() {
@@ -308,6 +344,16 @@ impl Daemon {
             }
             Command::Status(reply) => {
                 let _ = reply.send(Ok(self.status()));
+            }
+            Command::SendFiles { peer, paths, reply } => self.offer_files(peer, paths, reply),
+            Command::FilesAccept { peer, reply } => {
+                let _ = reply.send(self.accept_files(peer));
+            }
+            Command::FilesReject { peer, reply } => {
+                let _ = reply.send(self.reject_files(peer));
+            }
+            Command::CancelTransfer { id, reply } => {
+                let _ = reply.send(self.cancel_file_transfer(id));
             }
             Command::ClipboardStatus(reply) => {
                 let _ = reply.send(Ok(self.clipboard_status()));
@@ -351,6 +397,9 @@ impl Daemon {
         Status {
             input: self.input.unavailable.clone(),
             held_clipboard: self.held_clipboard(),
+            transfers: self.file_transfers(),
+            held_files: self.held_files(),
+            finished_sends: self.finished_sends(),
             pid: std::process::id(),
             paused: self.input.paused,
             focused: match self.input.focus.cursor() {

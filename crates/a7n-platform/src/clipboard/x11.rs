@@ -7,7 +7,7 @@ mod serve;
 
 use std::time::{Duration, Instant};
 
-use a7n_core::clipboard::{IMAGE_PNG, TEXT_HTML, TEXT_PLAIN};
+use a7n_core::clipboard::{FILES, IMAGE_PNG, TEXT_HTML, TEXT_PLAIN};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use tokio::sync::mpsc;
 use x11rb::connection::{Connection, RequestConnection};
@@ -20,7 +20,7 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::{COPY_DEPTH_FROM_PARENT, CURRENT_TIME};
 
 use super::Clipboard;
-use super::formats::{HTML_ALIAS, HTML_UTF8_ALIAS, SENSITIVE_MARKER};
+use super::formats::{GNOME_COPIED_FILES, HTML_ALIAS, HTML_UTF8_ALIAS, SENSITIVE_MARKER, URI_LIST};
 use crate::input::InputError;
 
 const CHANNEL_CAPACITY: usize = 16;
@@ -38,6 +38,8 @@ x11rb::atom_manager! {
         PNG: IMAGE_PNG.as_bytes(),
         HTML: HTML_ALIAS.as_bytes(),
         HTML_UTF8: HTML_UTF8_ALIAS.as_bytes(),
+        URI_LIST: URI_LIST.as_bytes(),
+        GNOME_FILES: GNOME_COPIED_FILES.as_bytes(),
         SENSITIVE: SENSITIVE_MARKER.as_bytes(),
         PROPERTY: b"_APEIROGON_CLIPBOARD",
     }
@@ -163,6 +165,7 @@ pub(super) fn start() -> Result<Clipboard, InputError> {
         .map_err(InputError::Thread)?;
     Ok(Clipboard {
         images: true,
+        files: true,
         changes,
         commands,
         pastes,
@@ -176,6 +179,8 @@ fn mime(atoms: &Atoms, target: u32) -> Option<&'static str> {
         Some(IMAGE_PNG)
     } else if target == atoms.HTML || target == atoms.HTML_UTF8 {
         Some(TEXT_HTML)
+    } else if target == atoms.URI_LIST || target == atoms.GNOME_FILES {
+        Some(FILES)
     } else {
         None
     }
@@ -206,6 +211,12 @@ fn select_targets(atoms: &Atoms, targets: &[u32]) -> Vec<u32> {
     if targets.contains(&atoms.PNG) {
         selected.push(atoms.PNG);
     }
+    if let Some(target) = [atoms.URI_LIST, atoms.GNOME_FILES]
+        .into_iter()
+        .find(|t| targets.contains(t))
+    {
+        selected.push(target);
+    }
     selected
 }
 
@@ -226,6 +237,8 @@ mod tests {
             HTML_UTF8: 8,
             SENSITIVE: 9,
             PROPERTY: 10,
+            URI_LIST: 12,
+            GNOME_FILES: 13,
         }
     }
 
@@ -243,6 +256,11 @@ mod tests {
                 vec![atoms.PLAIN, atoms.HTML_UTF8],
             ),
             (vec![atoms.PNG], vec![atoms.PNG]),
+            (
+                vec![atoms.GNOME_FILES, atoms.URI_LIST, atoms.PLAIN],
+                vec![atoms.PLAIN, atoms.URI_LIST],
+            ),
+            (vec![atoms.GNOME_FILES], vec![atoms.GNOME_FILES]),
             (vec![atoms.SENSITIVE], vec![]),
             (vec![], vec![]),
         ];
@@ -265,6 +283,8 @@ mod tests {
             (atoms.HTML, Some(TEXT_HTML)),
             (atoms.HTML_UTF8, Some(TEXT_HTML)),
             (atoms.PNG, Some(IMAGE_PNG)),
+            (atoms.URI_LIST, Some(FILES)),
+            (atoms.GNOME_FILES, Some(FILES)),
             (atoms.SENSITIVE, None),
         ];
         for (target, expected) in cases {

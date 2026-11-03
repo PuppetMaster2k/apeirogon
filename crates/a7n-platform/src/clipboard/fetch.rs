@@ -4,16 +4,17 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use a7n_core::clipboard::Generation;
-use a7n_proto::limits::CLIPBOARD_FETCH_TIMEOUT;
 use tokio::sync::{mpsc, oneshot};
 
 use super::PasteRequest;
 
 const REPLY_INTERVAL: Duration = Duration::from_millis(10);
 
+/// Blocks until the daemon answers or `timeout` passes.
 pub(super) fn fetch(
     generation: Generation,
     item_index: u32,
+    timeout: Duration,
     pastes: &mpsc::Sender<PasteRequest>,
 ) -> Option<Vec<u8>> {
     let (reply, mut receiver) = oneshot::channel();
@@ -24,7 +25,7 @@ pub(super) fn fetch(
             reply,
         })
         .ok()?;
-    let deadline = Instant::now() + CLIPBOARD_FETCH_TIMEOUT;
+    let deadline = Instant::now() + timeout;
     loop {
         match receiver.try_recv() {
             Ok(bytes) => return bytes,

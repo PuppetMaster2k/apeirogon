@@ -3,7 +3,7 @@
 //! Which offered formats to read from a foreign selection. Pure.
 
 use super::super::formats::{SENSITIVE_MARKER, names_of};
-use a7n_core::clipboard::{IMAGE_PNG, TEXT_HTML, TEXT_PLAIN};
+use a7n_core::clipboard::{FILES, IMAGE_PNG, TEXT_HTML, TEXT_PLAIN};
 
 /// Offered next to our own selection so the backend recognises its own write
 /// coming back from the compositor and does not announce it again.
@@ -35,7 +35,7 @@ pub(super) fn plan_reads(offered: &[String]) -> ReadPlan {
             reads: Vec::new(),
         };
     }
-    let reads = [TEXT_PLAIN, TEXT_HTML, IMAGE_PNG]
+    let reads = [TEXT_PLAIN, TEXT_HTML, IMAGE_PNG, FILES]
         .into_iter()
         .filter_map(|item| {
             let offered = names_of(item)
@@ -68,6 +68,14 @@ mod tests {
             ),
             (names(&["UTF8_STRING"]), vec![(TEXT_PLAIN, "UTF8_STRING")]),
             (names(&[IMAGE_PNG, "TARGETS"]), vec![(IMAGE_PNG, IMAGE_PNG)]),
+            (
+                names(&["x-special/gnome-copied-files", "text/uri-list"]),
+                vec![(FILES, "text/uri-list")],
+            ),
+            (
+                names(&["x-special/gnome-copied-files"]),
+                vec![(FILES, "x-special/gnome-copied-files")],
+            ),
         ];
         for (offered, expected) in cases {
             // Act

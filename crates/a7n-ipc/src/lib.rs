@@ -3,7 +3,7 @@
 
 //! Versioned JSON-lines API shared by the daemon, CLI and GUI.
 //!
-//! Each connection starts with `{"ipc_version":2}` in both directions, then
+//! Each connection starts with `{"ipc_version":4}` in both directions, then
 //! exchanges one request and one response at a time. Messages use a `type` tag
 //! and `snake_case` variant names, with fields alongside the tag. Status fields
 //! are flattened into the status response. Machine ids are 32 hex characters.
@@ -13,6 +13,7 @@ pub mod config;
 mod connection;
 pub mod daemon;
 mod error;
+mod format;
 mod framing;
 pub mod layout;
 mod types;
@@ -24,13 +25,15 @@ pub use a7n_proto::MachineId;
 pub use a7n_proto::limits::DEFAULT_UDP_PORT;
 pub use connection::{IpcClient, IpcConnection, IpcServer};
 pub use error::IpcError;
+pub use format::format_size;
 pub use types::{
-    ClipboardCopy, ClipboardInfo, ClipboardKind, ErrorKind, HeldClipboard, LayoutInfo,
-    LayoutPlacement, NearbyMachine, PeerClipboard, PeerInfo, Permission, PlacedMachine, Request,
-    Response, StatusInfo, UnplacedMachine,
+    ClipboardCopy, ClipboardInfo, ClipboardKind, ErrorKind, FileTransfer, FinishedSend,
+    HeldClipboard, HeldFiles, LayoutInfo, LayoutPlacement, NearbyMachine, PeerClipboard, PeerInfo,
+    Permission, PlacedMachine, Request, Response, SendOutcome, StatusInfo, TransferDirection,
+    UnplacedMachine,
 };
 
 /// Local API major version, independent of the peer protobuf protocol.
-pub const IPC_VERSION: u32 = 3;
+pub const IPC_VERSION: u32 = 4;
 /// Maximum JSON payload bytes per line, excluding the terminating newline.
 pub const MAX_LINE_LENGTH: usize = 64 * 1024;

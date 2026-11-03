@@ -2,7 +2,7 @@
 
 //! The selection this backend owns after a `Set`, and how a paste is answered. Pure.
 
-use a7n_core::clipboard::{Generation, IMAGE_PNG, Item, TEXT_HTML, TEXT_PLAIN};
+use a7n_core::clipboard::{FILES, Generation, IMAGE_PNG, Item, TEXT_HTML, TEXT_PLAIN};
 #[cfg(test)]
 use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
 
@@ -39,16 +39,13 @@ impl Served {
                 .into_iter()
                 .filter(|item| item.data.len() <= a7n_core::clipboard::limit_for(&item.mime))
                 .collect(),
-            lazy: lazy
-                .into_iter()
-                .filter(|item| item.size <= a7n_core::clipboard::limit_for(&item.mime) as u64)
-                .collect(),
+            lazy: lazy.into_iter().filter(LazyItem::within_limit).collect(),
         }
     }
 
     /// Every name to advertise, best first within each item.
     pub(super) fn offered(&self) -> Vec<&'static str> {
-        [TEXT_PLAIN, TEXT_HTML, IMAGE_PNG]
+        [TEXT_PLAIN, TEXT_HTML, IMAGE_PNG, FILES]
             .into_iter()
             .filter(|mime| self.has(mime))
             .flat_map(|mime| names_of(mime).iter().copied())
@@ -112,6 +109,7 @@ mod tests {
             mime: TEXT_HTML.to_owned(),
             size: 9,
             item_index: 1,
+            top_level: 0,
         };
         let served = served(vec![item(TEXT_PLAIN, 2)], vec![lazy]);
 
@@ -139,6 +137,7 @@ mod tests {
             mime: TEXT_HTML.to_owned(),
             size: CLIPBOARD_TEXT_MAX as u64 + 1,
             item_index: 1,
+            top_level: 0,
         };
 
         // Act
@@ -180,6 +179,7 @@ mod image_tests {
                 mime: IMAGE_PNG.into(),
                 size: limits::CLIPBOARD_TEXT_MAX as u64 + 1,
                 item_index: 2,
+                top_level: 0,
             }],
         });
 

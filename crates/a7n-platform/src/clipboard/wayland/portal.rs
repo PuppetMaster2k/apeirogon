@@ -136,6 +136,7 @@ impl Service {
             pastes: pastes_tx,
             handle: Some(Clipboard {
                 images: true,
+                files: true,
                 changes,
                 commands,
                 pastes,
