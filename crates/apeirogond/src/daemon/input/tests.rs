@@ -437,3 +437,20 @@ async fn attach_input_after_unavailable_start_clears_status_and_forwards_input()
     a.stop().await;
     b.stop().await;
 }
+
+#[tokio::test]
+async fn finish_input_retry_after_backend_closes_restores_input() {
+    // Arrange
+    let (mut daemon, _dir, _old_input) = daemon(true);
+    daemon.input.closed();
+    let (handles, mut restarted) = fake_input();
+
+    // Act
+    daemon.finish_input_retry(Some(Ok(handles)));
+    daemon.input.grab(true).await;
+
+    // Assert
+    assert!(!daemon.input.failed);
+    assert!(daemon.status().input.is_none());
+    restarted.grab(true).await;
+}

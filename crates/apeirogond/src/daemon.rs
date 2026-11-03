@@ -278,6 +278,9 @@ impl Daemon {
                 Some(_) = self.tasks.join_next(), if !self.tasks.is_empty() => {}
             }
             self.flush_link_losses().await;
+            if self.input.failed && !a7n_platform::permissions::missing().is_empty() {
+                self.retry_input_after_permission_loss().await;
+            }
             if self.input.failed {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::BrokenPipe,

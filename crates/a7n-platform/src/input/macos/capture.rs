@@ -6,18 +6,17 @@ use std::io;
 use std::ptr::{NonNull, null_mut};
 use std::sync::mpsc as sync;
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use a7n_proto::v1::{
     Button, ButtonEvent, InputEvent, KeyEvent, ScrollEvent, ScrollUnit, input_event,
 };
 use objc2::rc::autoreleasepool;
 use objc2_app_kit::NSEvent;
-use objc2_core_foundation::{CFMachPort, CFRunLoop, CGPoint, kCFRunLoopDefaultMode};
+use objc2_core_foundation::{CFRunLoop, CGPoint, kCFRunLoopDefaultMode};
 use objc2_core_graphics::{
     CGAssociateMouseAndMouseCursorPosition, CGDisplayHideCursor, CGDisplayShowCursor, CGEvent,
-    CGEventField, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventTapProxy,
-    CGEventType, CGMainDisplayID,
+    CGEventField, CGEventTapProxy, CGEventType, CGMainDisplayID,
 };
 use tokio::sync::mpsc::error::{TryRecvError, TrySendError};
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -27,9 +26,15 @@ use super::{
     pointer_position,
 };
 use crate::input::{CaptureControl, Captured, DeadMan, InputError};
+use crate::permissions;
+
+mod tap;
+
+use tap::Tap;
 
 const WAKE_SECONDS: f64 = 0.05;
 const KEY_COUNT: usize = 128;
+const PERMISSION_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 struct State {
     events: Sender<Captured>,
@@ -37,6 +42,7 @@ struct State {
     grabbed: bool,
     queue_full: bool,
     disabled: bool,
+    permission_checked: Instant,
     keys: [bool; KEY_COUNT],
     anchor: CGPoint,
 }
@@ -55,22 +61,14 @@ pub(super) fn spawn(
                 grabbed: false,
                 queue_full: false,
                 disabled: false,
+                permission_checked: Instant::now(),
                 keys: [false; KEY_COUNT],
                 anchor: CGPoint::new(0.0, 0.0),
             });
-            let setup = install(&state);
-            match setup {
-                Ok(tap) => {
-                    let outcome = run(&tap, &state, control, &ready);
-                    state.borrow_mut().grab(false);
-                    tap.invalidate();
-                    if let Err(error) = outcome {
-                        let _ = ready.send(Err(error));
-                    }
-                }
-                Err(error) => {
-                    let _ = ready.send(Err(error));
-                }
+            let outcome = run(&state, control, &ready);
+            state.borrow_mut().grab(false);
+            if let Err(error) = outcome {
+                let _ = ready.send(Err(error));
             }
         })
         .map_err(InputError::Thread)?;
@@ -80,66 +78,63 @@ pub(super) fn spawn(
     Ok(())
 }
 
-fn install(state: &RefCell<State>) -> io::Result<objc2_core_foundation::CFRetained<CFMachPort>> {
-    let types = [
-        CGEventType::LeftMouseDown,
-        CGEventType::LeftMouseUp,
-        CGEventType::RightMouseDown,
-        CGEventType::RightMouseUp,
-        CGEventType::MouseMoved,
-        CGEventType::LeftMouseDragged,
-        CGEventType::RightMouseDragged,
-        CGEventType::KeyDown,
-        CGEventType::KeyUp,
-        CGEventType::FlagsChanged,
-        CGEventType(MEDIA_EVENT),
-        CGEventType::ScrollWheel,
-        CGEventType::OtherMouseDown,
-        CGEventType::OtherMouseUp,
-        CGEventType::OtherMouseDragged,
-    ];
-    let mask = types.iter().fold(0, |mask, ty| mask | (1_u64 << ty.0));
-    // SAFETY: state lives on this thread until the tap is invalidated. The callback
-    // uses it only during run-loop dispatch, with no other reference in use.
-    unsafe {
-        CGEvent::tap_create(
-            CGEventTapLocation::SessionEventTap,
-            CGEventTapPlacement::HeadInsertEventTap,
-            CGEventTapOptions::Default,
-            mask,
-            Some(callback),
-            std::ptr::from_ref(state).cast_mut().cast(),
-        )
-    }
-    .ok_or_else(|| io::Error::other("cannot create session event tap"))
-}
-
 fn run(
-    tap: &CFMachPort,
     state: &RefCell<State>,
     mut control: Receiver<CaptureControl>,
     ready: &sync::Sender<io::Result<()>>,
 ) -> io::Result<()> {
-    let source = CFMachPort::new_run_loop_source(None, Some(tap), 0)
-        .ok_or_else(|| io::Error::other("cannot create event tap run-loop source"))?;
-    let run_loop = CFRunLoop::current().ok_or_else(|| io::Error::other("no capture run loop"))?;
+    let mut tap = Tap::install(state, false)?;
     // SAFETY: Core Foundation exports this immutable mode constant for the process lifetime.
     let mode = unsafe { kCFRunLoopDefaultMode };
-    run_loop.add_source(Some(&source), mode);
-    CGEvent::tap_enable(tap, true);
     if ready.send(Ok(())).is_err() {
         return Ok(());
     }
-    while state.borrow_mut().tick(&mut control) {
-        if std::mem::take(&mut state.borrow_mut().disabled) {
-            CGEvent::tap_enable(tap, true);
-        }
+    while tick(state, &mut tap, &mut control)? {
         // The callback may access state only during this synchronous dispatch.
         CFRunLoop::run_in_mode(mode, WAKE_SECONDS, false);
     }
-    run_loop.remove_source(Some(&source), mode);
-    source.invalidate();
     Ok(())
+}
+
+fn tick(
+    state: &RefCell<State>,
+    tap: &mut Tap,
+    control: &mut Receiver<CaptureControl>,
+) -> io::Result<bool> {
+    let now = Instant::now();
+    if state.borrow_mut().permission_check_due(now) && !permissions::missing().is_empty() {
+        state.borrow_mut().grab(false);
+        return Ok(false);
+    }
+    // Callbacks can release a grab after a disabled tap or closed event queue.
+    if !state.borrow().grabbed {
+        tap.set_grab(state, false)?;
+    }
+    loop {
+        match control.try_recv() {
+            Ok(CaptureControl::Keepalive) => state.borrow_mut().deadman.keepalive(now),
+            Ok(CaptureControl::Grab(grab)) => {
+                if grab {
+                    state.borrow_mut().deadman.keepalive(now);
+                }
+                tap.set_grab(state, grab)?;
+            }
+            Err(TryRecvError::Empty) => break,
+            Err(TryRecvError::Disconnected) => return Ok(false),
+        }
+    }
+    if state.borrow().grabbed && state.borrow().deadman.expired(now) {
+        tap.set_grab(state, false)?;
+        eprintln!("kind=input_deadman_ungrab");
+    }
+    let mut state = state.borrow_mut();
+    if std::mem::take(&mut state.queue_full) {
+        eprintln!("kind=capture_queue_full");
+    }
+    if std::mem::take(&mut state.disabled) {
+        tap.enable();
+    }
+    Ok(!state.events.is_closed())
 }
 
 impl State {
@@ -166,29 +161,12 @@ impl State {
         self.grabbed = grab;
     }
 
-    fn tick(&mut self, control: &mut Receiver<CaptureControl>) -> bool {
-        let now = Instant::now();
-        loop {
-            match control.try_recv() {
-                Ok(CaptureControl::Keepalive) => self.deadman.keepalive(now),
-                Ok(CaptureControl::Grab(grab)) => {
-                    if grab {
-                        self.deadman.keepalive(now);
-                    }
-                    self.grab(grab);
-                }
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => return false,
-            }
+    fn permission_check_due(&mut self, now: Instant) -> bool {
+        if now.duration_since(self.permission_checked) < PERMISSION_CHECK_INTERVAL {
+            return false;
         }
-        if self.grabbed && self.deadman.expired(now) {
-            self.grab(false);
-            eprintln!("kind=input_deadman_ungrab");
-        }
-        if std::mem::take(&mut self.queue_full) {
-            eprintln!("kind=capture_queue_full");
-        }
-        !self.events.is_closed()
+        self.permission_checked = now;
+        true
     }
 
     fn emit(&mut self, event: Captured) {
@@ -360,5 +338,42 @@ unsafe extern "C-unwind" fn callback(
             .borrow_mut()
             .event(ty, event.as_ref())
     };
+    // Core Graphics ignores this return value for a listen-only tap.
     if swallow { null_mut() } else { event.as_ptr() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permission_check_due_frequent_ticks_checks_at_most_once_per_second() {
+        // Arrange
+        let start = Instant::now();
+        let (events, _receiver) = tokio::sync::mpsc::channel(1);
+        let mut state = State {
+            events,
+            deadman: DeadMan::new(start),
+            grabbed: false,
+            queue_full: false,
+            disabled: false,
+            permission_checked: start,
+            keys: [false; KEY_COUNT],
+            anchor: CGPoint::new(0.0, 0.0),
+        };
+        let offsets = [
+            Duration::ZERO,
+            Duration::from_millis(999),
+            PERMISSION_CHECK_INTERVAL,
+            PERMISSION_CHECK_INTERVAL,
+            Duration::from_millis(1999),
+            PERMISSION_CHECK_INTERVAL * 2,
+        ];
+
+        // Act
+        let checks = offsets.map(|offset| state.permission_check_due(start + offset));
+
+        // Assert
+        assert_eq!(checks, [false, false, true, false, false, true]);
+    }
 }
