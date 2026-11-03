@@ -4,12 +4,12 @@ use std::collections::BTreeMap;
 use std::future::pending;
 use std::time::Instant;
 
-use a7n_core::focus::edge::EdgeResistance;
+use a7n_core::focus::edge::{EdgeResistance, HeldButtons};
 use a7n_core::focus::{Action, Cursor, Focus, Take};
 use a7n_core::hotkey::HotkeyMatcher;
 use a7n_core::input::{MotionCounter, MotionScale, MotionTracker, edge_push};
 use a7n_platform::input::{Bounds, Capture, CaptureControl, Captured, Inject, Injector};
-use a7n_proto::v1::{Edge, Envelope, InputBatch, envelope::Body};
+use a7n_proto::v1::{Edge, Envelope, InputBatch, envelope::Body, input_event::Event};
 use a7n_proto::{MachineId, Route};
 use tokio::sync::oneshot;
 
@@ -33,6 +33,7 @@ pub(super) struct Input {
     pub(super) modifier_remap: BTreeMap<u32, u32>,
     pub(super) hotkeys: HotkeyMatcher,
     resistance: EdgeResistance,
+    buttons: HeldButtons,
     pub(super) failed: bool,
     lost: Vec<MachineId>,
     /// Outcome of waiting for input permissions at startup or after revocation.
@@ -58,6 +59,7 @@ impl Input {
             modifier_remap: BTreeMap::new(),
             hotkeys: HotkeyMatcher::new(a7n_ipc::config::Config::default().bindings()),
             resistance: EdgeResistance::new(0),
+            buttons: HeldButtons::default(),
             failed: false,
             lost: Vec::new(),
             retried: None,
@@ -108,6 +110,9 @@ impl Input {
     async fn inject(&mut self, command: Inject) {
         if let Inject::Event(event) = &command {
             self.trace_key(event);
+            if let Some(Event::Button(button)) = &event.event {
+                self.buttons.apply(button);
+            }
         }
         if let Some(injector) = &self.injector {
             if injector.commands.send(command).await.is_err() {
@@ -248,11 +253,13 @@ impl Daemon {
             match action {
                 Action::Send { peer, body } => self.send_input(peer, body),
                 Action::Release(events) => {
+                    self.input.buttons.reset();
                     for event in events {
                         self.input.inject(Inject::Event(event)).await;
                     }
                 }
                 Action::Cursor(cursor) => {
+                    self.input.buttons.reset();
                     if let Cursor::Driving(peer) = cursor {
                         self.input.counter.reset();
                         self.snapshot_remap(peer);
@@ -265,6 +272,7 @@ impl Daemon {
                     resistance_px,
                     ..
                 } => {
+                    self.input.buttons.reset();
                     self.input.tracker.reset();
                     self.input.scale = MotionScale::new(self.config.input.speed);
                     self.input.resistance = EdgeResistance::new(resistance_px);
@@ -401,6 +409,11 @@ impl Daemon {
         if !allowed {
             return;
         }
+        if let Captured::Input(input) = &event {
+            if let Some(Event::Button(button)) = &input.event {
+                self.input.buttons.apply(button);
+            }
+        }
         if was_driven {
             self.sync_grab().await;
             match event {
@@ -458,6 +471,10 @@ impl Daemon {
     }
 
     async fn cross_edge(&mut self, bounds: Bounds, x: i32, y: i32, dx: i32, dy: i32, driven: bool) {
+        if self.input.buttons.any_held() {
+            self.input.resistance.push(Edge::Unspecified, 0);
+            return;
+        }
         if self.input.paused || (!driven && self.input.focus.is_locked()) {
             return;
         }
