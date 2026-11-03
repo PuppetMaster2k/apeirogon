@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_core::clipboard::{IMAGE_PNG, limit_for, validate_png};
+use a7n_core::clipboard::{FILES, IMAGE_PNG, limit_for, validate_png};
 use a7n_platform::clipboard::PasteRequest;
 use a7n_proto::v1::{
     AbortReason, ClipboardItem, ClipboardRef, FileChunk, FileEnd, TransferAbort, TransferDone,
@@ -35,6 +35,10 @@ impl Daemon {
             || item.is_none()
         {
             reject(request, "unavailable");
+            return;
+        }
+        if item.as_ref().is_some_and(|item| item.mime == FILES) {
+            self.paste_files(request);
             return;
         }
         let Some(transfers) = self.clipboard.links.get_mut(&peer) else {
@@ -224,7 +228,7 @@ impl Daemon {
     }
 }
 
-fn reject(request: PasteRequest, reason: &str) {
+pub(in crate::daemon) fn reject(request: PasteRequest, reason: &str) {
     crate::log::event!("kind=clipboard_fetch_failed reason={reason}");
     let _ = request.reply.send(None);
 }

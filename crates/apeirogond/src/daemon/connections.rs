@@ -78,6 +78,11 @@ impl Daemon {
             } => self.files_built(peer, link, result, reply),
             Event::FilesReady { id, resume } => self.files_ready(id, resume),
             Event::FilesFinished { id, result } => self.files_finished(id, result),
+            Event::ClipboardFilesBuilt {
+                generation,
+                wire,
+                result,
+            } => self.clipboard_files_built(generation, wire, result),
             Event::TransferSlotFreed(peer, link) => {
                 if self.is_current(peer, link) {
                     self.start_waiting_files(peer);

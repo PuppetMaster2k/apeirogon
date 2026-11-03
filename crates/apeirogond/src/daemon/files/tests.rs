@@ -11,6 +11,7 @@ use super::*;
 use crate::command::Command;
 use crate::daemon::test_peer::{Peer, TEST_TIMEOUT};
 
+mod paste;
 mod resume;
 
 fn tempdir() -> TempDir {

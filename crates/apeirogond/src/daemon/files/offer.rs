@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use a7n_core::clipboard;
 use a7n_core::files::ValidManifest;
 use a7n_proto::limits;
 use a7n_proto::v1::{
@@ -13,7 +14,7 @@ use prost::Message;
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
-use super::{Daemon, DaemonError, Event, FILES_MIME, MachineId, OFFERS_PER_PEER};
+use super::{Daemon, DaemonError, Event, MachineId, OFFERS_PER_PEER};
 use crate::command::Reply;
 
 pub(in crate::daemon) struct Offer {
@@ -130,19 +131,13 @@ pub(super) fn build(
         generation,
         send: true,
         items: vec![ClipboardItem {
-            mime: FILES_MIME.into(),
+            mime: clipboard::FILES.into(),
             size: manifest.total_size,
             ..ClipboardItem::default()
         }],
         files: Some(manifest),
     };
-    // The manifest also has to fit in one bounded control envelope.
-    if (a7n_proto::v1::Envelope {
-        body: Some(Body::ClipboardAnnounce(wire.clone())),
-    })
-    .encoded_len()
-        > limits::CONTROL_FRAME_MAX
-    {
+    if !fits_control_frame(&wire) {
         return Err("file manifest exceeds control frame limit");
     }
     Ok(Offer {
@@ -150,6 +145,15 @@ pub(super) fn build(
         paths: sources,
         skipped,
     })
+}
+
+/// An announce, manifest included, has to fit in one bounded control envelope.
+pub(in crate::daemon) fn fits_control_frame(wire: &ClipboardAnnounce) -> bool {
+    (a7n_proto::v1::Envelope {
+        body: Some(Body::ClipboardAnnounce(wire.clone())),
+    })
+    .encoded_len()
+        <= limits::CONTROL_FRAME_MAX
 }
 
 fn walk(

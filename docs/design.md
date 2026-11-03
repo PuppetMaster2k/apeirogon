@@ -256,7 +256,12 @@ crates/
 - **Files on Linux paste:** apps expect `text/uri-list` with local paths, so
   the paste triggers the download into the receive directory and the paths
   are handed out afterwards; above a size threshold a progress indicator is
-  shown.
+  shown. Copied files travel with the clipboard when both peers advertise
+  `CAPABILITY_CLIPBOARD_FILES`; the source builds the manifest (it hashes every
+  file) before announcing, and only while a peer that could paste is linked.
+  A paste is an explicit local action, so the `ask` files policy does not hold
+  it: `receive`, `both` and `ask` allow it, `send` and `off` hide the files
+  from the clipboard. Sending a copy needs `send`, `both` or `ask`.
 
 ## User interface
 

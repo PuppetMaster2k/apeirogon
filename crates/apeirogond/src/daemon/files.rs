@@ -13,23 +13,26 @@ use a7n_ipc::config::ClipboardPolicy;
 use a7n_ipc::{FileTransfer, FinishedSend, HeldFiles, SendOutcome, TransferDirection};
 use a7n_proto::MachineId;
 use a7n_proto::v1::{Capability, ClipboardAnnounce, TransferCancel, envelope::Body};
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 
 use super::{Daemon, DaemonError, Event};
 
 mod incoming;
 mod offer;
+mod paste;
 mod receive;
 mod serve;
+mod source;
 mod staging;
 pub(super) use offer::Offer;
 pub(super) use staging::cleanup;
 
-const FILES_MIME: &str = "application/x-apeirogon-files";
 const OFFERS_PER_PEER: usize = 4;
 const ASK_TIMEOUT: Duration = Duration::from_secs(60);
 /// Ended sends kept for clients to read; older ones are dropped.
 const FINISHED_SENDS_KEPT: usize = 16;
+/// Hidden directory of the receive directory that holds unfinished downloads.
+const PARTIAL_DIR: &str = ".apeirogon-partial";
 const PARTIAL_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 #[derive(Default)]
@@ -40,6 +43,12 @@ pub(super) struct State {
     building: HashMap<MachineId, usize>,
     incoming: HashMap<(MachineId, u64), Incoming>,
     active: HashMap<u64, Active>,
+    /// Pastes waiting for the download with this active id, answered when it ends.
+    pastes: HashMap<u64, Vec<oneshot::Sender<Option<Vec<u8>>>>>,
+    /// The copied files this machine serves for its current clipboard generation.
+    clipboard_offer: Option<(u64, Arc<Offer>)>,
+    /// The last pasted copy, so pasting again hands out the same paths.
+    pasted: Option<paste::Pasted>,
     finished_sends: VecDeque<FinishedSend>,
 }
 
@@ -57,10 +66,23 @@ struct Active {
     peer: MachineId,
     link: usize,
     wire_id: u64,
+    /// The offer id, or for clipboard kinds the clipboard generation.
     offer: u64,
+    kind: Kind,
     direction: TransferDirection,
     cancel: watch::Sender<Failure>,
     progress: Arc<Progress>,
+}
+
+/// Which namespace a transfer lives in; `ClipboardRef.send` selects it on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    /// An explicit `a7n send` with its own offer ids.
+    Offer,
+    /// Served from this machine's current clipboard generation.
+    ClipboardSend,
+    /// Downloaded because something pasted the peer's copied files.
+    ClipboardPaste { item_index: u32 },
 }
 
 #[derive(Default)]
@@ -100,7 +122,7 @@ pub(super) enum Failure {
 type Result<T> = std::result::Result<T, Failure>;
 
 impl Daemon {
-    fn files_policy(&self, peer: MachineId) -> ClipboardPolicy {
+    pub(in crate::daemon) fn files_policy(&self, peer: MachineId) -> ClipboardPolicy {
         self.config
             .peer(&peer)
             .map_or(ClipboardPolicy::Ask, |policy| policy.files)
@@ -138,7 +160,9 @@ impl Daemon {
             .iter()
             .map(|(&id, active)| FileTransfer {
                 id,
-                offer_id: (active.direction == TransferDirection::Send).then_some(active.offer),
+                offer_id: (active.kind == Kind::Offer
+                    && active.direction == TransferDirection::Send)
+                    .then_some(active.offer),
                 peer: active.peer,
                 direction: active.direction,
                 files_done: active.progress.files.load(Ordering::Relaxed),
@@ -314,10 +338,15 @@ impl Daemon {
         self.clipboard_cancel(peer, wire_id);
     }
 
-    pub(in crate::daemon) fn files_finished(&mut self, id: u64, result: Result<()>) {
+    pub(in crate::daemon) fn files_finished(
+        &mut self,
+        id: u64,
+        outcome: std::result::Result<Vec<PathBuf>, Failure>,
+    ) {
         let Some(active) = self.files.active.remove(&id) else {
             return;
         };
+        let result = outcome.as_ref().map(|_| ()).map_err(|failure| *failure);
         if let Some(transfers) = self
             .clipboard
             .links
@@ -328,11 +357,32 @@ impl Daemon {
                 transfers.pending.remove(&active.wire_id);
             }
         }
+        match active.kind {
+            Kind::Offer => self.finish_offer(&active, result),
+            Kind::ClipboardSend => {}
+            Kind::ClipboardPaste { .. } => {
+                self.finish_paste(id, &active, result, outcome.unwrap_or_default());
+            }
+        }
+        if let Err(reason) = result {
+            let reason = match reason {
+                Failure::Integrity => a7n_proto::v1::AbortReason::Integrity,
+                Failure::Io => a7n_proto::v1::AbortReason::IoError,
+                Failure::Invalid => a7n_proto::v1::AbortReason::Refused,
+                Failure::Cancelled | Failure::LinkLost => a7n_proto::v1::AbortReason::Cancelled,
+            }
+            .as_str_name();
+            crate::log::event!("kind=file_transfer_failed reason={reason}");
+        }
+        self.start_waiting_files(active.peer);
+    }
+
+    fn finish_offer(&mut self, active: &Active, result: Result<()>) {
         if active.direction == TransferDirection::Send {
             if result != Err(Failure::LinkLost) {
                 self.files.offers.remove(&(active.peer, active.offer));
             }
-            self.record_finished_send(&active, result);
+            self.record_finished_send(active, result);
         } else if result == Err(Failure::LinkLost) {
             if let Some(incoming) = self.files.incoming.get_mut(&(active.peer, active.offer)) {
                 incoming.active = false;
@@ -365,17 +415,6 @@ impl Daemon {
                 );
             }
         }
-        if let Err(reason) = result {
-            let reason = match reason {
-                Failure::Integrity => a7n_proto::v1::AbortReason::Integrity,
-                Failure::Io => a7n_proto::v1::AbortReason::IoError,
-                Failure::Invalid => a7n_proto::v1::AbortReason::Refused,
-                Failure::Cancelled | Failure::LinkLost => a7n_proto::v1::AbortReason::Cancelled,
-            }
-            .as_str_name();
-            crate::log::event!("kind=file_transfer_failed reason={reason}");
-        }
-        self.start_waiting_files(active.peer);
     }
 
     pub(in crate::daemon) fn start_waiting_files(&mut self, peer: MachineId) {

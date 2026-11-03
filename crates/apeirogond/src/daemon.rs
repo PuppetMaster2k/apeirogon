@@ -111,7 +111,12 @@ enum Event {
     },
     FilesFinished {
         id: u64,
-        result: Result<(), files::Failure>,
+        result: Result<Vec<std::path::PathBuf>, files::Failure>,
+    },
+    ClipboardFilesBuilt {
+        generation: a7n_core::clipboard::Generation,
+        wire: a7n_proto::v1::ClipboardAnnounce,
+        result: Result<files::Offer, &'static str>,
     },
     TransferSlotFreed(MachineId, usize),
     ClipboardOpened(TransferStream, u64, Vec<u8>),

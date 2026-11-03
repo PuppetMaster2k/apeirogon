@@ -15,7 +15,7 @@ use quinn::{Connection, SendStream};
 use tokio::sync::watch;
 use tokio::time::timeout;
 
-use super::{Active, Daemon, Event, Failure, Offer, Progress, Result};
+use super::{Active, Daemon, Event, Failure, Kind, Offer, Progress, Result};
 use crate::daemon::clipboard::fetch::write;
 
 impl Daemon {
@@ -27,18 +27,19 @@ impl Daemon {
         let Some(Source::Clipboard(reference)) = &request.source else {
             return false;
         };
-        if !reference.send {
-            return false;
-        }
         if reference.origin != self.identity.machine_id.as_bytes() {
             return false;
         }
-        let Some(offer) = self
-            .files
-            .offers
-            .get(&(peer, reference.generation))
-            .cloned()
-        else {
+        let (offer, kind) = if reference.send {
+            let offer = self.files.offers.get(&(peer, reference.generation));
+            (offer.cloned(), Kind::Offer)
+        } else {
+            // A superseded generation is not found here and falls through to
+            // the clipboard path, which answers ABORT_REASON_NOT_FOUND.
+            let offer = self.clipboard_files_offer(peer, reference.generation, request.item_index);
+            (offer, Kind::ClipboardSend)
+        };
+        let Some(offer) = offer else {
             return false;
         };
         let Some(transfers) = self.clipboard.links.get(&peer) else {
@@ -53,9 +54,12 @@ impl Daemon {
             active.peer == peer
                 && active.link == link
                 && active.direction == TransferDirection::Send
-                && (active.wire_id == request.transfer_id || active.offer == reference.generation)
+                && (active.wire_id == request.transfer_id
+                    || (active.offer == reference.generation && active.kind == kind))
         });
-        if self.check_file_send(peer).is_err() || request.item_index != 0 || duplicate {
+        let unsupported =
+            kind == Kind::Offer && (self.check_file_send(peer).is_err() || request.item_index != 0);
+        if unsupported || duplicate {
             let connection = self.links.by_peer[&peer].connection.clone();
             let wire_id = request.transfer_id;
             self.tasks.spawn(async move {
@@ -80,6 +84,7 @@ impl Daemon {
                 link,
                 wire_id: request.transfer_id,
                 offer: reference.generation,
+                kind,
                 direction: TransferDirection::Send,
                 cancel,
                 progress: progress.clone(),
@@ -102,6 +107,7 @@ impl Daemon {
             .await
             .unwrap_or(Err(Failure::Io));
             drop(permit);
+            let result = result.map(|()| Vec::new());
             let _ = events.send(Event::FilesFinished { id, result }).await;
         });
         true

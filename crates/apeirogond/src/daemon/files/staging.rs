@@ -8,10 +8,12 @@ use std::time::SystemTime;
 
 use a7n_core::files::{EntryKind, Partial, ValidManifest, resume_plan, unique_name};
 use a7n_platform::transfer_fs::{create_directory, open_file, rename_no_replace};
+use a7n_proto::MachineId;
 use a7n_proto::v1::FileResume;
+use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
-use super::{Failure, PARTIAL_MAX_AGE, Result};
+use super::{Failure, PARTIAL_DIR, PARTIAL_MAX_AGE, Result};
 
 pub(super) fn roots(manifest: &ValidManifest) -> BTreeSet<&str> {
     manifest
@@ -113,26 +115,44 @@ pub(super) fn hash_file(file: &mut File, hash: &mut Sha256) -> Result<()> {
     }
 }
 
-pub(super) fn publish(stage: &Path, receive_dir: &Path, manifest: &ValidManifest) -> Result<()> {
+/// Moves the top-level entries into `receive_dir` and returns where each one landed.
+/// A fresh hidden directory below `receive_dir` for one download.
+pub(super) fn new_stage(receive_dir: &Path, peer: MachineId, generation: u64) -> PathBuf {
+    receive_dir
+        .join(PARTIAL_DIR)
+        .join(format!("{peer}-{generation}-{:016x}", OsRng.next_u64()))
+}
+
+pub(super) fn publish(
+    stage: &Path,
+    receive_dir: &Path,
+    manifest: &ValidManifest,
+) -> Result<Vec<PathBuf>> {
     create_directory(receive_dir).map_err(|_| Failure::Io)?;
+    let mut published = Vec::new();
     for root in roots(manifest) {
         loop {
             let name = unique_name(root, |name| {
                 fs::symlink_metadata(receive_dir.join(name)).is_ok()
             })
             .map_err(|_| Failure::Io)?;
-            match rename_no_replace(&stage.join(root), &receive_dir.join(name)) {
-                Ok(()) => break,
+            let target = receive_dir.join(name);
+            match rename_no_replace(&stage.join(root), &target) {
+                Ok(()) => {
+                    published.push(target);
+                    break;
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(_) => return Err(Failure::Io),
             }
         }
     }
-    fs::remove_dir(stage).map_err(|_| Failure::Io)
+    fs::remove_dir(stage).map_err(|_| Failure::Io)?;
+    Ok(published)
 }
 
 pub(in crate::daemon) fn cleanup(receive_dir: &Path, now: SystemTime) {
-    let parent = receive_dir.join(".apeirogon-partial");
+    let parent = receive_dir.join(PARTIAL_DIR);
     if a7n_platform::transfer_fs::check_directory(&parent).is_err() {
         return;
     }

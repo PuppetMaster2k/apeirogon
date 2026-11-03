@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use a7n_core::clipboard;
 use a7n_core::files::ValidManifest;
 use a7n_ipc::TransferDirection;
 use a7n_ipc::config::ClipboardPolicy;
@@ -10,13 +12,23 @@ use a7n_proto::v1::{
     ClipboardAnnounce, ClipboardRef, FileResume, TransferRequest, envelope::Body,
     transfer_request::Source,
 };
-use rand_core::{OsRng, RngCore};
 use tokio::sync::{oneshot, watch};
 
 use super::{
-    ASK_TIMEOUT, Active, Daemon, DaemonError, FILES_MIME, Failure, Incoming, MachineId,
-    OFFERS_PER_PEER, Progress,
+    ASK_TIMEOUT, Active, Daemon, DaemonError, Failure, Incoming, Kind, MachineId, OFFERS_PER_PEER,
+    Progress,
 };
+
+/// What one receive task needs; the caller decides how its result is used.
+pub(super) struct Download {
+    pub peer: MachineId,
+    pub offer: u64,
+    pub kind: Kind,
+    pub manifest: ValidManifest,
+    pub stage: PathBuf,
+    pub receive_dir: PathBuf,
+    pub total_size: u64,
+}
 
 impl Daemon {
     pub(in crate::daemon) fn receive_file_offer(
@@ -38,7 +50,7 @@ impl Daemon {
             return;
         };
         if wire.items.len() != 1
-            || wire.items[0].mime != FILES_MIME
+            || wire.items[0].mime != clipboard::FILES
             || wire.items[0].size != manifest.total_size
             || !wire.items[0].inline_data.is_empty()
             || !wire.items[0].sha256.is_empty()
@@ -80,11 +92,7 @@ impl Daemon {
         let Ok(receive_dir) = self.config.files.receive_dir() else {
             return;
         };
-        let staging = receive_dir.join(".apeirogon-partial").join(format!(
-            "{peer}-{}-{:016x}",
-            wire.generation,
-            OsRng.next_u64()
-        ));
+        let staging = super::staging::new_stage(&receive_dir, peer, wire.generation);
         let ask = self.files_policy(peer) == ClipboardPolicy::Ask;
         self.files.incoming.insert(
             key,
@@ -158,22 +166,51 @@ impl Daemon {
         ) {
             return Err(DaemonError::InvalidRequest("file receiving is disabled"));
         }
+        let incoming = self
+            .files
+            .incoming
+            .get(&(peer, offer))
+            .ok_or(DaemonError::InvalidRequest("unknown file offer"))?;
+        if incoming.active {
+            return Ok(());
+        }
+        let download = Download {
+            peer,
+            offer,
+            kind: Kind::Offer,
+            manifest: incoming.manifest.clone(),
+            stage: incoming.staging.clone(),
+            receive_dir: incoming.receive_dir.clone(),
+            total_size: incoming.wire.items[0].size,
+        };
+        if self.spawn_receive(download)?.is_some() {
+            if let Some(incoming) = self.files.incoming.get_mut(&(peer, offer)) {
+                incoming.active = true;
+            }
+        }
+        Ok(())
+    }
+
+    /// Starts the download task unless every transfer slot of the link is taken.
+    /// Returns the id of the started transfer.
+    pub(super) fn spawn_receive(&mut self, download: Download) -> Result<Option<u64>, DaemonError> {
+        let Download {
+            peer,
+            offer,
+            kind,
+            manifest,
+            stage,
+            receive_dir,
+            total_size,
+        } = download;
         let transfers = self
             .clipboard
             .links
             .get_mut(&peer)
             .ok_or(DaemonError::NotConnected)?;
         let Ok(permit) = transfers.fetch_slots.clone().try_acquire_owned() else {
-            return Ok(());
+            return Ok(None);
         };
-        let incoming = self
-            .files
-            .incoming
-            .get_mut(&(peer, offer))
-            .ok_or(DaemonError::InvalidRequest("unknown file offer"))?;
-        if incoming.active {
-            return Ok(());
-        }
         transfers.next = transfers
             .next
             .checked_add(2)
@@ -189,11 +226,7 @@ impl Daemon {
         let (sender, receiver) = oneshot::channel();
         transfers.pending.insert(wire_id, sender);
         let (cancel, cancelled) = watch::channel(Failure::Cancelled);
-        let progress = Arc::new(Progress::new(
-            &incoming.manifest,
-            incoming.wire.items[0].size,
-        ));
-        incoming.active = true;
+        let progress = Arc::new(Progress::new(&manifest, total_size));
         self.files.active.insert(
             id,
             Active {
@@ -201,14 +234,12 @@ impl Daemon {
                 link,
                 wire_id,
                 offer,
+                kind,
                 direction: TransferDirection::Receive,
                 cancel,
                 progress: progress.clone(),
             },
         );
-        let manifest = incoming.manifest.clone();
-        let stage = incoming.staging.clone();
-        let receive_dir = incoming.receive_dir.clone();
         let events = self.events.clone();
         let connection = self.links.by_peer[&peer].connection.clone();
         self.tasks.spawn(async move {
@@ -234,7 +265,7 @@ impl Daemon {
                 .send(super::Event::FilesFinished { id, result })
                 .await;
         });
-        Ok(())
+        Ok(Some(id))
     }
 
     pub(in crate::daemon) fn files_ready(&mut self, id: u64, resume: Vec<FileResume>) {
@@ -242,6 +273,11 @@ impl Daemon {
             return;
         };
         let (peer, offer, wire_id, link) = (active.peer, active.offer, active.wire_id, active.link);
+        let (send, item_index) = match active.kind {
+            Kind::Offer => (true, 0),
+            Kind::ClipboardPaste { item_index } => (false, item_index),
+            Kind::ClipboardSend => return,
+        };
         if !self.is_current(peer, link) {
             return;
         }
@@ -252,9 +288,9 @@ impl Daemon {
                 source: Some(Source::Clipboard(ClipboardRef {
                     origin: peer.as_bytes().to_vec(),
                     generation: offer,
-                    send: true,
+                    send,
                 })),
-                item_index: 0,
+                item_index,
                 resume,
             }),
         );

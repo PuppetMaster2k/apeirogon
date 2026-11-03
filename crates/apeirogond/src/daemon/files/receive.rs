@@ -27,7 +27,7 @@ pub(super) struct Receive {
     pub connection: Connection,
 }
 
-pub(super) async fn run(mut job: Receive) -> Result<()> {
+pub(super) async fn run(mut job: Receive) -> Result<Vec<PathBuf>> {
     let result = tokio::select! {
         biased;
         _ = job.cancelled.changed() => Err(*job.cancelled.borrow()),
@@ -51,7 +51,7 @@ async fn download(
     progress: &Progress,
     events: &mpsc::Sender<Event>,
     id: u64,
-) -> Result<()> {
+) -> Result<Vec<PathBuf>> {
     let mut partial = staging::prepare(stage, manifest)?;
     progress.bytes.store(
         partial
