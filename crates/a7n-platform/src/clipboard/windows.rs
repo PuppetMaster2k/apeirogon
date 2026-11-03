@@ -107,6 +107,7 @@ pub(super) fn start() -> io::Result<Clipboard> {
     }
     Ok(Clipboard {
         images: true,
+        files: false,
         changes,
         commands,
         pastes,

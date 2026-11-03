@@ -40,6 +40,7 @@ impl State {
                         })
                 });
         let mut change = LocalChange {
+            files: Vec::new(),
             items: Vec::new(),
             sensitive,
             source_app: source_app(owner),

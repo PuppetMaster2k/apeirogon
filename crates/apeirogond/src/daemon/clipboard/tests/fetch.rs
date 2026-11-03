@@ -226,6 +226,7 @@ async fn clipboard_paste_invalid_fetched_png_fails_paste() {
     let (b, b_dir, _b_changes, mut commands) = daemon();
     let (b, pastes) = with_pastes(b);
     a.clipboard_changed(Some(LocalChange {
+        files: Vec::new(),
         items: vec![Item {
             mime: clipboard::IMAGE_PNG.into(),
             data: vec![0; limits::CLIPBOARD_INLINE_MAX + 1],
@@ -271,6 +272,7 @@ async fn clipboard_paste_image_above_text_limit_fetches_valid_png() {
     ];
     png.resize(limits::CLIPBOARD_TEXT_MAX + 1, 0);
     a.clipboard_changed(Some(LocalChange {
+        files: Vec::new(),
         items: vec![Item {
             mime: clipboard::IMAGE_PNG.into(),
             data: png.clone(),

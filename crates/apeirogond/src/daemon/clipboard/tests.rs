@@ -24,6 +24,7 @@ fn daemon() -> (
     (
         daemon.with_clipboard(Some(Clipboard {
             images: true,
+            files: false,
             changes: change_rx,
             commands: command_tx,
             pastes: mpsc::channel(1).1,
@@ -36,6 +37,7 @@ fn daemon() -> (
 
 fn change(text: &str) -> LocalChange {
     LocalChange {
+        files: Vec::new(),
         items: vec![Item {
             mime: TEXT_PLAIN.into(),
             data: text.as_bytes().to_vec(),

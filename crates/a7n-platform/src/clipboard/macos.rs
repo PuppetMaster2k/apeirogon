@@ -65,6 +65,7 @@ pub(super) fn start() -> io::Result<Clipboard> {
     ready.recv().map_err(io::Error::other)??;
     Ok(Clipboard {
         images: true,
+        files: false,
         changes,
         commands,
         pastes,
@@ -146,6 +147,7 @@ impl State {
         let sensitive = types.containsObject(ns_string!("org.nspasteboard.ConcealedType"))
             || types.containsObject(ns_string!("org.nspasteboard.TransientType"));
         let mut change = LocalChange {
+            files: Vec::new(),
             items: Vec::new(),
             sensitive,
             // shortcut: frontmost app is best effort, use owner attribution if AppKit gains it.

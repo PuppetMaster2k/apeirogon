@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use a7n_core::clipboard::{Generation, Item};
+use a7n_core::clipboard::{FILES, Generation, Item};
 use tokio::sync::{mpsc::Sender, oneshot};
 use x11rb::protocol::Event;
 use x11rb::protocol::xproto::{
@@ -13,7 +13,8 @@ use x11rb::wrapper::ConnectionExt as _;
 use x11rb::{CURRENT_TIME, NONE};
 
 use super::{MAX_PENDING, PASTE_TIMEOUT, Session, mime};
-use crate::clipboard::{ClipboardCommand, LazyItem, PasteRequest};
+use crate::clipboard::formats::{GNOME_COPIED_FILES, render_files};
+use crate::clipboard::{ClipboardCommand, FILE_PASTE_TIMEOUT, LazyItem, PasteRequest};
 
 #[derive(Default)]
 pub(super) struct Owner {
@@ -60,10 +61,7 @@ impl Owner {
             .into_iter()
             .filter(|item| item.data.len() <= a7n_core::clipboard::limit_for(&item.mime))
             .collect();
-        self.lazy = lazy
-            .into_iter()
-            .filter(|item| item.size <= a7n_core::clipboard::limit_for(&item.mime) as u64)
-            .collect();
+        self.lazy = lazy.into_iter().filter(LazyItem::within_limit).collect();
         let _ =
             session
                 .conn
@@ -143,10 +141,16 @@ impl Owner {
                     reply,
                 };
                 if pastes.try_send(paste).is_ok() {
+                    // A file paste answers only after the download finished.
+                    let timeout = if mime == FILES {
+                        FILE_PASTE_TIMEOUT
+                    } else {
+                        PASTE_TIMEOUT
+                    };
                     self.pending.push(Pending {
                         request,
                         reply: receiver,
-                        deadline: Instant::now() + PASTE_TIMEOUT,
+                        deadline: Instant::now() + timeout,
                     });
                     return;
                 }
@@ -163,6 +167,8 @@ impl Owner {
             session.atoms.HTML,
             session.atoms.HTML_UTF8,
             session.atoms.PNG,
+            session.atoms.URI_LIST,
+            session.atoms.GNOME_FILES,
         ] {
             if mime(&session.atoms, target).is_some_and(|mime| {
                 self.items.iter().any(|item| item.mime == mime)
@@ -292,6 +298,7 @@ impl Owner {
                 result => {
                     let pending = self.pending.swap_remove(index);
                     if let Ok(Some(data)) = result {
+                        let data = reply_data(session, &pending.request, data);
                         self.respond(session, pending.request, data);
                     } else {
                         notify(session, &pending.request, NONE);
@@ -301,6 +308,14 @@ impl Owner {
         }
         self.outgoing.retain(|outgoing| now < outgoing.deadline);
     }
+}
+
+/// Only a file paste gets reshaped: the daemon always answers `text/uri-list`.
+fn reply_data(session: &Session, request: &SelectionRequestEvent, data: Vec<u8>) -> Vec<u8> {
+    if request.target == session.atoms.GNOME_FILES {
+        return render_files(GNOME_COPIED_FILES, &data).into_owned();
+    }
+    data
 }
 
 fn notify(session: &Session, request: &SelectionRequestEvent, property: u32) {

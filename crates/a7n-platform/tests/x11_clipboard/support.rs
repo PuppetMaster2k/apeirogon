@@ -42,6 +42,8 @@ x11rb::atom_manager! {
     pub(super) Atoms: AtomsCookie {
         CLIPBOARD, TARGETS, UTF8_STRING, INCR, WM_CLASS,
         HTML: b"text/html",
+        URI_LIST: b"text/uri-list",
+        GNOME_FILES: b"x-special/gnome-copied-files",
         SENSITIVE: b"x-kde-passwordManagerHint",
         PROPERTY: b"_APEIROGON_TEST_CLIPBOARD",
     }
@@ -52,6 +54,8 @@ pub(super) struct Client {
     window: u32,
     pub(super) atoms: Atoms,
     pub(super) reads: usize,
+    /// Also offer `text/uri-list`, served with the same bytes as every other target.
+    pub(super) files: bool,
     outgoing: Option<(SelectionRequestEvent, Vec<u8>, usize)>,
 }
 
@@ -81,6 +85,7 @@ impl Client {
             window,
             atoms,
             reads: 0,
+            files: false,
             outgoing: None,
         }
     }
@@ -130,6 +135,8 @@ impl Client {
                 if request.target == self.atoms.TARGETS {
                     let targets = if sensitive {
                         vec![self.atoms.UTF8_STRING, self.atoms.SENSITIVE]
+                    } else if self.files {
+                        vec![self.atoms.UTF8_STRING, self.atoms.URI_LIST]
                     } else {
                         vec![self.atoms.UTF8_STRING, self.atoms.HTML]
                     };

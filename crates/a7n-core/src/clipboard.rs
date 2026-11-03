@@ -9,6 +9,9 @@ use sha2::{Digest, Sha256};
 pub const TEXT_PLAIN: &str = "text/plain;charset=utf-8";
 pub const IMAGE_PNG: &str = "image/png";
 pub const TEXT_HTML: &str = "text/html;charset=utf-8";
+/// Item that carries a `FileManifest` instead of bytes; the data is the files
+/// themselves, fetched on paste.
+pub const FILES: &str = "application/x-apeirogon-files";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Generation {
@@ -45,6 +48,8 @@ pub struct Item {
 #[derive(Debug)]
 pub struct LocalChange {
     pub items: Vec<Item>,
+    /// Local paths of copied files and directories; empty when the copy is not a file list.
+    pub files: Vec<std::path::PathBuf>,
     pub sensitive: bool,
     pub source_app: Option<String>,
 }
@@ -65,10 +70,11 @@ impl Exclusion {
 }
 
 fn supported(mime: &str) -> bool {
-    matches!(mime, TEXT_PLAIN | TEXT_HTML | IMAGE_PNG)
+    matches!(mime, TEXT_PLAIN | TEXT_HTML | IMAGE_PNG | FILES)
 }
 
-/// Maximum encoded bytes for a clipboard format.
+/// Maximum encoded bytes for a clipboard format. For [`FILES`] this bounds the
+/// `text/uri-list` handed to the OS, not the files, which are limited by policy only.
 #[must_use]
 pub fn limit_for(mime: &str) -> usize {
     if mime == IMAGE_PNG {
@@ -118,7 +124,7 @@ pub fn announce(items: Vec<Item>, generation: Generation) -> Option<ClipboardAnn
     let mut wire = Vec::new();
     for item in items
         .into_iter()
-        .filter(|item| supported(&item.mime) && !item.data.is_empty())
+        .filter(|item| item.mime != FILES && supported(&item.mime) && !item.data.is_empty())
     {
         if item.data.len() > limit_for(&item.mime) {
             return None;
@@ -184,6 +190,14 @@ pub fn accept(
     let mut items = Vec::new();
     let mut pending = Vec::new();
     for (index, item) in incoming.items.iter().enumerate() {
+        if item.mime == FILES {
+            // Files carry no digest; each file in the manifest has its own.
+            if !item.inline_data.is_empty() || !item.sha256.is_empty() {
+                return Err(ClipboardError::Digest);
+            }
+            pending.push(u32::try_from(index).map_err(|_| ClipboardError::Size)?);
+            continue;
+        }
         if item.size > limit_for(&item.mime) as u64 {
             return Err(ClipboardError::Size);
         }

@@ -6,7 +6,7 @@ use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use a7n_core::clipboard::{Item, LocalChange};
+use a7n_core::clipboard::{FILES, Item, LocalChange};
 use a7n_proto::limits::CLIPBOARD_FETCH_TIMEOUT;
 #[cfg(test)]
 use a7n_proto::limits::CLIPBOARD_TEXT_MAX;
@@ -17,7 +17,9 @@ use tokio::time::timeout;
 
 use super::served::{Serve, Served};
 use super::{MAX_TRANSFERS, READ_TIMEOUT, WRITE_TIMEOUT, pipe};
-use crate::clipboard::PasteRequest;
+use crate::clipboard::formats::{item_mime_of, render_files};
+use crate::clipboard::uri_list;
+use crate::clipboard::{FILE_PASTE_TIMEOUT, PasteRequest};
 
 /// Caps the pastes served at once.
 #[derive(Debug, Clone)]
@@ -63,11 +65,18 @@ pub(super) async fn publish(
     stamp: u64,
     changes: &Sender<LocalChange>,
 ) {
-    let items = read_items(reads).await;
+    let (listed, items): (Vec<_>, Vec<_>) = read_items(reads)
+        .await
+        .into_iter()
+        .partition(|item| item.mime == FILES);
     if epoch.load(Ordering::SeqCst) != stamp {
         return;
     }
     let change = LocalChange {
+        files: listed
+            .into_iter()
+            .flat_map(|item| uri_list::decode(&item.data))
+            .collect(),
         items,
         sensitive,
         source_app: None,
@@ -84,6 +93,7 @@ pub(super) async fn answer(
     fd: OwnedFd,
 ) -> bool {
     let fetched;
+    let rendered;
     let data = match served.decide(requested) {
         Serve::Inline(data) => data,
         Serve::Lazy {
@@ -99,15 +109,18 @@ pub(super) async fn answer(
             if pastes.try_send(request).is_err() {
                 return false;
             }
-            fetched = timeout(CLIPBOARD_FETCH_TIMEOUT, receiver).await;
+            let item_mime = item_mime_of(requested).unwrap_or("");
+            // A file paste is answered only after the download finished.
+            let wait = if item_mime == FILES {
+                FILE_PASTE_TIMEOUT
+            } else {
+                CLIPBOARD_FETCH_TIMEOUT
+            };
+            fetched = timeout(wait, receiver).await;
             match &fetched {
-                Ok(Ok(Some(data)))
-                    if data.len()
-                        <= a7n_core::clipboard::limit_for(
-                            crate::clipboard::formats::item_mime_of(requested).unwrap_or(""),
-                        ) =>
-                {
-                    data
+                Ok(Ok(Some(data))) if data.len() <= a7n_core::clipboard::limit_for(item_mime) => {
+                    rendered = render_files(requested, data);
+                    &rendered
                 }
                 _ => return false,
             }
