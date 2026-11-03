@@ -36,7 +36,7 @@ pub(super) struct Input {
     buttons: HeldButtons,
     pub(super) failed: bool,
     lost: Vec<MachineId>,
-    /// Outcome of the startup retry task, if input began unavailable.
+    /// Outcome of waiting for input permissions at startup or after revocation.
     pub(super) retried: Option<oneshot::Receiver<Retried>>,
 }
 
@@ -190,6 +190,26 @@ impl Daemon {
         self.input.capture = Some(capture);
         self.input.injector = Some(injector);
         self.input.unavailable = None;
+        self.input.failed = false;
+    }
+
+    pub(super) async fn retry_input_after_permission_loss(&mut self) {
+        crate::log::event!("kind=input_permission_lost");
+        let actions = self.input.focus.go_home();
+        self.input_actions(actions).await;
+        let peers: Vec<_> = self.links.by_peer.keys().copied().collect();
+        for peer in peers {
+            let actions = self.input.focus.deny_drive(peer);
+            self.input_actions(actions).await;
+        }
+        self.input.grab(false).await;
+        self.input.capture = None;
+        self.input.injector = None;
+        self.input.failed = false;
+        self.input.unavailable = Some("input permissions missing".to_owned());
+        let (handles, retried) = oneshot::channel();
+        self.input.retried = Some(retried);
+        crate::input_retry::spawn(handles);
     }
 
     pub(super) async fn shutdown_input(&mut self) {

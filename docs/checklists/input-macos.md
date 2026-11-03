@@ -16,6 +16,9 @@ Every item must pass before a release.
   previous check: the reason names Input Monitoring. Grant it and restart;
   input works again.
 
+- [ ] Remove Accessibility while idle and while driving another machine: input never freezes;
+  re-granting restarts input without restarting the daemon.
+
 ## Capture (this machine drives a peer)
 
 - [ ] Typing: letters, digits, punctuation, Shift/Caps Lock reach the peer
