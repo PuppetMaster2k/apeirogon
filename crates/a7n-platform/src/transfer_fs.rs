@@ -55,6 +55,10 @@ pub fn create_directory(path: &Path) -> io::Result<()> {
     let mut ancestors = Vec::new();
     for component in path.components() {
         parent.push(component);
+        // A bare drive prefix (`C:`, `\\?\C:`) names the volume, not a directory.
+        if matches!(component, std::path::Component::Prefix(_)) {
+            continue;
+        }
         match fs::symlink_metadata(&parent) {
             Ok(metadata)
                 if metadata.is_dir()
@@ -246,6 +250,21 @@ mod tests {
                 assert_eq!(fs::read(to).unwrap(), b"existing");
             }
         }
+    }
+
+    #[test]
+    fn create_directory_canonical_path_creates_nested_directories() {
+        // Arrange
+        // On Windows `canonicalize` returns a verbatim `\\?\C:\...` path.
+        let temp = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let nested = temp.path().join("stage").join("nested");
+
+        // Act
+        let result = create_directory(&nested);
+
+        // Assert
+        assert!(result.is_ok(), "{result:?}");
+        assert!(nested.is_dir());
     }
 
     #[cfg(unix)]
