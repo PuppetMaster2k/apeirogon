@@ -68,3 +68,10 @@ pub const LAYOUT_MACHINES_MAX: usize = 64;
 
 /// Whole clipboard fetch, including waiting for its stream (section 14).
 pub const CLIPBOARD_FETCH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Largest number of entries in a file manifest (section 14).
+pub const MANIFEST_ENTRIES_MAX: usize = 10_000;
+/// Largest manifest path in UTF-8 bytes (section 14).
+pub const MANIFEST_PATH_MAX: usize = 4096;
+/// Largest manifest path segment in UTF-8 bytes (section 14).
+pub const MANIFEST_SEGMENT_MAX: usize = 255;

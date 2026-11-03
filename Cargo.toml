@@ -18,6 +18,7 @@ a7n-proto    = { path = "crates/a7n-proto", version = "0.8.0" }
 a7n-ipc      = { path = "crates/a7n-ipc", version = "0.8.0" }
 a7n-core     = { path = "crates/a7n-core", version = "0.8.0" }
 a7n-platform = { path = "crates/a7n-platform", version = "0.8.0" }
+unicode-normalization = "=0.1.24"
 thiserror           = "2"
 png                 = "=0.18.0"
 prost               = "0.14"
