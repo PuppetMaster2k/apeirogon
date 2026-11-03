@@ -206,3 +206,29 @@ fn set_clipboard_policy_validates_values_and_keeps_deny_apps_file_only() {
     assert_eq!(config.get(key).as_deref(), Some("off"));
     assert!(config.set("clipboard.deny_apps", "[]").is_err());
 }
+
+#[test]
+fn set_many_modifier_modes_round_trip_and_reject_invalid_value() {
+    // Arrange
+    let id = "0123456789abcdef0123456789abcdef";
+    let key = format!("peers.{id}.modifier_mode");
+    let mut config = Config::parse(&format!("[peers.{id}]\nallow_drive = true")).unwrap();
+    assert_eq!(config.get(&key).as_deref(), Some("auto"));
+    for mode in ["auto", "off", "custom"] {
+        // Act
+        config.set_many([(key.as_str(), mode)]).unwrap();
+        let restored = Config::parse(&config.to_toml().unwrap()).unwrap();
+
+        // Assert
+        assert_eq!(restored.get(&key).as_deref(), Some(mode));
+    }
+    let before = config.to_toml().unwrap();
+
+    // Act
+    let result = config.set_many([(key.as_str(), "default")]);
+
+    // Assert
+    assert!(result.is_err());
+    assert_eq!(config.to_toml().unwrap(), before);
+    assert!(Config::parse(&format!("[peers.{id}]\nmodifier_mode = 'invalid'")).is_err());
+}

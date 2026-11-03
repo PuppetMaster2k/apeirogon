@@ -168,6 +168,7 @@ impl Daemon {
         };
         endpoint.set_default_client_config(tls::client_config(&identity, Arc::clone(&trust))?);
         let info = PeerInfo {
+            platform: a7n_platform::platform().into(),
             name: identity.machine_id.to_string(),
             capabilities: vec![a7n_proto::v1::Capability::SettingsSync.into()],
             listen_port: u32::from(endpoint.local_addr()?.port()),

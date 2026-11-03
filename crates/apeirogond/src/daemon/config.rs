@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use a7n_core::hotkey::HotkeyMatcher;
 use a7n_core::input::MotionScale;
-use a7n_ipc::config::Config;
+use a7n_core::modifiers::default_modifier_remap;
+use a7n_ipc::config::{Config, ModifierMode};
 use a7n_proto::MachineId;
 use a7n_proto::v1::{Accepts, InputEvent, envelope::Body, input_event};
 
@@ -71,16 +73,26 @@ impl Daemon {
     }
 
     pub(super) fn snapshot_remap(&mut self, peer: MachineId) {
-        self.input.modifier_remap =
-            self.config
-                .peer(&peer)
-                .map_or_else(Default::default, |policy| {
-                    policy
-                        .modifier_remap
-                        .iter()
-                        .map(|(from, to)| (from.usage(), to.usage()))
-                        .collect()
-                });
+        let policy = self.config.peer(&peer);
+        self.input.modifier_remap = match policy.map_or(ModifierMode::Auto, |p| p.modifier_mode) {
+            ModifierMode::Auto => {
+                let platform = self
+                    .links
+                    .by_peer
+                    .get(&peer)
+                    .map_or_else(a7n_proto::v1::Platform::default, |link| link.platform);
+                default_modifier_remap(self.info.platform(), platform)
+                    .iter()
+                    .copied()
+                    .collect()
+            }
+            ModifierMode::Off => BTreeMap::new(),
+            ModifierMode::Custom => policy
+                .into_iter()
+                .flat_map(|p| &p.modifier_remap)
+                .map(|(from, to)| (from.usage(), to.usage()))
+                .collect(),
+        };
     }
 
     pub(super) fn transform_input(&self, event: &mut InputEvent) {

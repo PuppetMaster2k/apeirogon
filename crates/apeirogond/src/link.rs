@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use a7n_proto::v1::{Capability, Envelope, PeerInfo};
+use a7n_proto::v1::{Capability, Envelope, PeerInfo, Platform};
 use a7n_proto::{MachineId, ProtoError};
 use quinn::{Connection, ConnectionError, RecvStream, SendStream, VarInt};
 use rustls::pki_types::CertificateDer;
@@ -69,10 +69,6 @@ pub(crate) struct Link {
     /// Bytes read from stream 0 after the handshake frame, not yet decoded.
     pub(crate) control_buf: Vec<u8>,
     pub(crate) peer_id: MachineId,
-    #[allow(
-        dead_code,
-        reason = "handshake metadata for capability-gated input (#12)"
-    )]
     pub(crate) peer_info: PeerInfo,
     pub(crate) capabilities: Vec<Capability>,
     pub(crate) role: Role,
@@ -115,6 +111,7 @@ fn new_link_wins(own: MachineId, peer: MachineId, new: Role, existing: Role) -> 
 /// A task owns the streams; the state owner holds only its mailbox and close handle.
 #[derive(Debug)]
 pub(crate) struct LinkHandle {
+    pub(crate) platform: Platform,
     pub(crate) capabilities: Vec<Capability>,
     pub(crate) sender: mpsc::Sender<Envelope>,
     pub(crate) connection: Connection,

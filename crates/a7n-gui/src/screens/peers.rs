@@ -159,6 +159,30 @@ impl App {
     }
 
     fn modifier_remaps(&mut self, ui: &mut egui::Ui, prefix: &str) {
+        let mode_key = format!("{prefix}.modifier_mode");
+        let value = self.value(&mode_key, "auto");
+        let mut selected = value.as_str();
+        theme::setting_row(
+            ui,
+            "Modifier remaps",
+            "Auto swaps Cmd and Ctrl between a Mac and a PC.",
+            Some("modifier_mode"),
+            |ui| {
+                if theme::segmented(
+                    ui,
+                    &mut selected,
+                    &[("auto", "Auto"), ("off", "Off"), ("custom", "Custom")],
+                )
+                .changed()
+                {
+                    self.edit(&mode_key, selected, "auto");
+                }
+            },
+        );
+        if selected != "custom" {
+            return;
+        }
+        ui.separator();
         let key = format!("{prefix}.modifier_remap");
         theme::setting_row(
             ui,
