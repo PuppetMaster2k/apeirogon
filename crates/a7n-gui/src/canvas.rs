@@ -6,15 +6,23 @@ use eframe::egui;
 
 use crate::theme;
 
+mod drag;
+mod snap;
+
+use drag::Drag;
+use snap::{GuideKind, Snapped, overlaps};
+
 const CANVAS_HEIGHT: f32 = 350.0;
 const CANVAS_PADDING: f32 = 20.0;
 const MOVE_STEP: i32 = 100;
 const FINE_MOVE_STEP: i32 = 10;
+const SNAP_DISTANCE_PX: f32 = 12.0;
 
 pub(super) struct Canvas {
     draft: LayoutDraft,
     selected: usize,
     bounds: [f64; 4],
+    drag: Option<Drag>,
 }
 
 impl TryFrom<LayoutInfo> for Canvas {
@@ -26,6 +34,7 @@ impl TryFrom<LayoutInfo> for Canvas {
             draft,
             selected: 0,
             bounds,
+            drag: None,
         })
     }
 }
@@ -44,10 +53,6 @@ impl Canvas {
     }
 
     pub(super) fn show(&mut self, ui: &mut egui::Ui) {
-        theme::small(
-            ui,
-            "Drag machines to place them. Tab selects a machine; arrow keys move it (Shift for fine movement). Edges connect where rectangles touch.",
-        );
         if self.draft.lost_edit {
             theme::badge(
                 ui,
@@ -60,16 +65,12 @@ impl Canvas {
             egui::Sense::hover(),
         );
         let transform = Transform::new(self.bounds, area.shrink(CANVAS_PADDING));
-        for (index, (placement, name)) in self
-            .draft
-            .placements
-            .iter_mut()
-            .zip(&self.draft.names)
-            .enumerate()
-        {
-            let rect = transform.rect(placement);
+        let mut snapped = Snapped::default();
+        for index in 0..self.draft.placements.len() {
+            let mut placement = self.draft.placements[index];
+            let name = &self.draft.names[index];
+            let rect = transform.rect(&placement);
             let response = ui.interact(rect, ui.id().with(index), egui::Sense::click_and_drag());
-            paint_machine(ui, rect, name, placement, self.selected == index);
             response.widget_info(|| {
                 egui::WidgetInfo::selected(
                     egui::WidgetType::Button,
@@ -94,33 +95,85 @@ impl Canvas {
                         },
                     );
                 });
-                ui.input(|input| {
-                    let step = if input.modifiers.shift {
-                        FINE_MOVE_STEP
-                    } else {
-                        MOVE_STEP
-                    };
-                    for (key, dx, dy) in [
-                        (egui::Key::ArrowLeft, -step, 0),
-                        (egui::Key::ArrowRight, step, 0),
-                        (egui::Key::ArrowUp, 0, -step),
-                        (egui::Key::ArrowDown, 0, step),
-                    ] {
-                        if input.key_pressed(key) {
-                            placement.x = placement.x.saturating_add(dx);
-                            placement.y = placement.y.saturating_add(dy);
-                        }
-                    }
-                });
+                ui.input(|input| move_with_keys(&mut placement, &self.draft.placements, input));
             }
-            if response.dragged() {
+            if response.drag_started() {
+                self.drag = Some(Drag::new(placement));
+            }
+            if (response.dragged() || response.drag_stopped())
+                && let Some(drag) = &mut self.drag
+            {
                 let delta = ui.input(|input| input.pointer.delta());
-                move_placement(placement, delta, transform.scale);
+                snapped = drag.update(
+                    &mut placement,
+                    &self.draft.placements,
+                    delta,
+                    transform.scale,
+                );
             }
+            if response.drag_stopped()
+                && let Some(drag) = self.drag.take()
+            {
+                placement = drag.finish();
+                snapped = Snapped::default();
+            }
+            self.draft.placements[index] = placement;
         }
+        // Paint the selected machine last so its border stays visible during overlaps.
+        for index in (0..self.draft.placements.len())
+            .filter(|&index| index != self.selected)
+            .chain(
+                std::iter::once(self.selected).filter(|&index| index < self.draft.placements.len()),
+            )
+        {
+            let placement = &self.draft.placements[index];
+            let overlapping = self
+                .drag
+                .as_ref()
+                .is_some_and(|drag| drag.machine() == placement.id)
+                && overlaps(placement, &self.draft.placements);
+            paint_machine(
+                ui,
+                transform.rect(placement),
+                &self.draft.names[index],
+                placement,
+                self.selected == index,
+                overlapping,
+            );
+        }
+        transform.paint_guides(ui, &snapped);
+        theme::small(
+            ui,
+            "Drag machines to place them; they snap to each other's edges. Tab selects a machine; arrow keys move it (Shift for fine movement). Edges connect where rectangles touch.",
+        );
         let validation = validate(&self.draft.placements);
         if let Err(error) = &validation {
             theme::error(ui, &error.to_string());
+        }
+    }
+}
+
+fn move_with_keys(placement: &mut Placement, others: &[Placement], input: &egui::InputState) {
+    let step = if input.modifiers.shift {
+        FINE_MOVE_STEP
+    } else {
+        MOVE_STEP
+    };
+    for (key, dx, dy) in [
+        (egui::Key::ArrowLeft, -step, 0),
+        (egui::Key::ArrowRight, step, 0),
+        (egui::Key::ArrowUp, 0, -step),
+        (egui::Key::ArrowDown, 0, step),
+    ] {
+        if input.key_pressed(key) {
+            let candidate = Placement {
+                x: placement.x.saturating_add(dx),
+                y: placement.y.saturating_add(dy),
+                ..*placement
+            };
+            if !overlaps(&candidate, others) {
+                *placement = candidate;
+            }
         }
     }
 }
@@ -131,6 +184,7 @@ fn paint_machine(
     name: &str,
     placement: &Placement,
     selected: bool,
+    overlapping: bool,
 ) {
     let palette = theme::Palette::of(ui.ctx());
     ui.painter().rect(
@@ -143,7 +197,9 @@ fn paint_machine(
         },
         egui::Stroke::new(
             1.0,
-            if selected {
+            if overlapping {
+                palette.danger
+            } else if selected {
                 palette.accent
             } else {
                 palette.border
@@ -186,6 +242,38 @@ impl Transform {
     }
 
     #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "layout edges fit exactly in f64; transformed coordinates are screen pixels"
+    )]
+    fn paint_guides(&self, ui: &egui::Ui, snapped: &Snapped) {
+        let palette = theme::Palette::of(ui.ctx());
+        for (axis, guide) in [snapped.x.as_ref(), snapped.y.as_ref()]
+            .into_iter()
+            .enumerate()
+        {
+            let Some(guide) = guide else { continue };
+            let points = guide.span.map(|along| {
+                let [x, y] = if axis == 0 {
+                    [guide.coordinate, along]
+                } else {
+                    [along, guide.coordinate]
+                };
+                egui::pos2(
+                    self.origin.x + ((x as f64 - self.minimum[0]) * self.scale) as f32,
+                    self.origin.y + ((y as f64 - self.minimum[1]) * self.scale) as f32,
+                )
+            });
+            let width = match guide.kind {
+                GuideKind::Flush => 3.0,
+                GuideKind::Alignment => 1.0,
+            };
+            ui.painter()
+                .line_segment(points, egui::Stroke::new(width, palette.accent));
+        }
+    }
+
+    #[allow(
         clippy::cast_possible_truncation,
         reason = "canvas coordinates are bounded screen pixels"
     )]
@@ -224,15 +312,6 @@ fn bounds(placements: &[Placement]) -> [f64; 4] {
     )
 }
 
-#[allow(
-    clippy::cast_possible_truncation,
-    reason = "float-to-int casts saturate at the layout coordinate limits"
-)]
-fn move_placement(p: &mut Placement, delta: egui::Vec2, scale: f64) {
-    p.x = (f64::from(p.x) + f64::from(delta.x) / scale).round() as i32;
-    p.y = (f64::from(p.y) + f64::from(delta.y) / scale).round() as i32;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,7 +319,7 @@ mod tests {
     #[test]
     fn transform_negative_coordinates_fit_and_drag_in_layout_units() {
         // Arrange
-        let mut placement = Placement {
+        let placement = Placement {
             id: "0123456789abcdef0123456789abcdef".parse().unwrap(),
             x: -1920,
             y: -100,
@@ -252,10 +331,11 @@ mod tests {
 
         // Act
         let rect = transform.rect(&placement);
-        move_placement(&mut placement, egui::vec2(100.0, -50.0), transform.scale);
+        let mut moved = placement;
+        Drag::new(placement).update(&mut moved, &[], egui::vec2(100.0, -50.0), transform.scale);
 
         // Assert
         assert_eq!(rect, area);
-        assert_eq!((placement.x, placement.y), (-1720, -200));
+        assert_eq!((moved.x, moved.y), (-1720, -200));
     }
 }
