@@ -172,7 +172,8 @@ crates/
 - **Liveness:** ping every 1 s; a link is dropped after 2–2.5 s of silence or
   1.5 s of unacknowledged input. The ping also measures round-trip time.
 - **Per-peer policy:** `allow_drive` toggle (may this peer drive me?) and
-  separate clipboard and file policies (receive, send, ask).
+  separate clipboard and file policies (`both`, `send`, `receive`, `ask`, `off`).
+  File policy is local `peers.<id>.files`, defaults to `ask`, and never syncs.
 - **Settings sync:** convenience settings (hotkeys, speed multipliers) can sync
   across the desk through an allow-list. Security settings (`allow_drive`,
   policies, deny-list, sensitive-content check) are never synced.
@@ -241,6 +242,9 @@ crates/
 - **Safety:** received files go only into a dedicated directory unless the user
   picks a target; never overwrite; never follow symlinks; reject `..`,
   absolute paths and reserved names.
+- **Receive directory:** local `files.receive_dir` is an absolute path, defaulting
+  to the OS downloads directory plus `Apeirogon` (or `~/Downloads/Apeirogon`
+  if unavailable). It never syncs and is created on the first receive.
 - **`a7n send`** uses the same path as a file clipboard.
 - **Drag-and-drop:** the source sends a drag offer when a file drag crosses an
   edge; the receiving machine shows a drag with promised files, and the drop

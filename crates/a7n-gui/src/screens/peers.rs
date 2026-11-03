@@ -20,6 +20,8 @@ const PEER_DETAILS_MIN_WIDTH: f32 = 640.0;
 
 impl App {
     pub(super) fn peers(&mut self, ui: &mut egui::Ui) {
+        self.receive_directory(ui);
+        ui.add_space(theme::size::SECTION_GAP);
         let Some(status) = &self.status else {
             return;
         };
@@ -106,6 +108,64 @@ impl App {
             });
     }
 
+    fn receive_directory(&mut self, ui: &mut egui::Ui) {
+        let key = "files.receive_dir";
+        let mut value = self.value(key, "");
+        theme::card(ui, |ui| {
+            theme::setting_row(
+                ui,
+                "Receive directory",
+                "Files from all peers are saved here. Use an absolute path.",
+                Some(key),
+                |ui| {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), theme::size::CONTROL_H),
+                        egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true),
+                        |ui| {
+                            if self.editing_receive_dir {
+                                if theme::text_input(
+                                    ui,
+                                    "Directory",
+                                    &mut value,
+                                    "Absolute path",
+                                    true,
+                                )
+                                .changed()
+                                {
+                                    self.edit(key, &value, "");
+                                }
+                                if theme::button(
+                                    ui,
+                                    ButtonKind::Ghost,
+                                    ButtonSize::Sm,
+                                    None,
+                                    "Done",
+                                )
+                                .clicked()
+                                {
+                                    self.editing_receive_dir = false;
+                                }
+                            } else {
+                                ui.label(egui::RichText::new(&value).font(theme::font_mono(13.0)));
+                                if theme::button(
+                                    ui,
+                                    ButtonKind::Ghost,
+                                    ButtonSize::Sm,
+                                    None,
+                                    "Change…",
+                                )
+                                .clicked()
+                                {
+                                    self.editing_receive_dir = true;
+                                }
+                            }
+                        },
+                    );
+                },
+            );
+        });
+    }
+
     fn peer_settings(&mut self, ui: &mut egui::Ui, peer: &PeerInfo) {
         let prefix = format!("peers.{}", peer.id);
         theme::overline(ui, &peer.name);
@@ -123,16 +183,25 @@ impl App {
                     }
                 },
             );
-            ui.separator();
-            let key = format!("{prefix}.clipboard");
-            let value = self.value(&key, "both");
-            let mut selected = value.as_str();
-            theme::setting_row(
-                ui,
-                "Clipboard",
-                "Direction clipboard contents are shared.",
-                Some("clipboard"),
-                |ui| {
+            for (name, title, default, help) in [
+                (
+                    "clipboard",
+                    "Clipboard",
+                    "both",
+                    "Direction clipboard contents are shared.",
+                ),
+                (
+                    "files",
+                    "Files",
+                    "ask",
+                    "Ask shows a confirmation before files are saved.",
+                ),
+            ] {
+                ui.separator();
+                let key = format!("{prefix}.{name}");
+                let value = self.value(&key, default);
+                let mut selected = value.as_str();
+                theme::setting_row(ui, title, help, Some(name), |ui| {
                     if theme::segmented(
                         ui,
                         &mut selected,
@@ -146,12 +215,12 @@ impl App {
                     )
                     .changed()
                     {
-                        self.edit(&key, selected, "both");
+                        self.edit(&key, selected, default);
                     }
-                },
-            );
-            if selected == "ask" {
-                theme::small(ui, "Incoming copies wait for your confirmation.");
+                });
+                if name == "clipboard" && selected == "ask" {
+                    theme::small(ui, "Incoming copies wait for your confirmation.");
+                }
             }
         });
         ui.add_space(theme::size::SECTION_GAP);

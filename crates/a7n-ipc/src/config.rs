@@ -12,7 +12,9 @@ use a7n_proto::{MachineId, limits};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
+mod files;
 mod hotkeys;
+pub use files::FilesConfig;
 pub use hotkeys::HotkeyConfig;
 
 const MIN_SPEED: f64 = 0.1;
@@ -29,6 +31,7 @@ pub struct Config {
     pub sync: SyncConfig,
     pub peers: BTreeMap<String, PeerConfig>,
     pub clipboard: ClipboardConfig,
+    pub files: FilesConfig,
 }
 
 impl Default for Config {
@@ -41,6 +44,7 @@ impl Default for Config {
             sync: SyncConfig::default(),
             peers: BTreeMap::new(),
             clipboard: ClipboardConfig::default(),
+            files: FilesConfig::default(),
         }
     }
 }
@@ -78,6 +82,7 @@ impl Default for InputConfig {
 pub struct PeerConfig {
     pub allow_drive: bool,
     pub clipboard: ClipboardPolicy,
+    pub files: ClipboardPolicy,
     pub modifier_mode: ModifierMode,
     pub modifier_remap: BTreeMap<Modifier, Modifier>,
 }
@@ -87,6 +92,7 @@ impl Default for PeerConfig {
         Self {
             allow_drive: true,
             clipboard: ClipboardPolicy::default(),
+            files: ClipboardPolicy::Ask,
             modifier_mode: ModifierMode::default(),
             modifier_remap: BTreeMap::new(),
         }
@@ -163,7 +169,7 @@ impl TryFrom<String> for Modifier {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("no home directory found for config.toml")]
+    #[error("no home directory found")]
     NoHome,
     #[error("config already exists: {0}")]
     AlreadyExists(PathBuf),
@@ -236,6 +242,16 @@ impl Config {
             ));
         }
         self.parse_bindings()?;
+        if self
+            .files
+            .receive_dir
+            .as_ref()
+            .is_some_and(|path| !path.is_absolute())
+        {
+            return Err(ConfigError::Invalid(
+                "files.receive_dir must be absolute".into(),
+            ));
+        }
         let mut ids = BTreeSet::new();
         for id in self.peers.keys() {
             let machine = id.parse::<MachineId>().map_err(|_| {
@@ -287,7 +303,8 @@ impl Config {
         let value =
             match parts.as_slice() {
                 ["name"]
-                | ["peers", _, "clipboard" | "modifier_mode"]
+                | ["files", "receive_dir"]
+                | ["peers", _, "clipboard" | "files" | "modifier_mode"]
                 | ["peers", _, "modifier_remap", _]
                 | ["hotkeys", "double_tap" | "lock" | "jump"] => toml::Value::String(value.into()),
                 ["hotkeys", "home"] => toml::Value::Array(
@@ -334,9 +351,17 @@ impl Config {
         Ok(())
     }
 
-    /// Read a dotted key as a scalar; absent keys return None.
+    /// Read a dotted key as a scalar, resolving the default receive directory.
+    /// Unknown or unavailable keys return None.
     #[must_use]
     pub fn get(&self, key: &str) -> Option<String> {
+        if key == "files.receive_dir" {
+            return self
+                .files
+                .receive_dir()
+                .ok()
+                .map(|path| path.display().to_string());
+        }
         if key == "hotkeys.home" {
             return Some(self.hotkeys.home.join(","));
         }
