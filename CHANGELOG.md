@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.7.0...v0.8.0) (2026-11-03)
+
+
+### Features
+
+* **daemon:** no edge crossing while a mouse button is held ([#120](https://github.com/PuppetMaster2k/apeirogon/issues/120)) ([7cdc20a](https://github.com/PuppetMaster2k/apeirogon/commit/7cdc20a9a669fc707e97be6601b3a3f66fe5a117))
+* **gui:** snap machines to each other and prevent overlap on the layout canvas ([#119](https://github.com/PuppetMaster2k/apeirogon/issues/119)) ([0a77ca9](https://github.com/PuppetMaster2k/apeirogon/commit/0a77ca95f4485347e7d7ff604fd9b0e6e263c902))
+* swap Cmd and Ctrl between macOS and other systems by default ([#121](https://github.com/PuppetMaster2k/apeirogon/issues/121)) ([69062b3](https://github.com/PuppetMaster2k/apeirogon/commit/69062b3f39e860bcd93ccb66c75fa6759c286bdd))
+
+
+### Bug Fixes
+
+* **platform:** stop macOS input freezing when Accessibility is revoked ([#122](https://github.com/PuppetMaster2k/apeirogon/issues/122)) ([da829dc](https://github.com/PuppetMaster2k/apeirogon/commit/da829dc10b3f6531566c0be3b89b5fb78066db99))
+
 ## [0.7.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.6.0...v0.7.0) (2026-10-30)
 
 
