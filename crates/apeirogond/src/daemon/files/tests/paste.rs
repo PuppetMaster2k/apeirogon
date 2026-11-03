@@ -91,6 +91,7 @@ async fn paste_files_copied_on_peer_downloads_and_replies_with_uri_list() {
     // Assert
     assert_eq!(items, []);
     assert_eq!(lazy[0].mime, FILES);
+    assert_eq!(lazy[0].top_level, 1);
     let paths = uri_list::decode(&list.unwrap());
     assert_eq!(paths, [receive_dir.join("copied")]);
     assert_eq!(fs::read(paths[0].join("one.txt")).unwrap(), b"first");

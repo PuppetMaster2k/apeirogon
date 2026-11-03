@@ -6,26 +6,30 @@ mod provider;
 
 use std::ffi::c_void;
 use std::io;
+use std::path::PathBuf;
 use std::sync::mpsc as sync;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use a7n_core::clipboard::{
-    IMAGE_PNG, Item, LocalChange, TEXT_HTML, TEXT_PLAIN, limit_for, validate_png,
+    FILES, Generation, IMAGE_PNG, Item, LocalChange, TEXT_HTML, TEXT_PLAIN, limit_for, validate_png,
 };
 use a7n_proto::limits;
+use objc2::ClassType;
 use objc2::rc::{Retained, autoreleasepool};
-use objc2::runtime::ProtocolObject;
+use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2_app_kit::{
-    NSBitmapImageFileType, NSBitmapImageRep, NSPasteboard, NSPasteboardItem, NSWorkspace,
+    NSBitmapImageFileType, NSBitmapImageRep, NSPasteboard, NSPasteboardItem,
+    NSPasteboardURLReadingFileURLsOnlyKey, NSWorkspace,
 };
 use objc2_core_foundation::{
     CFRunLoop, CFRunLoopTimer, CFRunLoopTimerContext, kCFRunLoopDefaultMode,
 };
-use objc2_foundation::{NSArray, NSData, NSDictionary, NSString, ns_string};
+use objc2_foundation::{NSArray, NSData, NSDictionary, NSNumber, NSString, NSURL, ns_string};
 use tokio::sync::mpsc;
 
-use super::{Clipboard, ClipboardCommand, PasteRequest};
+use super::{Clipboard, ClipboardCommand, LazyItem, PasteRequest};
 
 const CHANNEL_CAPACITY: usize = 16;
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
@@ -36,7 +40,7 @@ struct State {
     changes: mpsc::Sender<LocalChange>,
     pastes: mpsc::Sender<PasteRequest>,
     sequence: Option<isize>,
-    provider: Option<Retained<provider::Provider>>,
+    providers: Vec<Retained<provider::Provider>>,
 }
 
 pub(super) fn start() -> io::Result<Clipboard> {
@@ -54,7 +58,7 @@ pub(super) fn start() -> io::Result<Clipboard> {
                     changes: changes_tx,
                     pastes: pastes_tx,
                     sequence: None,
-                    provider: None,
+                    providers: Vec::new(),
                 };
                 let result = run(&mut state, &ready_tx);
                 if let Err(error) = result {
@@ -65,7 +69,7 @@ pub(super) fn start() -> io::Result<Clipboard> {
     ready.recv().map_err(io::Error::other)??;
     Ok(Clipboard {
         images: true,
-        files: false,
+        files: true,
         changes,
         commands,
         pastes,
@@ -104,9 +108,7 @@ fn run(state: &mut State, ready: &sync::Sender<io::Result<()>>) -> io::Result<()
         CFRunLoop::run();
     }
     timer.invalidate();
-    if let Some(provider) = state.provider.take() {
-        provider.finish();
-    }
+    finish_providers(&mut state.providers);
     Ok(())
 }
 
@@ -137,9 +139,7 @@ impl State {
         if self.sequence == Some(sequence) {
             return;
         }
-        if let Some(provider) = self.provider.take() {
-            provider.finish();
-        }
+        finish_providers(&mut self.providers);
         let Some(types) = self.board.types() else {
             self.sequence = Some(sequence);
             return;
@@ -157,6 +157,7 @@ impl State {
                 .map(|id| id.to_string()),
         };
         if !sensitive {
+            change.files = self.file_paths();
             for (mime, uti) in formats() {
                 if let Some(data) = self.board.dataForType(uti) {
                     if data.length() <= limit_for(mime) {
@@ -210,6 +211,8 @@ impl State {
             }
         }
         let eager = item.types();
+        let (files, lazy): (Vec<_>, Vec<_>) =
+            lazy.into_iter().partition(|entry| entry.mime == FILES);
         let mut offered = Vec::new();
         let lazy: Vec<_> = lazy
             .into_iter()
@@ -217,10 +220,7 @@ impl State {
                 let Some(uti) = uti(&entry.mime) else {
                     return false;
                 };
-                if entry.size > limit_for(&entry.mime) as u64
-                    || eager.containsObject(uti)
-                    || offered.contains(&uti)
-                {
+                if !entry.within_limit() || eager.containsObject(uti) || offered.contains(&uti) {
                     return false;
                 }
                 offered.push(uti);
@@ -230,25 +230,111 @@ impl State {
                 true
             })
             .collect();
-        let provider = provider::Provider::new(generation, lazy, self.pastes.clone());
+        let has_content = eager.count() > 0 || !offered.is_empty();
+        let mut providers = Vec::new();
         if !offered.is_empty() {
+            let provider = provider::Provider::new(generation, lazy, self.pastes.clone());
             item.setDataProvider_forTypes(
                 ProtocolObject::from_ref(&*provider),
                 &NSArray::from_slice(&offered),
             );
+            providers.push(provider);
         }
-        if let Some(old) = self.provider.take() {
-            old.finish();
+        let mut board_items = Vec::new();
+        if has_content {
+            board_items.push(item);
         }
+        if let Some(files) = files.into_iter().next() {
+            let (file_items, file_providers) = self.file_items(generation, &files);
+            board_items.extend(file_items);
+            providers.extend(file_providers);
+        }
+        if board_items.is_empty() {
+            return;
+        }
+        finish_providers(&mut self.providers);
         // Keep our returned ownership count, never a later owner's count.
         self.sequence = Some(self.board.clearContents());
-        if self
-            .board
-            .writeObjects(&NSArray::from_slice(&[ProtocolObject::from_ref(&*item)]))
-        {
-            self.provider = Some(provider);
+        let writing: Vec<_> = board_items
+            .iter()
+            .map(|item| ProtocolObject::from_ref(&**item))
+            .collect();
+        if self.board.writeObjects(&NSArray::from_slice(&writing)) {
+            self.providers = providers;
         }
     }
+
+    /// One pasteboard item per top-level entry, each answering with its file
+    /// URL once something pastes it. A true `NSFilePromiseProvider` is for
+    /// drags; a file URL provided on demand is what a paste accepts.
+    fn file_items(
+        &self,
+        generation: Generation,
+        files: &LazyItem,
+    ) -> (
+        Vec<Retained<NSPasteboardItem>>,
+        Vec<Retained<provider::Provider>>,
+    ) {
+        let published = Arc::new(Mutex::new(None));
+        let mut items = Vec::new();
+        let mut providers = Vec::new();
+        for index in 0..files.top_level as usize {
+            let item = NSPasteboardItem::new();
+            let provider = provider::Provider::for_file(
+                generation,
+                files.clone(),
+                index,
+                Arc::clone(&published),
+                self.pastes.clone(),
+            );
+            item.setDataProvider_forTypes(
+                ProtocolObject::from_ref(&*provider),
+                &NSArray::from_slice(&[file_url_type()]),
+            );
+            items.push(item);
+            providers.push(provider);
+        }
+        (items, providers)
+    }
+
+    /// Paths of the file URLs on the pasteboard; empty when it holds none.
+    fn file_paths(&self) -> Vec<PathBuf> {
+        // SAFETY: The key is an immutable AppKit global.
+        let key = unsafe { NSPasteboardURLReadingFileURLsOnlyKey };
+        let yes = NSNumber::new_bool(true);
+        let options: Retained<NSDictionary<NSString, AnyObject>> =
+            NSDictionary::from_slices(&[key], &[&**yes]);
+        let classes = NSArray::from_slice(&[NSURL::class()]);
+        // SAFETY: The classes array holds NSURL and the only option is a
+        // documented boolean for that class.
+        let urls = unsafe {
+            self.board
+                .readObjectsForClasses_options(&classes, Some(&options))
+        };
+        let Some(urls) = urls else {
+            return Vec::new();
+        };
+        // More entries than a manifest may hold can never be sent; read none.
+        if urls.count() > limits::MANIFEST_ENTRIES_MAX {
+            return Vec::new();
+        }
+        (0..urls.count())
+            .map(|index| urls.objectAtIndex(index))
+            .filter_map(|url| url.downcast::<NSURL>().ok())
+            .filter_map(|url| url.path())
+            .map(|path| PathBuf::from(path.to_string()))
+            .collect()
+    }
+}
+
+fn finish_providers(providers: &mut Vec<Retained<provider::Provider>>) {
+    for provider in providers.drain(..) {
+        provider.finish();
+    }
+}
+
+fn file_url_type() -> &'static NSString {
+    ns_string!("public.file-url")
 }
 
 fn formats() -> [(&'static str, &'static NSString); 3] {
