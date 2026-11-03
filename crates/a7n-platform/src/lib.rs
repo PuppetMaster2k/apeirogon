@@ -34,3 +34,19 @@ fn os_host_name() -> Option<String> {
 
 #[cfg(feature = "tray")]
 pub mod tray;
+
+/// The local platform advertised in the peer handshake.
+#[must_use]
+pub const fn platform() -> a7n_proto::v1::Platform {
+    use a7n_proto::v1::Platform;
+
+    if cfg!(target_os = "macos") {
+        Platform::Macos
+    } else if cfg!(target_os = "windows") {
+        Platform::Windows
+    } else if cfg!(target_os = "linux") {
+        Platform::Linux
+    } else {
+        Platform::Unspecified
+    }
+}

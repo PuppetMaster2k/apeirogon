@@ -84,6 +84,12 @@ async fn forward_capture_reload_mid_press_preserves_remap_until_next_take() {
     let (a, b, mut a_input, mut b_input) = configured_pair(|a, b| {
         a.config
             .set(
+                &format!("peers.{}.modifier_mode", b.identity.machine_id),
+                "custom",
+            )
+            .unwrap();
+        a.config
+            .set(
                 &format!("peers.{}.modifier_remap.left_meta", b.identity.machine_id),
                 "left_ctrl",
             )
@@ -100,7 +106,7 @@ async fn forward_capture_reload_mid_press_preserves_remap_until_next_take() {
     save(
         &a,
         &format!(
-            "[peers.{}]\nmodifier_remap = {{ left_meta = \"left_alt\" }}\n",
+            "[peers.{}]\nmodifier_mode = \"custom\"\nmodifier_remap = {{ left_meta = \"left_alt\" }}\n",
             b.machine
         ),
     );
@@ -250,4 +256,49 @@ async fn reload_config_synced_speed_changes_peer_file_and_live_motion() {
     ));
     a.stop().await;
     b.stop().await;
+}
+
+#[tokio::test]
+async fn forward_capture_modifier_modes_apply_sender_policy() {
+    // Arrange
+    for (mode, expected) in [
+        ("auto", Modifier::LeftCtrl),
+        ("off", Modifier::LeftMeta),
+        ("custom", Modifier::LeftAlt),
+    ] {
+        let (a, b, mut a_input, mut b_input) = configured_pair(|a, b| {
+            a.info.platform = a7n_proto::v1::Platform::Macos.into();
+            b.info.platform = a7n_proto::v1::Platform::Windows.into();
+            let prefix = format!("peers.{}", b.identity.machine_id);
+            a.config
+                .set_many(
+                    [
+                        (format!("{prefix}.modifier_mode"), mode),
+                        (format!("{prefix}.modifier_remap.left_meta"), "left_alt"),
+                    ]
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), *value)),
+                )
+                .unwrap();
+        })
+        .await;
+        drive(&mut a_input, &mut b_input).await;
+
+        // Act
+        for down in [true, false] {
+            a_input
+                .capture
+                .send(Captured::Input(modifier(down, Modifier::LeftMeta)))
+                .await
+                .unwrap();
+
+            // Assert
+            assert!(
+                matches!(b_input.injected().await, Inject::Event(event) if event == modifier(down, expected)),
+                "{mode}"
+            );
+        }
+        a.stop().await;
+        b.stop().await;
+    }
 }

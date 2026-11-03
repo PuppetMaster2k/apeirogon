@@ -292,7 +292,8 @@ theme::setting_row(ui, "Clipboard",
 
 - Peer config hints use the leaf key (`allow_drive`, `clipboard`, `modifier_remap`); hotkeys keep their `hotkeys.*` hints. Setting controls stay right-aligned alongside their labels and help.
 - Use the same human key names in chords, remap keycaps and ComboBox values/options (`R Alt`, `Scroll Lock`, `Home`, `L Ctrl`). Meta is Win on Windows, Cmd on macOS and Super elsewhere; stored values keep the config syntax.
-- Show modifier remaps as a grid: `keycap("L Ctrl")` → `ARROW_RIGHT` → a ComboBox. **Draw remapped entries in accent** (accent border and `accent_text` value) so changes stand out. Add a "Reset all" Ghost button.
+- Choose modifier mode with an Auto / Off / Custom segmented control. Auto swaps Cmd and Ctrl between a Mac and a PC. Only Custom shows the remap grid and "Reset all".
+- Show custom modifier remaps as a grid: `keycap("L Ctrl")` → `ARROW_RIGHT` → a ComboBox. **Draw remapped entries in accent** (accent border and `accent_text` value) so changes stand out. Add a "Reset all" Ghost button.
 - Clipboard offers Both, Send, Receive, Ask and Off. Ask help: "Incoming copies wait for your confirmation."
 - **Unsaved state:** when edits are pending, show a `Warning` badge "Unsaved changes" next to the header actions: a `Bordered` reload icon button (tooltip "Discard edits and reload config") and **Save changes** as the one Primary button.
 - Keep "Saving rewrites config.toml without comments, like `a7n config set`" as Small `text3` text at the bottom. It's useful, not a headline.
