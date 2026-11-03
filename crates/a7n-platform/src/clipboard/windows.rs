@@ -3,6 +3,7 @@
 //! A message-only window owns clipboard access and delayed rendering.
 
 mod data;
+mod drop_files;
 mod image;
 mod receive;
 mod serve;
@@ -107,7 +108,7 @@ pub(super) fn start() -> io::Result<Clipboard> {
     }
     Ok(Clipboard {
         images: true,
-        files: false,
+        files: true,
         changes,
         commands,
         pastes,

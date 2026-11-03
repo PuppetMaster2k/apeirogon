@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use a7n_core::clipboard::{IMAGE_PNG, Item, LocalChange, TEXT_HTML, TEXT_PLAIN, limit_for};
+use std::ffi::OsString;
+use std::os::windows::ffi::OsStringExt;
+use std::path::PathBuf;
+use std::ptr::null_mut;
 use windows_sys::Win32::Foundation::{CloseHandle, HWND};
+
+use a7n_proto::limits::MANIFEST_ENTRIES_MAX;
 use windows_sys::Win32::System::DataExchange::{
-    GetClipboardOwner, GetClipboardSequenceNumber, IsClipboardFormatAvailable,
+    GetClipboardData, GetClipboardOwner, GetClipboardSequenceNumber, IsClipboardFormatAvailable,
 };
-use windows_sys::Win32::System::Ole::CF_UNICODETEXT;
+use windows_sys::Win32::System::Ole::{CF_HDROP, CF_UNICODETEXT};
 use windows_sys::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
+use windows_sys::Win32::UI::Shell::{DragQueryFileW, HDROP};
 use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
 
 use super::State;
@@ -62,6 +69,7 @@ impl State {
                     data,
                 });
             }
+            change.files = dropped_files();
             if let Some(data) = plain_text() {
                 change.items.push(Item {
                     mime: TEXT_PLAIN.into(),
@@ -92,6 +100,55 @@ impl State {
 fn available(format: u32) -> bool {
     // SAFETY: Format is predefined or registered for this process.
     unsafe { IsClipboardFormatAvailable(format) != 0 }
+}
+
+/// `DragQueryFileW` asks for the file count with this index.
+const FILE_COUNT_INDEX: u32 = u32::MAX;
+
+/// Paths of a copied file list; call only while the clipboard is open.
+fn dropped_files() -> Vec<PathBuf> {
+    if !available(u32::from(CF_HDROP)) {
+        return Vec::new();
+    }
+    // SAFETY: The clipboard is open; the handle stays owned by the clipboard.
+    let drop = unsafe { GetClipboardData(u32::from(CF_HDROP)) };
+    if drop.is_null() {
+        return Vec::new();
+    }
+    // SAFETY: drop is a live HDROP; a null buffer only asks for the count.
+    let count = unsafe { DragQueryFileW(drop, FILE_COUNT_INDEX, null_mut(), 0) };
+    let Ok(count) = usize::try_from(count) else {
+        return Vec::new();
+    };
+    // More entries than a manifest may hold can never be sent; read none.
+    if count > MANIFEST_ENTRIES_MAX {
+        return Vec::new();
+    }
+    let mut paths = Vec::with_capacity(count);
+    for index in (0..count).filter_map(|index| u32::try_from(index).ok()) {
+        let Some(path) = dropped_file(drop, index) else {
+            return Vec::new();
+        };
+        paths.push(path);
+    }
+    paths
+}
+
+fn dropped_file(drop: HDROP, index: u32) -> Option<PathBuf> {
+    // SAFETY: drop is a live HDROP; a null buffer only asks for the length.
+    let length = unsafe { DragQueryFileW(drop, index, null_mut(), 0) };
+    let length = usize::try_from(length).ok()?;
+    if length == 0 || length >= PROCESS_PATH_CAPACITY {
+        return None;
+    }
+    let mut buffer = vec![0_u16; length + 1];
+    let capacity = u32::try_from(buffer.len()).ok()?;
+    // SAFETY: buffer has capacity writable UTF-16 slots, counting the terminator.
+    let copied = unsafe { DragQueryFileW(drop, index, buffer.as_mut_ptr(), capacity) };
+    let copied = usize::try_from(copied)
+        .ok()
+        .filter(|copied| *copied == length)?;
+    Some(PathBuf::from(OsString::from_wide(&buffer[..copied])))
 }
 
 fn plain_text() -> Option<Vec<u8>> {

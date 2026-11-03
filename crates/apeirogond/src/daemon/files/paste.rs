@@ -11,15 +11,25 @@ use a7n_ipc::TransferDirection;
 use a7n_ipc::config::ClipboardPolicy;
 use a7n_platform::clipboard::{PasteRequest, uri_list};
 use a7n_proto::MachineId;
-use a7n_proto::v1::{Capability, ClipboardAnnounce, TransferCancel, envelope::Body};
+use a7n_proto::v1::{Capability, ClipboardAnnounce, FileManifest, TransferCancel, envelope::Body};
 
 use super::incoming::Download;
+use super::staging::roots;
 use super::{Active, Daemon, Failure, Kind, Result};
 use crate::daemon::clipboard::fetch::reject;
 
 /// Downloads at least this large are logged when they start; the GUI and
 /// `a7n status` show their progress through the transfer list.
 const LARGE_PASTE_BYTES: u64 = 16 * 1024 * 1024;
+
+/// How many top-level entries a paste of this manifest publishes; 0 when the
+/// manifest is invalid.
+pub(in crate::daemon) fn files_top_level(manifest: &FileManifest) -> u32 {
+    ValidManifest::try_from(manifest)
+        .ok()
+        .and_then(|valid| u32::try_from(roots(&valid).len()).ok())
+        .unwrap_or(0)
+}
 
 /// The last completed paste.
 pub(super) struct Pasted {

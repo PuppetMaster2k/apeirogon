@@ -14,6 +14,7 @@ use a7n_proto::{MachineId, limits};
 use tokio::sync::{Semaphore, oneshot};
 
 use super::Daemon;
+use super::files::files_top_level;
 
 mod ask;
 pub(super) use ask::deadline;
@@ -359,6 +360,11 @@ impl Daemon {
                     mime: item.mime.clone(),
                     size: item.size,
                     item_index,
+                    top_level: if item.mime == clipboard::FILES {
+                        wire.files.as_ref().map_or(0, files_top_level)
+                    } else {
+                        0
+                    },
                 }
             })
             .collect();

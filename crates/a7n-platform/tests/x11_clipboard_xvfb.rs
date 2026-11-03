@@ -98,6 +98,7 @@ fn set_lazy_text_requests_paste_and_delivers_reply() {
             mime: TEXT_PLAIN.into(),
             size: 9,
             item_index: 3,
+            top_level: 0,
         }],
     );
     wait_owned(&client);
@@ -197,6 +198,7 @@ fn set_lazy_files_gnome_target_answers_copy_verb_with_uris() {
             mime: FILES.into(),
             size: u64::MAX,
             item_index: 1,
+            top_level: 0,
         }],
     );
     wait_owned(&client);

@@ -109,6 +109,7 @@ mod tests {
             mime: TEXT_HTML.to_owned(),
             size: 9,
             item_index: 1,
+            top_level: 0,
         };
         let served = served(vec![item(TEXT_PLAIN, 2)], vec![lazy]);
 
@@ -136,6 +137,7 @@ mod tests {
             mime: TEXT_HTML.to_owned(),
             size: CLIPBOARD_TEXT_MAX as u64 + 1,
             item_index: 1,
+            top_level: 0,
         };
 
         // Act
@@ -177,6 +179,7 @@ mod image_tests {
                 mime: IMAGE_PNG.into(),
                 size: limits::CLIPBOARD_TEXT_MAX as u64 + 1,
                 item_index: 2,
+                top_level: 0,
             }],
         });
 

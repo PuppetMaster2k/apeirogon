@@ -24,7 +24,9 @@ mod receive;
 mod serve;
 mod source;
 mod staging;
+
 pub(super) use offer::Offer;
+pub(in crate::daemon) use paste::files_top_level;
 pub(super) use staging::cleanup;
 
 const OFFERS_PER_PEER: usize = 4;

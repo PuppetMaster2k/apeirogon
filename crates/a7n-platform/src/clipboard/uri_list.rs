@@ -114,7 +114,7 @@ fn path_bytes(path: &Path) -> Vec<u8> {
 
 #[cfg(not(unix))]
 fn path_from_bytes(bytes: &[u8]) -> PathBuf {
-    let text = String::from_utf8_lossy(bytes).into_owned();
+    let text = String::from_utf8_lossy(bytes).replace('/', "\\");
     let drive = text.as_bytes().get(2) == Some(&b':');
     PathBuf::from(if drive { &text[1..] } else { &text })
 }
@@ -173,5 +173,39 @@ mod tests {
         // Assert
         assert_eq!(encoded, b"copy\nfile:///tmp/a%20b\nfile:///tmp/c");
         assert_eq!(decode(&encoded), paths);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    #[test]
+    fn encode_drive_and_unc_paths_use_file_uri_forms() {
+        // Arrange
+        let cases = [
+            (r"C:\a b\c.txt", "file:///C%3A/a%20b/c.txt"),
+            (r"\\server\share\d", "file:////server/share/d"),
+        ];
+        for (path, uri) in cases {
+            // Act
+            let encoded = encode(&[PathBuf::from(path)]);
+
+            // Assert
+            assert_eq!(encoded, format!("{uri}\r\n").into_bytes(), "{path}");
+        }
+    }
+
+    #[test]
+    fn decode_drive_and_unc_uris_restore_backslash_paths() {
+        // Arrange
+        let list = "file:///C:/a%20b/c.txt\r\nfile:///C%3A/d\r\nfile:////server/share/e\r\n";
+
+        // Act
+        let paths = decode(list.as_bytes());
+
+        // Assert
+        let expected = [r"C:\a b\c.txt", r"C:\d", r"\\server\share\e"].map(PathBuf::from);
+        assert_eq!(paths, expected);
     }
 }

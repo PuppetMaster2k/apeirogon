@@ -3,6 +3,7 @@
 use std::sync::Mutex;
 
 use a7n_core::clipboard::{Generation, IMAGE_PNG, limit_for, validate_png};
+use a7n_proto::limits;
 use objc2::rc::Retained;
 use objc2::{AnyThread, DefinedClass, define_class, msg_send};
 use objc2_app_kit::{
@@ -87,6 +88,11 @@ fn fetch(
     item: &LazyItem,
     pastes: &mpsc::Sender<PasteRequest>,
 ) -> Option<Vec<u8>> {
-    let bytes = crate::clipboard::fetch::fetch(generation, item.item_index, pastes)?;
+    let bytes = crate::clipboard::fetch::fetch(
+        generation,
+        item.item_index,
+        limits::CLIPBOARD_FETCH_TIMEOUT,
+        pastes,
+    )?;
     (bytes.len() <= limit_for(&item.mime) && bytes.len() as u64 == item.size).then_some(bytes)
 }

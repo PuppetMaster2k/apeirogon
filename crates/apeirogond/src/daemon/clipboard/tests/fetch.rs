@@ -50,7 +50,8 @@ async fn clipboard_paste_large_copy_with_both_or_ask_fetches_source_bytes() {
             vec![LazyItem {
                 mime: TEXT_PLAIN.into(),
                 size: text.len() as u64,
-                item_index: 0
+                item_index: 0,
+                top_level: 0,
             }]
         );
         let (reply, receiver) = oneshot::channel();
