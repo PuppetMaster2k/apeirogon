@@ -147,8 +147,9 @@ jobs:
         env:
             GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
             TAG: ${{ needs.release-please.outputs.tag_name }}
-            OUTPUT: ${{ runner.temp }}/channels
         steps:
+            # The runner context is not available in job-level env.
+            - run: echo "OUTPUT=$RUNNER_TEMP/channels" >> "$GITHUB_ENV"
             - uses: actions/checkout@v7
               with:
                   ref: ${{ needs.release-please.outputs.tag_name }}
