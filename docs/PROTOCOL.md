@@ -186,6 +186,9 @@ With `ask`, sending behaves like `both`, while incoming copies are validated and
 | Decoded image max (RGBA) | 256 MiB |
 | Inline clipboard total per announce | 64 KiB |
 | Machines per layout | 64 |
+| File manifest entries max | 10000 |
+| File manifest path max | 4096 UTF-8 bytes |
+| File manifest segment max | 255 UTF-8 bytes |
 
 ## 15. Security notes
 
