@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.8.0...v0.9.0) (2026-11-03)
+
+
+### Features
+
+* **core:** validate file manifests and plan resumed transfers ([#130](https://github.com/PuppetMaster2k/apeirogon/issues/130)) ([fda0413](https://github.com/PuppetMaster2k/apeirogon/commit/fda04138a214c260de896887743b162088d9b7ac))
+
 ## [0.8.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.7.0...v0.8.0) (2026-11-03)
 
 
