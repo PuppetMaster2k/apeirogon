@@ -1,0 +1,374 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU32, AtomicU64, Ordering},
+};
+use std::time::{Duration, Instant};
+
+use a7n_core::files::ValidManifest;
+use a7n_ipc::config::ClipboardPolicy;
+use a7n_ipc::{FileTransfer, HeldFiles, TransferDirection};
+use a7n_proto::MachineId;
+use a7n_proto::v1::{Capability, ClipboardAnnounce, TransferCancel, envelope::Body};
+use tokio::sync::watch;
+
+use super::{Daemon, DaemonError, Event};
+
+mod incoming;
+mod offer;
+mod receive;
+mod serve;
+mod staging;
+pub(super) use offer::Offer;
+pub(super) use staging::cleanup;
+
+const FILES_MIME: &str = "application/x-apeirogon-files";
+const OFFERS_PER_PEER: usize = 4;
+const ASK_TIMEOUT: Duration = Duration::from_secs(60);
+const PARTIAL_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+#[derive(Default)]
+pub(super) struct State {
+    next_offer: u64,
+    next_transfer: u64,
+    offers: HashMap<(MachineId, u64), Arc<Offer>>,
+    building: HashMap<MachineId, usize>,
+    incoming: HashMap<(MachineId, u64), Incoming>,
+    active: HashMap<u64, Active>,
+}
+
+struct Incoming {
+    wire: ClipboardAnnounce,
+    manifest: ValidManifest,
+    staging: PathBuf,
+    receive_dir: PathBuf,
+    deadline: Option<Instant>,
+    active: bool,
+    announced_link: usize,
+}
+
+struct Active {
+    peer: MachineId,
+    link: usize,
+    wire_id: u64,
+    offer: u64,
+    direction: TransferDirection,
+    cancel: watch::Sender<Failure>,
+    progress: Arc<Progress>,
+}
+
+#[derive(Default)]
+struct Progress {
+    files: AtomicU32,
+    bytes: AtomicU64,
+    files_total: u32,
+    bytes_total: u64,
+}
+
+impl Progress {
+    fn new(manifest: &ValidManifest, bytes_total: u64) -> Self {
+        Self {
+            files_total: u32::try_from(
+                manifest
+                    .entries()
+                    .iter()
+                    .filter(|entry| matches!(entry.kind, a7n_core::files::EntryKind::File { .. }))
+                    .count(),
+            )
+            .unwrap_or(u32::MAX),
+            bytes_total,
+            ..Self::default()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Failure {
+    Cancelled,
+    LinkLost,
+    Integrity,
+    Invalid,
+    Io,
+}
+
+type Result<T> = std::result::Result<T, Failure>;
+
+impl Daemon {
+    fn files_policy(&self, peer: MachineId) -> ClipboardPolicy {
+        self.config
+            .peer(&peer)
+            .map_or(ClipboardPolicy::Ask, |policy| policy.files)
+    }
+
+    fn files_capable(&self, peer: MachineId) -> bool {
+        self.links
+            .by_peer
+            .get(&peer)
+            .is_some_and(|link| link.capabilities.contains(&Capability::Files))
+    }
+
+    fn check_file_send(&self, peer: MachineId) -> std::result::Result<(), DaemonError> {
+        if !self.links.by_peer.contains_key(&peer) {
+            return Err(DaemonError::NotConnected);
+        }
+        if !self.files_capable(peer) {
+            return Err(DaemonError::InvalidRequest(
+                "peer does not support file offers",
+            ));
+        }
+        if !matches!(
+            self.files_policy(peer),
+            ClipboardPolicy::Send | ClipboardPolicy::Both | ClipboardPolicy::Ask
+        ) {
+            return Err(DaemonError::InvalidRequest("file sending is disabled"));
+        }
+        Ok(())
+    }
+
+    pub(in crate::daemon) fn file_transfers(&self) -> Vec<FileTransfer> {
+        let mut result: Vec<_> = self
+            .files
+            .active
+            .iter()
+            .map(|(&id, active)| FileTransfer {
+                id,
+                peer: active.peer,
+                direction: active.direction,
+                files_done: active.progress.files.load(Ordering::Relaxed),
+                files_total: active.progress.files_total,
+                bytes_done: active.progress.bytes.load(Ordering::Relaxed),
+                bytes_total: active.progress.bytes_total,
+            })
+            .collect();
+        result.sort_by_key(|item| item.id);
+        result
+    }
+
+    pub(in crate::daemon) fn held_files(&self) -> Vec<HeldFiles> {
+        self.files
+            .incoming
+            .iter()
+            .filter(|(_, incoming)| {
+                incoming
+                    .deadline
+                    .is_some_and(|deadline| deadline > Instant::now())
+            })
+            .map(|(&(peer, _), incoming)| HeldFiles {
+                peer,
+                files: Progress::new(&incoming.manifest, 0).files_total,
+                top_level_entries: u32::try_from(staging::roots(&incoming.manifest).len())
+                    .unwrap_or(u32::MAX),
+                total_size: incoming.wire.items[0].size,
+            })
+            .collect()
+    }
+
+    pub(in crate::daemon) fn files_deadline(&self) -> Option<Instant> {
+        self.files
+            .incoming
+            .values()
+            .filter_map(|incoming| incoming.deadline)
+            .min()
+    }
+
+    pub(in crate::daemon) fn expire_files(&mut self, now: Instant) {
+        self.files
+            .incoming
+            .retain(|_, incoming| incoming.deadline.is_none_or(|deadline| now < deadline));
+    }
+
+    pub(in crate::daemon) fn files_link_up(&mut self, peer: MachineId) {
+        if self.check_file_send(peer).is_ok() {
+            let wires: Vec<_> = self
+                .files
+                .offers
+                .iter()
+                .filter(|((id, _), _)| *id == peer)
+                .map(|(_, offer)| offer.wire.clone())
+                .collect();
+            for wire in wires {
+                self.send_input(peer, Body::ClipboardAnnounce(wire));
+            }
+        }
+    }
+
+    pub(in crate::daemon) fn files_link_down(&mut self, peer: MachineId) {
+        for active in self
+            .files
+            .active
+            .values()
+            .filter(|active| active.peer == peer)
+        {
+            let _ = active.cancel.send(Failure::LinkLost);
+        }
+        self.files
+            .incoming
+            .retain(|(id, _), incoming| *id != peer || incoming.deadline.is_none());
+        if self.pins.get(&peer).is_none() {
+            self.files.offers.retain(|(id, _), _| *id != peer);
+        }
+    }
+
+    pub(in crate::daemon) fn recheck_files_policy(&mut self) {
+        let cancelled: Vec<_> = self
+            .files
+            .active
+            .iter()
+            .filter(|(_, active)| {
+                let policy = self.files_policy(active.peer);
+                match active.direction {
+                    TransferDirection::Send => !matches!(
+                        policy,
+                        ClipboardPolicy::Send | ClipboardPolicy::Both | ClipboardPolicy::Ask
+                    ),
+                    TransferDirection::Receive => !matches!(
+                        policy,
+                        ClipboardPolicy::Receive | ClipboardPolicy::Both | ClipboardPolicy::Ask
+                    ),
+                }
+            })
+            .map(|(&id, _)| id)
+            .collect();
+        for id in cancelled {
+            let _ = self.cancel_file_transfer(id);
+        }
+        let config = &self.config;
+        self.files.offers.retain(|(peer, _), _| {
+            matches!(
+                config
+                    .peer(peer)
+                    .map_or(ClipboardPolicy::Ask, |policy| policy.files),
+                ClipboardPolicy::Send | ClipboardPolicy::Both | ClipboardPolicy::Ask
+            )
+        });
+        self.files.incoming.retain(|(peer, _), incoming| {
+            incoming.active
+                || matches!(
+                    config
+                        .peer(peer)
+                        .map_or(ClipboardPolicy::Ask, |policy| policy.files),
+                    ClipboardPolicy::Receive | ClipboardPolicy::Both | ClipboardPolicy::Ask
+                )
+        });
+    }
+
+    pub(in crate::daemon) fn cancel_file_transfer(
+        &mut self,
+        id: u64,
+    ) -> std::result::Result<(), DaemonError> {
+        let active = self
+            .files
+            .active
+            .get(&id)
+            .ok_or(DaemonError::InvalidRequest("unknown transfer"))?;
+        let peer = active.peer;
+        let wire_id = active.wire_id;
+        let _ = active.cancel.send(Failure::Cancelled);
+        self.send_input(
+            peer,
+            Body::TransferCancel(TransferCancel {
+                transfer_id: wire_id,
+            }),
+        );
+        Ok(())
+    }
+
+    pub(in crate::daemon) fn files_cancel_from(&mut self, peer: MachineId, wire_id: u64) {
+        for active in self
+            .files
+            .active
+            .values()
+            .filter(|active| active.peer == peer && active.wire_id == wire_id)
+        {
+            let _ = active.cancel.send(Failure::Cancelled);
+        }
+        self.clipboard_cancel(peer, wire_id);
+    }
+
+    pub(in crate::daemon) fn files_finished(&mut self, id: u64, result: Result<()>) {
+        let Some(active) = self.files.active.remove(&id) else {
+            return;
+        };
+        if let Some(transfers) = self
+            .clipboard
+            .links
+            .get_mut(&active.peer)
+            .filter(|transfers| transfers.id == active.link)
+        {
+            if active.direction == TransferDirection::Receive {
+                transfers.pending.remove(&active.wire_id);
+            }
+        }
+        if active.direction == TransferDirection::Send {
+            if result != Err(Failure::LinkLost) {
+                self.files.offers.remove(&(active.peer, active.offer));
+            }
+        } else if result == Err(Failure::LinkLost) {
+            if let Some(incoming) = self.files.incoming.get_mut(&(active.peer, active.offer)) {
+                incoming.active = false;
+                if incoming.announced_link == active.link {
+                    incoming.announced_link = usize::MAX;
+                }
+            }
+            // Reannouncement may have arrived while the previous worker was stopping.
+            if self
+                .links
+                .by_peer
+                .get(&active.peer)
+                .is_some_and(|link| link.connection.stable_id() != active.link)
+                && self
+                    .files
+                    .incoming
+                    .get(&(active.peer, active.offer))
+                    .is_some_and(|incoming| self.is_current(active.peer, incoming.announced_link))
+            {
+                let _ = self.start_file_receive(active.peer, active.offer);
+            }
+        } else {
+            self.files.incoming.remove(&(active.peer, active.offer));
+            if result.is_err() && self.is_current(active.peer, active.link) {
+                self.send_input(
+                    active.peer,
+                    Body::TransferCancel(TransferCancel {
+                        transfer_id: active.wire_id,
+                    }),
+                );
+            }
+        }
+        if let Err(reason) = result {
+            let reason = match reason {
+                Failure::Integrity => a7n_proto::v1::AbortReason::Integrity,
+                Failure::Io => a7n_proto::v1::AbortReason::IoError,
+                Failure::Invalid => a7n_proto::v1::AbortReason::Refused,
+                Failure::Cancelled | Failure::LinkLost => a7n_proto::v1::AbortReason::Cancelled,
+            }
+            .as_str_name();
+            crate::log::event!("kind=file_transfer_failed reason={reason}");
+        }
+        self.start_waiting_files(active.peer);
+    }
+
+    pub(in crate::daemon) fn start_waiting_files(&mut self, peer: MachineId) {
+        let waiting: Vec<_> = self
+            .files
+            .incoming
+            .iter()
+            .filter(|((id, _), incoming)| {
+                *id == peer
+                    && !incoming.active
+                    && incoming.deadline.is_none()
+                    && self.is_current(peer, incoming.announced_link)
+            })
+            .map(|((_, offer), _)| *offer)
+            .collect();
+        for offer in waiting {
+            let _ = self.start_file_receive(peer, offer);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

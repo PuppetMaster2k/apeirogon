@@ -70,6 +70,19 @@ impl Daemon {
 
     pub(super) fn event(&mut self, event: Event) {
         match event {
+            Event::FilesBuilt {
+                peer,
+                link,
+                result,
+                reply,
+            } => self.files_built(peer, link, result, reply),
+            Event::FilesReady { id, resume } => self.files_ready(id, resume),
+            Event::FilesFinished { id, result } => self.files_finished(id, result),
+            Event::TransferSlotFreed(peer, link) => {
+                if self.is_current(peer, link) {
+                    self.start_waiting_files(peer);
+                }
+            }
             Event::ClipboardOpened(stream, transfer_id, buf) => {
                 self.clipboard_opened(stream, transfer_id, buf);
             }
@@ -215,6 +228,7 @@ impl Daemon {
             })),
         });
         self.clipboard_link_up(peer);
+        self.files_link_up(peer);
         let transfers = self.transfer_tx.clone();
         let inbound = self.inbound.clone();
         let events = self.events.clone();

@@ -126,8 +126,28 @@ impl Daemon {
         Ok(())
     }
 
+    pub(in crate::daemon) fn clipboard_cancel(&mut self, peer: MachineId, id: u64) {
+        if let Some(transfers) = self.clipboard.links.get_mut(&peer) {
+            transfers.pending.remove(&id);
+            for tasks in [&mut transfers.send_tasks, &mut transfers.fetch_tasks] {
+                if let Some(task) = tasks.remove(&id) {
+                    task.abort();
+                }
+            }
+        }
+        self.start_waiting_files(peer);
+    }
+
     pub(in crate::daemon) fn clipboard_link_down(&mut self, peer: MachineId) {
-        self.clipboard.links.remove(&peer);
+        if let Some(transfers) = self.clipboard.links.remove(&peer) {
+            for task in transfers
+                .send_tasks
+                .values()
+                .chain(transfers.fetch_tasks.values())
+            {
+                task.abort();
+            }
+        }
         if self
             .clipboard
             .held

@@ -46,7 +46,7 @@ impl Daemon {
             return;
         };
         transfers.pending.retain(|_, reply| !reply.is_closed());
-        let Some(next) = transfers.next.checked_add(1) else {
+        let Some(next) = transfers.next.checked_add(2) else {
             reject(request, "transfer_id_exhausted");
             return;
         };
@@ -62,6 +62,7 @@ impl Daemon {
                 source: Some(Source::Clipboard(ClipboardRef {
                     origin: peer.as_bytes().to_vec(),
                     generation: request.generation.generation,
+                    send: false,
                 })),
                 item_index: request.item_index,
                 resume: Vec::new(),
@@ -69,8 +70,7 @@ impl Daemon {
         );
         let events = self.events.clone();
         let item = item.expect("item checked above");
-        self.tasks.spawn(async move {
-            let _permit = permit;
+        let task = self.tasks.spawn(async move {
             let result = timeout(limits::CLIPBOARD_FETCH_TIMEOUT, async {
                 let (mut stream, mut buf) = receiver.await.map_err(|_| "link_lost")?;
                 receive(&mut stream, &mut buf, &item).await
@@ -83,6 +83,7 @@ impl Daemon {
                     connection.close(0u32.into(), b"");
                 }
             }
+            drop(permit);
             let _ = events
                 .send(Event::ClipboardFetched {
                     peer,
@@ -92,6 +93,10 @@ impl Daemon {
                 })
                 .await;
         });
+        if let Some(transfers) = self.clipboard.links.get_mut(&peer) {
+            transfers.fetch_tasks.retain(|_, task| !task.is_finished());
+            transfers.fetch_tasks.insert(next, task);
+        }
     }
 
     pub(in crate::daemon) fn clipboard_fetched(
@@ -111,6 +116,7 @@ impl Daemon {
                     | super::ClipboardPolicy::Receive
                     | super::ClipboardPolicy::Ask
             );
+        self.start_waiting_files(peer);
         if valid {
             let _ = request.reply.send(data);
         } else {
@@ -179,30 +185,42 @@ impl Daemon {
         let Some(transfers) = self.clipboard.links.get(&peer) else {
             return;
         };
-        let permit = transfers.send_slots.clone().try_acquire_owned().ok();
-        let result = if !self.clipboard_can_send(peer) || permit.is_none() {
-            Err(AbortReason::Refused)
-        } else {
+        let Ok(permit) = transfers.send_slots.clone().try_acquire_owned() else {
+            crate::log::event!("kind=clipboard_fetch_failed reason=busy");
+            return;
+        };
+        let result = if self.clipboard_can_send(peer) {
             self.clipboard.announce.as_ref().filter(|wire| {
                 wire.origin == self.identity.machine_id.as_bytes()
                     && matches!(&request.source, Some(Source::Clipboard(reference))
-                        if reference.origin == wire.origin && reference.generation == wire.generation)
+                        if !reference.send && reference.origin == wire.origin && reference.generation == wire.generation)
                     && request.resume.is_empty()
             }).and_then(|_| self.clipboard.own_items.iter()
                 .filter(|item| item.mime != IMAGE_PNG || self.clipboard_can_send_image(peer))
                 .nth(request.item_index as usize))
                 .map(|item| item.data.clone()).ok_or(AbortReason::NotFound)
+        } else {
+            Err(AbortReason::Refused)
         };
         let connection = link.connection.clone();
         let transfer_id = request.transfer_id;
-        self.tasks.spawn(async move {
+        let events = self.events.clone();
+        let link_id = transfers.id;
+        let task = self.tasks.spawn(async move {
             let _ = timeout(
                 limits::CLIPBOARD_FETCH_TIMEOUT,
                 send(&connection, transfer_id, result),
             )
             .await;
             drop(permit);
+            let _ = events.send(Event::TransferSlotFreed(peer, link_id)).await;
         });
+        if let Some(transfers) = self.clipboard.links.get_mut(&peer) {
+            transfers.send_tasks.retain(|_, task| !task.is_finished());
+            if let Some(old) = transfers.send_tasks.insert(transfer_id, task) {
+                old.abort();
+            }
+        }
     }
 }
 
@@ -211,7 +229,7 @@ fn reject(request: PasteRequest, reason: &str) {
     let _ = request.reply.send(None);
 }
 
-async fn write(
+pub(in crate::daemon) async fn write(
     stream: &mut SendStream,
     buf: &mut Vec<u8>,
     frame: Frame,
@@ -277,7 +295,10 @@ async fn send(
     Ok(())
 }
 
-async fn read(stream: &mut RecvStream, buf: &mut Vec<u8>) -> Result<Option<Frame>, &'static str> {
+pub(in crate::daemon) async fn read(
+    stream: &mut RecvStream,
+    buf: &mut Vec<u8>,
+) -> Result<Option<Frame>, &'static str> {
     loop {
         if let Some((frame, used)) =
             decode_frame::<TransferFrame>(buf, FrameKind::Transfer).map_err(|_| "frame")?

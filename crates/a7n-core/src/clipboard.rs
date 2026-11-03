@@ -139,6 +139,7 @@ pub fn announce(items: Vec<Item>, generation: Generation) -> Option<ClipboardAnn
         });
     }
     (!wire.is_empty()).then_some(ClipboardAnnounce {
+        send: false,
         origin: generation.origin.as_bytes().to_vec(),
         generation: generation.generation,
         items: wire,

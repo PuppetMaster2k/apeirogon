@@ -246,6 +246,8 @@ async fn status_ipc_round_trip_returns_own_machine() {
         info,
         a7n_ipc::StatusInfo {
             held_clipboard: None,
+            transfers: Vec::new(),
+            held_files: Vec::new(),
             input: None,
             pid: std::process::id(),
             paused: false,

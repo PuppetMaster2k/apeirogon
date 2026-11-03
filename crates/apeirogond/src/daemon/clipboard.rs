@@ -27,26 +27,31 @@ pub(super) struct Held {
     pub deadline: Instant,
 }
 
-mod fetch;
+pub(super) mod fetch;
 
 pub(super) struct Transfers {
-    id: usize,
-    next: u64,
-    pending: HashMap<u64, oneshot::Sender<(quinn::RecvStream, Vec<u8>)>>,
-    send_slots: Arc<Semaphore>,
+    pub(in crate::daemon) id: usize,
+    pub(in crate::daemon) next: u64,
+    pub(in crate::daemon) pending: HashMap<u64, oneshot::Sender<(quinn::RecvStream, Vec<u8>)>>,
+    pub(in crate::daemon) send_slots: Arc<Semaphore>,
     read_slots: Arc<Semaphore>,
-    fetch_slots: Arc<Semaphore>,
+    send_tasks: HashMap<u64, tokio::task::AbortHandle>,
+    fetch_tasks: HashMap<u64, tokio::task::AbortHandle>,
+    pub(in crate::daemon) fetch_slots: Arc<Semaphore>,
 }
 
 impl Transfers {
-    fn new(id: usize) -> Self {
+    fn new(id: usize, next: u64) -> Self {
+        let slots = Arc::new(Semaphore::new(limits::CONCURRENT_TRANSFERS_PER_LINK));
         Self {
             id,
-            next: 0,
+            next,
             pending: HashMap::new(),
-            send_slots: Arc::new(Semaphore::new(limits::CONCURRENT_TRANSFERS_PER_LINK)),
+            send_slots: slots.clone(),
+            send_tasks: HashMap::new(),
+            fetch_tasks: HashMap::new(),
             read_slots: Arc::new(Semaphore::new(limits::CONCURRENT_TRANSFERS_PER_LINK)),
-            fetch_slots: Arc::new(Semaphore::new(limits::CONCURRENT_TRANSFERS_PER_LINK)),
+            fetch_slots: slots,
         }
     }
 }
@@ -178,7 +183,9 @@ impl Daemon {
 
     pub(super) fn clipboard_link_up(&mut self, peer: MachineId) {
         let id = self.links.by_peer[&peer].connection.stable_id();
-        self.clipboard.links.insert(peer, Transfers::new(id));
+        // Disjoint requester ids make cancellation unambiguous in both directions.
+        let next = u64::from(self.identity.machine_id > peer);
+        self.clipboard.links.insert(peer, Transfers::new(id, next));
         if !self.clipboard_can_send(peer) {
             return;
         }

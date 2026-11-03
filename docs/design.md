@@ -271,6 +271,9 @@ crates/
   - Local IPC version 2 adds `SetPaused { paused }` and status fields `paused`
     and `focused` (machine id). Update the daemon and local clients together;
     the peer wire protocol is unchanged.
+  - Local IPC version 4 adds explicit file offers, accept/reject and cancellation,
+    plus held offer counts and active file/byte progress. File offers use an
+    independent generation namespace and do not change the receiving clipboard.
   - Local IPC version 3 adds status field `missing_permissions` and
     `RequestPermission { permission }`. The daemon owns the macOS
     Accessibility and Input Monitoring grants, so it reports what is missing,

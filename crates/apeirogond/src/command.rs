@@ -27,6 +27,23 @@ pub(crate) enum Command {
         reply: Reply<()>,
     },
     Status(Reply<Status>),
+    SendFiles {
+        peer: MachineId,
+        paths: Vec<std::path::PathBuf>,
+        reply: Reply<(u64, usize)>,
+    },
+    FilesAccept {
+        peer: MachineId,
+        reply: Reply<()>,
+    },
+    FilesReject {
+        peer: MachineId,
+        reply: Reply<()>,
+    },
+    CancelTransfer {
+        id: u64,
+        reply: Reply<()>,
+    },
     ClipboardStatus(Reply<a7n_ipc::ClipboardInfo>),
     ClipboardAccept(Reply<()>),
     ClipboardReject(Reply<()>),

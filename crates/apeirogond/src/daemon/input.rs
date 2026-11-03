@@ -228,6 +228,7 @@ impl Daemon {
 
     pub(super) fn input_link_lost(&mut self, peer: MachineId) {
         self.clipboard_link_down(peer);
+        self.files_link_down(peer);
         self.input.lost.push(peer);
     }
 
@@ -309,11 +310,21 @@ impl Daemon {
         self.poll_focus().await;
         let actions = match &envelope.body {
             Some(Body::TransferRequest(request)) => {
-                self.clipboard_request(peer, request);
+                if !self.files_request(peer, request) {
+                    self.clipboard_request(peer, request);
+                }
                 return Ok(());
             }
             Some(Body::ClipboardAnnounce(wire)) => {
-                self.receive_clipboard(peer, wire);
+                if wire.send {
+                    self.receive_file_offer(peer, wire);
+                } else {
+                    self.receive_clipboard(peer, wire);
+                }
+                return Ok(());
+            }
+            Some(Body::TransferCancel(cancel)) => {
+                self.files_cancel_from(peer, cancel.transfer_id);
                 return Ok(());
             }
             Some(Body::Settings(settings)) => {

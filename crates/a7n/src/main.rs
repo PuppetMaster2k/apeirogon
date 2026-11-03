@@ -269,6 +269,7 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
             writeln!(output, "Paired with {name} ({machine})")?;
         }
         Response::Done => {}
+        Response::FilesOffered { .. } => bail!("unexpected file offer response from daemon"),
         Response::Layout(_) => bail!("unexpected layout response from daemon"),
         Response::Error { message, .. } => bail!("{message}"),
     }

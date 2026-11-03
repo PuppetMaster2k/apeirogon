@@ -34,6 +34,7 @@ enum Capability {
   CAPABILITY_SETTINGS_SYNC = 8;
   CAPABILITY_RTT_PROBE = 9;
   reserved 10;  // was MOTION_DATAGRAM; datagrams are always used
+  CAPABILITY_FILES = 11;             // explicit single-peer send offers
 }
 
 enum Edge {
@@ -328,6 +329,7 @@ message ClipboardAnnounce {
   uint64 generation = 2;              // Lamport counter; highest wins, tie: larger origin
   repeated ClipboardItem items = 3;
   FileManifest files = 4;             // set when an item has the file-list MIME
+  bool send = 5;                     // single-peer offer; generation is an offer id
 }
 
 // ----- Files: manifest, requests, drag and drop -----------------------------
@@ -354,6 +356,7 @@ message FileManifest {
 message ClipboardRef {
   bytes origin = 1;
   uint64 generation = 2;
+  bool send = 3;                     // selects the independent send-offer namespace
 }
 
 message FileResume {
