@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.11.0...v0.12.0) (2026-11-04)
+
+
+### Features
+
+* refuse file receives without free space, document files ([#138](https://github.com/PuppetMaster2k/apeirogon/issues/138)) ([b7f690f](https://github.com/PuppetMaster2k/apeirogon/commit/b7f690ff22cf4b74ca5bfcaf91689765bbecbe5e))
+
 ## [0.11.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.10.0...v0.11.0) (2026-11-03)
 
 
