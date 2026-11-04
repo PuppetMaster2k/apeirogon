@@ -23,6 +23,7 @@ fn daemon() -> (Daemon, TempDir) {
     let dir = tempdir();
     let mut daemon = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
     daemon.config.files.receive_dir = Some(dir.path().join("received"));
+    daemon.config.notifications.files = false;
     (daemon, dir)
 }
 

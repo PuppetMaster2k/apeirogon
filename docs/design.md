@@ -246,6 +246,14 @@ crates/
   to the OS downloads directory plus `Apeirogon` (or `~/Downloads/Apeirogon`
   if unavailable). It never syncs and is created on the first receive.
 - **`a7n send`** uses the same path as a file clipboard.
+- **File notifications:** receivers show a system notification at the start and
+  completion or failure of transfers of at least 100 MiB, and for held `ask`
+  offers of any size. They contain only peer name, file count, size and a
+  failure reason, never file names or paths. Local `notifications.files`
+  defaults to true and never syncs, since desktop permissions and notification
+  preferences are machine-specific. Set it with `a7n config set notifications.files false`.
+  Linux notifications open the GUI on click for up to 60 seconds where the
+  desktop supports actions; macOS and Windows have no click action.
 - **Drag-and-drop:** the source sends a drag offer when a file drag crosses an
   edge; the receiving machine shows a drag with promised files, and the drop
   (button-up) triggers the transfer. Moving back or pressing Esc cancels;

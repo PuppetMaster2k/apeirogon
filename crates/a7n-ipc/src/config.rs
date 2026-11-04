@@ -32,6 +32,7 @@ pub struct Config {
     pub peers: BTreeMap<String, PeerConfig>,
     pub clipboard: ClipboardConfig,
     pub files: FilesConfig,
+    pub notifications: NotificationsConfig,
 }
 
 impl Default for Config {
@@ -45,7 +46,20 @@ impl Default for Config {
             peers: BTreeMap::new(),
             clipboard: ClipboardConfig::default(),
             files: FilesConfig::default(),
+            notifications: NotificationsConfig::default(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct NotificationsConfig {
+    pub files: bool,
+}
+
+impl Default for NotificationsConfig {
+    fn default() -> Self {
+        Self { files: true }
     }
 }
 
@@ -320,6 +334,7 @@ impl Config {
                     ConfigError::Invalid("input.speed must be between 0.1 and 10.0".into())
                 })?),
                 ["input", "natural_scrolling"]
+                | ["notifications", "files"]
                 | ["peers", _, "allow_drive"]
                 | ["sync", "settings"] => {
                     toml::Value::Boolean(value.parse().map_err(|_| {

@@ -14,6 +14,7 @@ use a7n_proto::v1::{
 };
 use tokio::sync::{oneshot, watch};
 
+use super::notifications::Notice;
 use super::{
     ASK_TIMEOUT, Active, Daemon, DaemonError, Failure, Incoming, Kind, MachineId, OFFERS_PER_PEER,
     Progress,
@@ -94,6 +95,13 @@ impl Daemon {
         };
         let staging = super::staging::new_stage(&receive_dir, peer, wire.generation);
         let ask = self.files_policy(peer) == ClipboardPolicy::Ask;
+        if ask {
+            self.notify_files(
+                peer,
+                &Progress::new(&valid, manifest.total_size),
+                Notice::Offered,
+            );
+        }
         self.files.incoming.insert(
             key,
             Incoming {
@@ -243,6 +251,7 @@ impl Daemon {
         transfers.pending.insert(wire_id, sender);
         let (cancel, cancelled) = watch::channel(Failure::Cancelled);
         let progress = Arc::new(Progress::new(&manifest, total_size));
+        self.notify_files(peer, &progress, Notice::Receiving);
         self.files.active.insert(
             id,
             Active {
