@@ -119,6 +119,29 @@ fn into_link(
     })
 }
 
+/// Advertise only the hardware address of the interface carrying this link.
+pub(crate) fn local_info(
+    connection: &Connection,
+    endpoint: &quinn::Endpoint,
+    local: &PeerInfo,
+) -> PeerInfo {
+    let source = connection
+        .local_ip()
+        .or_else(|| {
+            endpoint
+                .local_addr()
+                .ok()
+                .map(|addr| addr.ip())
+                .filter(|ip| !ip.is_unspecified())
+        })
+        .or_else(|| a7n_platform::local_addr_for(connection.remote_address()));
+    let mut info = local.clone();
+    info.hw_addr = source
+        .and_then(a7n_platform::hw_addr_for)
+        .map_or_else(Vec::new, |mac| mac.to_vec());
+    info
+}
+
 /// Initiator side: opens stream 0, sends `Hello`, reads `Welcome`.
 pub(crate) async fn initiate(connection: Connection, local: &PeerInfo) -> Result<Link, LinkError> {
     let (mut send, mut recv) = connection.open_bi().await?;

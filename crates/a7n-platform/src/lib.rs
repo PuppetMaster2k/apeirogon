@@ -53,3 +53,6 @@ pub const fn platform() -> a7n_proto::v1::Platform {
 }
 
 pub mod transfer_fs;
+
+mod network;
+pub use network::{hw_addr_for, ipv4_broadcasts, local_addr_for};

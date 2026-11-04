@@ -151,6 +151,7 @@ async fn connect_simultaneous_dials_keeps_live_registry() {
             pin,
             name: "peer".into(),
             spki_der: None,
+            hw_addr: None,
         });
         local.pins.save().unwrap();
         local.sync_trust().unwrap();
@@ -224,6 +225,7 @@ async fn status_ipc_round_trip_returns_own_machine() {
         pin: daemon.identity.pin,
         name: "offline peer".into(),
         spki_der: None,
+        hw_addr: None,
     });
     let peer = Peer::run(daemon, dir);
     let socket_dir = tempfile::tempdir().unwrap();
@@ -265,6 +267,8 @@ async fn status_ipc_round_trip_returns_own_machine() {
                 name: "offline peer".into(),
                 connected: false,
                 rtt_ms: None,
+                can_wake: false,
+                waking: false,
             }],
         }
     );

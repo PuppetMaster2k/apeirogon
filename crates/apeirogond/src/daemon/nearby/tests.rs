@@ -24,6 +24,7 @@ async fn discovery_paired_unlinked_peers_falls_back_and_links_both_sides() {
             pin,
             name: "peer".into(),
             spki_der: None,
+            hw_addr: None,
         });
         local.sync_trust().unwrap();
     }

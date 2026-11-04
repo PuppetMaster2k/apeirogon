@@ -8,6 +8,7 @@ fn entry(identity: &Identity, name: &str) -> Entry {
         pin: identity.pin,
         name: name.into(),
         spki_der: Some(identity::spki_of(&identity.cert_der).unwrap()),
+        hw_addr: None,
     }
 }
 

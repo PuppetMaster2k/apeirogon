@@ -92,12 +92,20 @@ impl App {
                 ui,
                 &peer.name,
                 peer.id,
-                if peer.connected {
+                if peer.waking {
+                    BadgeKind::Warning
+                } else if peer.connected {
                     BadgeKind::Online
                 } else {
                     BadgeKind::Offline
                 },
-                if peer.connected { "Online" } else { "Offline" },
+                if peer.waking {
+                    "Waking…"
+                } else if peer.connected {
+                    "Online"
+                } else {
+                    "Offline"
+                },
             );
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -111,6 +119,21 @@ impl App {
                     .clicked()
                     {
                         self.send(Command::Request(Request::Unpair { machine: peer.id }));
+                    }
+                    if !peer.connected && peer.can_wake {
+                        ui.add_enabled_ui(!peer.waking, |ui| {
+                            if theme::button(
+                                ui,
+                                ButtonKind::Secondary,
+                                ButtonSize::Md,
+                                Some(icon::POWER),
+                                "Wake",
+                            )
+                            .clicked()
+                            {
+                                self.send(Command::Request(Request::Wake { machine: peer.id }));
+                            }
+                        });
                     }
                     let nearby = status.nearby.iter().find(|nearby| nearby.id == peer.id);
                     ui.add_enabled_ui(!peer.connected && nearby.is_some(), |ui| {

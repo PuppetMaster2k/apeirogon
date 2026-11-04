@@ -213,6 +213,24 @@ crates/
   keyboard and mouse by itself when the daemon's keepalive (every 500 ms) is
   missing for 1.5 s, so a hung daemon can never lock the user out.
 
+## Wake-on-LAN
+
+Each paired link advertises the MAC of the interface carrying it, when known.
+The receiver validates it and remembers the last valid address beside the pin,
+without logging it. Switching to an offline paired machine by edge push, jump
+key or `a7n switch` sends a magic packet and shows “Waking <name>…”. Edge
+resistance still applies and the cursor stays where it is while waiting. If
+the peer connects within 60 s, the daemon retries the take once, preserving
+an edge landing. Another user switch, pause, revocation or timeout cancels it.
+
+Local `peers.<id>.wake` defaults to true and never syncs; false disables only
+automatic wake. `a7n wake <machine>` and the Machines page's Wake button send
+without moving focus. A MAC must have been learned on a previous awake link.
+Packets go to IPv4 limited and directed broadcasts on UDP port 9, at most once
+per peer every 5 s. Wake requires BIOS/OS support enabled and works only within
+the same broadcast domain. Wired PCs usually answer; MacBooks on Wi-Fi usually
+do not.
+
 ## Clipboard
 
 - **Model:** announce formats on copy, transfer on paste. Small items (up to
@@ -274,7 +292,7 @@ crates/
 ## User interface
 
 - **CLI** (`a7n`): `init`, `pair`, `unpair`, `layout`, `switch`, `status`,
-  `clip`, `send`, `files`, `config`, `daemon`, `logs`, `pause`, `resume`. Config is TOML, managed via
+  `wake`, `clip`, `send`, `files`, `config`, `daemon`, `logs`, `pause`, `resume`. Config is TOML, managed via
   `a7n config`. `a7n layout` is an interactive TUI.
 - **GUI** (`a7n-gui`, egui/eframe) for Windows and macOS:
   - Thin client of the daemon over `a7n-ipc`; no logic of its own.
@@ -289,6 +307,8 @@ crates/
     offer id) and the outcome of recently ended sends (`finished_sends`, session
     state, at most 16; link loss is not an outcome because the offer resumes). File offers use an
     independent generation namespace and do not change the receiving clipboard.
+  - Local IPC version 6 adds `Wake`, a `Waking` switch response, and per-peer
+    `can_wake` and `waking` status flags. Hardware addresses stay inside the daemon.
   - Local IPC version 5 adds a distinct `no_space` error when accepting files.
     Before downloading, the receiver checks the remaining bytes after rehashing
     partial data plus a 256 MiB safety margin. A failed free-space query is
@@ -336,8 +356,8 @@ crates/
 | ------- | ----- |
 | v1 | Pairing, input sharing, text clipboard (plain + HTML) on all 4 platforms; CLI + TUI |
 | v2 | GUI + tray, packages, image clipboard |
-| v3 | File clipboard, `a7n send` |
-| Later | Drag-and-drop (per platform); login-screen support; wake-on-LAN (MAC addresses are already exchanged at handshake) |
+| v3 | File clipboard, `a7n send`, wake-on-LAN |
+| Later | Drag-and-drop (per platform); login-screen support |
 
 ## Prior art
 

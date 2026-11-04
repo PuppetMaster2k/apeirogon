@@ -22,6 +22,10 @@ pub enum Request {
         #[serde(with = "machine_id")]
         machine: MachineId,
     },
+    Wake {
+        #[serde(with = "machine_id")]
+        machine: MachineId,
+    },
     Status,
     SendFiles {
         #[serde(with = "machine_id")]
@@ -85,6 +89,9 @@ pub enum Response {
     FilesOffered {
         offer_id: u64,
         skipped_symlinks: usize,
+    },
+    Waking {
+        name: String,
     },
     Done,
     Error {
@@ -355,6 +362,10 @@ pub struct PeerInfo {
     pub name: String,
     pub connected: bool,
     pub rtt_ms: Option<u64>,
+    /// A validated hardware address has been remembered; never expose the address.
+    pub can_wake: bool,
+    /// A wake request is awaiting this peer's link.
+    pub waking: bool,
 }
 
 mod machine_id {

@@ -12,3 +12,4 @@ pub mod liveness;
 pub mod modifiers;
 pub mod pairing;
 pub mod settings;
+pub mod wol;

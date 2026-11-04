@@ -40,6 +40,7 @@ pub(crate) struct Entry {
     pub(crate) pin: Pin,
     pub(crate) name: String,
     pub(crate) spki_der: Option<Vec<u8>>,
+    pub(crate) hw_addr: Option<[u8; 6]>,
 }
 
 /// On-disk form of an [`Entry`]: ids and pins as lowercase hex.
@@ -50,6 +51,8 @@ struct EntryRecord {
     name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     spki_der: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hw_addr: Option<[u8; 6]>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -107,6 +110,14 @@ impl PinStore {
         Ok(())
     }
 
+    pub(crate) fn record_hw_addr(&mut self, peer: MachineId, bytes: &[u8]) {
+        if let Some(mac) = a7n_core::wol::hw_addr(bytes)
+            && let Some(entry) = self.entries.get_mut(&peer)
+        {
+            entry.hw_addr = Some(mac);
+        }
+    }
+
     pub(crate) fn machine_ids(&self) -> impl Iterator<Item = MachineId> + '_ {
         self.entries.keys().copied()
     }
@@ -138,6 +149,7 @@ impl From<&Entry> for EntryRecord {
             pin: hex_encode(entry.pin.as_bytes()),
             name: entry.name.clone(),
             spki_der: entry.spki_der.as_deref().map(hex_encode),
+            hw_addr: entry.hw_addr,
         }
     }
 }
@@ -151,6 +163,7 @@ impl TryFrom<EntryRecord> for Entry {
             pin: Pin::try_from(&hex_decode(&record.pin)?[..])?,
             name: record.name,
             spki_der: record.spki_der.as_deref().map(hex_decode).transpose()?,
+            hw_addr: record.hw_addr.and_then(|mac| a7n_core::wol::hw_addr(&mac)),
         })
     }
 }
@@ -184,6 +197,7 @@ mod tests {
             pin: Pin::try_from(&[seed; 32][..]).unwrap(),
             name: format!("peer-{seed}"),
             spki_der: None,
+            hw_addr: None,
         }
     }
 
@@ -201,6 +215,26 @@ mod tests {
 
         // Assert
         assert_eq!(reloaded.get(&entry(1).machine_id), Some(&entry(1)));
+    }
+
+    #[test]
+    fn record_hw_addr_invalid_update_keeps_last_known_after_reload() {
+        // Arrange
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pins.toml");
+        let mut store = PinStore::load(&path).unwrap();
+        let peer = entry(1);
+        store.add(peer.clone());
+        store.record_hw_addr(peer.machine_id, &[2; 6]);
+
+        // Act
+        store.record_hw_addr(peer.machine_id, &[1; 6]);
+        store.record_hw_addr(peer.machine_id, &[]);
+        store.save().unwrap();
+        let loaded = PinStore::load(&path).unwrap();
+
+        // Assert
+        assert_eq!(loaded.get(&peer.machine_id).unwrap().hw_addr, Some([2; 6]));
     }
 
     #[test]
@@ -261,6 +295,7 @@ mod tests {
 
         // Assert
         assert!(store.get(&entry(1).machine_id).unwrap().spki_der.is_none());
+        assert!(store.get(&entry(1).machine_id).unwrap().hw_addr.is_none());
     }
 
     #[test]
@@ -274,6 +309,7 @@ mod tests {
             pin: entry(1).pin,
             name: "peer".into(),
             spki_der: None,
+            hw_addr: None,
         });
 
         // Act

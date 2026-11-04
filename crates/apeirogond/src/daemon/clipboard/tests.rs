@@ -65,6 +65,7 @@ async fn clipboard_status_local_change_returns_metadata_only() {
         pin: daemon.identity.pin,
         name: "offline peer".into(),
         spki_der: None,
+        hw_addr: None,
     });
     daemon
         .config
