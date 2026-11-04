@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.10.0...v0.11.0) (2026-11-03)
+
+
+### Features
+
+* file clipboard and transfer ([#134](https://github.com/PuppetMaster2k/apeirogon/issues/134)) ([f8d0d07](https://github.com/PuppetMaster2k/apeirogon/commit/f8d0d075560d5d51b31f4165265127fcb0e18b8e))
+
 ## [0.10.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.9.0...v0.10.0) (2026-11-03)
 
 
