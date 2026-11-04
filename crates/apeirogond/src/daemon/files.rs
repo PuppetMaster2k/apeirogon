@@ -18,6 +18,7 @@ use tokio::sync::{oneshot, watch};
 use super::{Daemon, DaemonError, Event};
 
 mod incoming;
+mod notifications;
 mod offer;
 mod paste;
 mod receive;
@@ -358,6 +359,13 @@ impl Daemon {
             return;
         };
         let result = outcome.as_ref().map(|_| ()).map_err(|failure| *failure);
+        if active.direction == TransferDirection::Receive {
+            self.notify_files(
+                active.peer,
+                &active.progress,
+                notifications::Notice::Finished(result),
+            );
+        }
         if let Some(reply) = (active.kind == Kind::Offer
             && active.direction == TransferDirection::Receive)
             .then(|| self.files.accepts.remove(&(active.peer, active.offer)))

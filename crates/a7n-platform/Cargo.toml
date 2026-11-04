@@ -16,6 +16,7 @@ a7n-core.workspace = true
 a7n-proto.workspace = true
 directories.workspace = true
 interprocess.workspace = true
+notify-rust.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 

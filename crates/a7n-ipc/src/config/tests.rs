@@ -189,6 +189,23 @@ fn set_sync_settings_round_trips_and_rejects_non_boolean() {
 }
 
 #[test]
+fn set_file_notifications_round_trips_and_rejects_non_boolean() {
+    // Arrange
+    let mut config = Config::parse("").unwrap();
+    assert!(config.notifications.files);
+    config.set("notifications.files", "false").unwrap();
+
+    // Act
+    let result = config.set("notifications.files", "no");
+
+    // Assert
+    assert!(result.is_err());
+    let loaded = Config::parse(&config.to_toml().unwrap()).unwrap();
+    assert_eq!(loaded.get("notifications.files").as_deref(), Some("false"));
+    assert!(!a7n_core::settings::SYNCED_KEYS.contains(&"notifications.files"));
+}
+
+#[test]
 fn set_clipboard_policy_validates_values_and_keeps_deny_apps_file_only() {
     // Arrange
     let mut config = Config::parse("[clipboard]\ndeny_apps = ['secret.app']").unwrap();

@@ -34,6 +34,28 @@ and are not covered by CI.
   files are not offered for paste and explicit incoming sends are ignored.
 - [ ] With `ask`, a local paste downloads files without another confirmation.
 
+## System notifications
+
+- [ ] On Windows, macOS, Linux X11 and Wayland, paste a 200 MiB file and
+  receive an explicit send of the same size: one notification appears at
+  start and one at completion, with no intermediate updates. Transfers below
+  100 MiB show neither. Only peer name, count and size appear, never file names
+  or paths.
+- [ ] Cancel a large receive, disconnect, fail its integrity check, and try
+  receiving on a full disk: the ending notification names the failure without
+  exposing a path. A reconnect may start a resumed receive with a new notice.
+- [ ] With policy `ask`, send a small offer: its notification gives the peer,
+  count, size and CLI acceptance command before the 60-second offer expires.
+- [ ] Run `a7n config set notifications.files false`: neither held offers nor
+  large receives show notifications. Set it back to `true` and retry. Changing
+  the setting on another desk member does not change this machine's preference.
+- [ ] On Linux, click a notification within 60 seconds: the sibling `a7n-gui`
+  opens (falling back to PATH), where the desktop supports default actions.
+  Leave a notification untouched and confirm the daemon still exits promptly.
+  macOS and Windows notifications have no click action.
+- [ ] On macOS, allow notifications for the unbundled binary when prompted
+  on first use; delivery depends on the user's notification permission.
+
 ## Receive directory and safety
 
 - [ ] With no configured receive directory, files land in Downloads/Apeirogon.
