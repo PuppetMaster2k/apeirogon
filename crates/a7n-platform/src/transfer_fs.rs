@@ -14,6 +14,61 @@ fn parent(path: &Path) -> &Path {
         .unwrap_or(Path::new("."))
 }
 
+/// Free bytes available to this user in the directory's filesystem.
+/// Missing directories are resolved through their nearest existing ancestor.
+///
+/// # Errors
+/// Returns filesystem query errors or an overflow in the reported byte count.
+pub fn available_space(path: &Path) -> io::Result<u64> {
+    let absolute = std::path::absolute(path)?;
+    let mut path = absolute.as_path();
+    loop {
+        match std::fs::metadata(path) {
+            Ok(_) => return directory_available_space(path),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                path = path.parent().ok_or(error)?;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn directory_available_space(path: &Path) -> io::Result<u64> {
+    let stats = rustix::fs::statvfs(path)?;
+    stats
+        .f_bavail
+        .checked_mul(stats.f_frsize)
+        .ok_or_else(|| io::Error::other("available space overflow"))
+}
+
+#[cfg(windows)]
+fn directory_available_space(path: &Path) -> io::Result<u64> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+
+    // UNC share roots require a trailing separator.
+    let path = path.join("");
+    let path: Vec<_> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    if path[..path.len() - 1].contains(&0) {
+        return Err(io::ErrorKind::InvalidInput.into());
+    }
+    let mut available = 0;
+    // SAFETY: the path is NUL-terminated; the output is writable and other outputs are optional.
+    if unsafe {
+        GetDiskFreeSpaceExW(
+            path.as_ptr(),
+            &raw mut available,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(available)
+}
+
 /// Create missing directories without following symlinks, including in ancestors.
 ///
 /// # Errors
@@ -224,6 +279,20 @@ pub fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn available_space_missing_directory_queries_existing_ancestor() {
+        // Arrange
+        let temp = tempfile::tempdir().unwrap();
+        let missing = temp.path().join("missing/nested");
+
+        // Act
+        let result = available_space(&missing);
+
+        // Assert
+        assert!(result.is_ok(), "{result:?}");
+        assert!(!missing.exists());
+    }
 
     #[test]
     fn rename_no_replace_existing_file_or_directory_preserves_both_entries() {

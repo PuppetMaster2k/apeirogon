@@ -111,7 +111,22 @@ impl Daemon {
         }
     }
 
-    pub(in crate::daemon) fn accept_files(&mut self, peer: MachineId) -> Result<(), DaemonError> {
+    pub(in crate::daemon) fn accept_files_with_reply(
+        &mut self,
+        peer: MachineId,
+        reply: crate::command::Reply<()>,
+    ) {
+        match self.accept_files(peer) {
+            Ok(offer) => {
+                self.files.accepts.insert((peer, offer), reply);
+            }
+            Err(error) => {
+                let _ = reply.send(Err(error));
+            }
+        }
+    }
+
+    pub(in crate::daemon) fn accept_files(&mut self, peer: MachineId) -> Result<u64, DaemonError> {
         self.expire_files(Instant::now());
         let key = self
             .files
@@ -136,7 +151,8 @@ impl Daemon {
             .get_mut(&key)
             .expect("held offer exists")
             .deadline = None;
-        self.start_file_receive(peer, key.1)
+        self.start_file_receive(peer, key.1)?;
+        Ok(key.1)
     }
 
     pub(in crate::daemon) fn reject_files(&mut self, peer: MachineId) -> Result<(), DaemonError> {
@@ -280,6 +296,11 @@ impl Daemon {
         };
         if !self.is_current(peer, link) {
             return;
+        }
+        if send {
+            if let Some(reply) = self.files.accepts.remove(&(peer, offer)) {
+                let _ = reply.send(Ok(()));
+            }
         }
         self.send_input(
             peer,

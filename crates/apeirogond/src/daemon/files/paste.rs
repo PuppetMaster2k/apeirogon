@@ -156,6 +156,9 @@ impl Daemon {
             origin: active.peer,
         };
         let replies = self.files.pastes.remove(&id).unwrap_or_default();
+        if result == Err(Failure::NoSpace) {
+            crate::log::event!("kind=clipboard_fetch_failed reason=no_space");
+        }
         // A newer copy replaced the one that was pasted; the files stay in the
         // receive directory, but the paste no longer applies.
         let answer = (result.is_ok() && self.clipboard.current == Some(generation))

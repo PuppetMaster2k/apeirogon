@@ -105,6 +105,7 @@ pub enum ErrorKind {
     NotConnected,
     PairingRefused,
     Busy,
+    NoSpace,
     Internal,
 }
 
