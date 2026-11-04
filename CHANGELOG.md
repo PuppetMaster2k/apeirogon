@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.13.0...v0.14.0) (2026-11-04)
+
+
+### Features
+
+* wake sleeping desk members with wake-on-LAN ([#142](https://github.com/PuppetMaster2k/apeirogon/issues/142)) ([9dca267](https://github.com/PuppetMaster2k/apeirogon/commit/9dca26792293c62948bdbfba0508739aa707fdd2))
+
 ## [0.13.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.12.0...v0.13.0) (2026-11-04)
 
 
