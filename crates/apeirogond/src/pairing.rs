@@ -123,7 +123,7 @@ where
     let streams = timeout(limits::HANDSHAKE_TIMEOUT, connection.accept_bi()).await;
     let Ok(Ok((mut send, mut recv))) = streams else {
         host.refuse();
-        connection.close(0u32.into(), b"");
+        connection.close(crate::link::CLOSE_NORMAL, b"");
         return Err(PairingError::Refused);
     };
     let mut failure = Body::Answer(PairAnswer {
@@ -164,7 +164,7 @@ where
         host.refuse();
         refuse(&mut send, failure).await;
     }
-    connection.close(0u32.into(), b"");
+    connection.close(crate::link::CLOSE_NORMAL, b"");
     result
 }
 
@@ -175,7 +175,7 @@ pub(crate) async fn initiate(
 ) -> Result<Entry, PairingError> {
     let streams = timeout(limits::HANDSHAKE_TIMEOUT, connection.open_bi()).await;
     let Ok(Ok((mut send, mut recv))) = streams else {
-        connection.close(0u32.into(), b"");
+        connection.close(crate::link::CLOSE_NORMAL, b"");
         return Err(PairingError::Refused);
     };
     let result = async {
@@ -207,7 +207,7 @@ pub(crate) async fn initiate(
         )
         .await;
     }
-    connection.close(0u32.into(), b"");
+    connection.close(crate::link::CLOSE_NORMAL, b"");
     result
 }
 
@@ -217,7 +217,17 @@ async fn refuse(send: &mut SendStream, body: Body) {
     }
 }
 
+// The name reaches terminals, notifications and pins.toml, so refuse escapes
+// as well as names outside the wire bound.
+fn valid_peer_name(name: &str) -> bool {
+    (1..=limits::PEER_NAME_MAX).contains(&name.chars().count())
+        && !name.chars().any(char::is_control)
+}
+
 fn peer_entry(connection: &Connection, pin: Pin, name: String) -> Result<Entry, PairingError> {
+    if !valid_peer_name(&name) {
+        return Err(PairingError::Refused);
+    }
     let cert = peer_certificate(connection)?;
     if identity::pin_of(&cert).map_err(LinkError::from)? != pin {
         return Err(PairingError::Refused);
@@ -229,4 +239,36 @@ fn peer_entry(connection: &Connection, pin: Pin, name: String) -> Result<Entry, 
         spki_der: Some(identity::spki_of(&cert).map_err(LinkError::from)?),
         hw_addr: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_peer_name_unsafe_names_are_rejected() {
+        // Arrange
+        let long = "x".repeat(limits::PEER_NAME_MAX + 1);
+        let unsafe_names = ["", "desk\u{1b}[2J", "a\nb", "tab\there", long.as_str()];
+
+        for name in unsafe_names {
+            // Act
+            let valid = valid_peer_name(name);
+
+            // Assert
+            assert!(!valid, "{name:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn valid_peer_name_plain_name_is_accepted() {
+        // Arrange
+        let name = "Büro-Mac ✓";
+
+        // Act
+        let valid = valid_peer_name(name);
+
+        // Assert
+        assert!(valid);
+    }
 }

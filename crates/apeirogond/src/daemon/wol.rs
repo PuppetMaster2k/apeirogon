@@ -5,7 +5,6 @@ use std::io;
 use std::net::{Ipv4Addr, UdpSocket};
 use std::time::{Duration, Instant};
 
-use a7n_core::focus::Take;
 use a7n_proto::{MachineId, v1::Landing};
 
 use super::{Daemon, DaemonError};
@@ -72,12 +71,6 @@ fn send_packet(mac: [u8; 6]) -> io::Result<()> {
 }
 
 impl Daemon {
-    pub(super) fn is_linked(&self, peer: MachineId) -> bool {
-        self.links.by_peer.get(&peer).is_some_and(|handle| {
-            handle.connection.close_reason().is_none() && !handle.sender.is_closed()
-        })
-    }
-
     pub(super) fn wake_peer(
         &mut self,
         peer: MachineId,
@@ -157,7 +150,9 @@ impl Daemon {
         let landing = match pending.action {
             WakeAction::Only => return,
             WakeAction::Switch => {
-                let _ = self.switch_machine(pending.peer).await;
+                if self.switch_machine(pending.peer).await.is_err() {
+                    crate::log::event!("kind=wake_switch_failed");
+                }
                 return;
             }
             WakeAction::Edge(landing) => landing,
@@ -165,15 +160,7 @@ impl Daemon {
         if self.input.paused {
             return;
         }
-        let actions = self.input.focus.take(
-            Take {
-                target: pending.peer,
-                landing: Some(landing),
-                resistance_px: 0,
-                reach: self.links.by_peer.keys().copied().collect(),
-            },
-            now,
-        );
+        let actions = self.take_peer(pending.peer, Some(landing), now);
         self.input_actions(actions).await;
     }
 }

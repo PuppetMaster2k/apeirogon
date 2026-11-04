@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::super::receive::check_space;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use super::super::receive::{Reservation, check_space};
 use super::*;
 
 #[test]
@@ -92,4 +94,21 @@ async fn files_finished_no_space_reports_distinct_accept_failure() {
     );
     assert!(daemon.files.active.is_empty());
     assert!(daemon.files.accepts.is_empty());
+}
+
+#[test]
+fn reservation_parallel_receives_see_each_other_until_dropped() {
+    // Arrange
+    let reserved = AtomicU64::new(0);
+    let first = Reservation::new(&reserved, 300);
+
+    // Act
+    let second = Reservation::new(&reserved, 200);
+    let others = second.others;
+    drop(first);
+    drop(second);
+
+    // Assert
+    assert_eq!(others, 300);
+    assert_eq!(reserved.load(Ordering::Relaxed), 0);
 }

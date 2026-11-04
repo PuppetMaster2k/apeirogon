@@ -182,6 +182,43 @@ already in the workspace. Pin versions in the workspace `Cargo.toml` and use
 
 ## 4. Clean code rules
 
+### Design principles
+
+These are rules, not suggestions. A review that finds a violation blocks the
+PR just like a failing test.
+
+- **KISS:** the simplest code that does the job. Use the standard library,
+  an existing helper or a workspace crate before writing your own. Clever code
+  that needs a comment to decode is a bug waiting to happen.
+- **DRY:** every piece of knowledge lives in one place. Before you write a
+  check, a match over policy variants, a constant or a helper, search the
+  workspace for an existing one (`rg`). Logic repeated a second time is
+  extracted. Coincidental similarity is not repetition.
+- **YAGNI:** build what the issue asks for, nothing "for later". No config
+  for a value that never changes, no parameter nobody passes.
+- **SOLID**, read for Rust:
+  - *Single responsibility:* one module per concept, one function per job.
+    A type that collects unrelated fields gets split into sub-states (as
+    `clipboard::State` and `files::State` are).
+  - *Open/closed:* add behaviour with new enum variants, match arms or
+    modules; don't add flags to existing functions.
+  - *Liskov:* every trait implementation keeps the trait's documented
+    contract. Test fakes behave like the real backend.
+  - *Interface segregation:* small traits with only the methods their
+    callers need. `a7n-platform` traits stay narrow.
+  - *Dependency inversion:* core logic depends on parameters and traits, not
+    on the OS, the network or the clock (see "`a7n-core` is pure").
+
+### Hard limits
+
+- **At most 500 lines of code per file**, not counting blank and comment-only
+  lines. Split by responsibility, not by cutting the file in half.
+- **At most 8 parameters per function.** Above that, pass a struct of related
+  values or split the function. Clippy's `too_many_arguments` limit of 7 still
+  applies; allow it only with a reason.
+
+### Rules
+
 1. **One function, one job.** If you need "and" to describe it, split it.
    Aim for functions under ~40 lines.
 2. **Names explain intent;** comments explain *why*, never *what*.
@@ -189,8 +226,8 @@ already in the workspace. Pin versions in the workspace `Cargo.toml` and use
 4. **Early return over nesting.** Guard clauses first, happy path last.
 5. **No dead code,** commented-out code or `TODO` without an issue link.
 6. **Keep functions pure where possible;** push I/O to the edges.
-7. **Don't repeat knowledge.** Duplicated logic is extracted; duplicated
-   test setup is fine if it keeps the test readable.
+7. **Don't repeat knowledge** (DRY above). Duplicated test setup is fine if
+   it keeps the test readable.
 8. **Small public surface.** Default to private; `pub(crate)` before `pub`.
 9. **No premature abstraction.** A trait needs a second implementation or a
    test seam that actually exists.

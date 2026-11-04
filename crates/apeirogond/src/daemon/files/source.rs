@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use a7n_core::clipboard::Generation;
-use a7n_ipc::config::ClipboardPolicy;
 use a7n_proto::MachineId;
 use a7n_proto::v1::{Capability, ClipboardAnnounce};
 
@@ -16,10 +15,7 @@ impl Daemon {
     /// Whether `peer` may be shown (and may fetch) the files of a local copy.
     pub(in crate::daemon) fn clipboard_can_send_files(&self, peer: MachineId) -> bool {
         self.clipboard_can_send(peer)
-            && matches!(
-                self.files_policy(peer),
-                ClipboardPolicy::Send | ClipboardPolicy::Both | ClipboardPolicy::Ask
-            )
+            && self.files_policy(peer).sends()
             && self
                 .links
                 .by_peer

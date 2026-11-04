@@ -296,7 +296,7 @@ impl Daemon {
             .try_send(Envelope { body: Some(body) })
             .is_err()
         {
-            handle.connection.close(0u32.into(), b"");
+            handle.connection.close(crate::link::CLOSE_NORMAL, b"");
             self.links.by_peer.remove(&peer);
             self.input_link_lost(peer);
         }
@@ -514,19 +514,16 @@ impl Daemon {
             self.input.focus.handover(target, Some(landing))
         } else {
             if !self.is_linked(target) {
-                let _ = self.auto_wake(target, super::wol::WakeAction::Edge(landing), now());
+                if self
+                    .auto_wake(target, super::wol::WakeAction::Edge(landing), now())
+                    .is_err()
+                {
+                    crate::log::event!("kind=wake_failed");
+                }
                 return;
             }
             self.wol.pending = None;
-            self.input.focus.take(
-                Take {
-                    target,
-                    landing: Some(landing),
-                    resistance_px: 0,
-                    reach: self.links.by_peer.keys().copied().collect(),
-                },
-                now(),
-            )
+            self.take_peer(target, Some(landing), now())
         };
         self.input_actions(actions).await;
     }

@@ -5,13 +5,6 @@ use a7n_ipc::{ClipboardKind, HeldClipboard};
 use super::{CLIPBOARD_ASK_TIMEOUT, Daemon, Held, Instant, MachineId, State, clipboard};
 use crate::daemon::DaemonError;
 
-pub(in crate::daemon) async fn deadline(deadline: Option<Instant>) {
-    match deadline {
-        Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
-        None => std::future::pending().await,
-    }
-}
-
 impl Held {
     fn expired(&self, now: Instant) -> bool {
         now >= self.deadline
@@ -96,9 +89,7 @@ impl Daemon {
             .ok_or(DaemonError::InvalidRequest(
                 "no clipboard copy is waiting for confirmation",
             ))?;
-        if !self.links.by_peer.get(&held.peer).is_some_and(|link| {
-            link.connection.close_reason().is_none() && !link.sender.is_closed()
-        }) {
+        if !self.is_linked(held.peer) {
             crate::log::event!("kind=clipboard_dropped");
             return Err(DaemonError::NotConnected);
         }

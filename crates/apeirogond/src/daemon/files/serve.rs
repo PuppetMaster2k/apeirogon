@@ -45,7 +45,7 @@ impl Daemon {
         let Some(transfers) = self.clipboard.links.get(&peer) else {
             return true;
         };
-        let Ok(permit) = transfers.send_slots.clone().try_acquire_owned() else {
+        let Ok(permit) = transfers.slots.clone().try_acquire_owned() else {
             crate::log::event!("kind=file_transfer_refused reason=busy");
             return true;
         };
