@@ -12,6 +12,7 @@ async fn connect(a: &mut Daemon, b: &mut Daemon) {
         pin: b.identity.pin,
         name: "peer".into(),
         spki_der: None,
+        hw_addr: None,
     })
     .unwrap();
     b.store_peer(Entry {
@@ -19,6 +20,7 @@ async fn connect(a: &mut Daemon, b: &mut Daemon) {
         pin: a.identity.pin,
         name: "peer".into(),
         spki_der: None,
+        hw_addr: None,
     })
     .unwrap();
     let accept = async {

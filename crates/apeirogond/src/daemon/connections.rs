@@ -35,7 +35,7 @@ impl Daemon {
                 let peer = identity::machine_id_of(&peer_certificate(&connection)?)?;
                 let accepts_drive = self.allow_drive(peer);
                 let events = self.events.clone();
-                let info = self.info.clone();
+                let info = handshake::local_info(&connection, &self.endpoint, &self.info);
                 self.tasks.spawn(async move {
                     let result = timeout_at(
                         deadline,
@@ -193,6 +193,8 @@ impl Daemon {
         }
         self.pins
             .record_certificate(&peer_certificate(&link.connection)?)?;
+        self.pins
+            .record_hw_addr(link.peer_id, &link.peer_info.hw_addr);
         self.pins.save()?;
         let peer = link.peer_id;
         let id = link.connection.stable_id();
@@ -292,6 +294,7 @@ mod tests {
             pin: remote.pin,
             name: "paired peer".into(),
             spki_der: None,
+            hw_addr: None,
         };
         let (reply, mut receiver) = oneshot::channel();
 

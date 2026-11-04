@@ -45,6 +45,7 @@ mod settings;
 pub(crate) mod test_peer;
 #[cfg(test)]
 mod tests;
+mod wol;
 
 /// Bounded mailboxes; a stalled consumer cannot grow memory without limit.
 const MAILBOX_CAPACITY: usize = 64;
@@ -168,6 +169,7 @@ pub(crate) struct Daemon {
     input: input::Input,
     clipboard: clipboard::State,
     files: files::State,
+    wol: wol::State,
     config: Config,
     config_path: PathBuf,
     shutdown_reply: Option<Reply<()>>,
@@ -231,6 +233,7 @@ impl Daemon {
             input,
             clipboard: clipboard::State::default(),
             files: files::State::default(),
+            wol: wol::State::default(),
             config: Config::default(),
             config_path: path.join("config.toml"),
             shutdown_reply: None,
@@ -274,6 +277,7 @@ impl Daemon {
             let deadline = self.input.focus.next_deadline();
             let files_deadline = self.files_deadline();
             let clipboard_deadline = self.clipboard.held.as_ref().map(|held| held.deadline);
+            let wake_deadline = self.wol.pending.as_ref().map(|pending| pending.deadline);
             tokio::select! {
                 command = commands.recv() => {
                     let Some(command) = command else { return Ok(()); };
@@ -290,6 +294,7 @@ impl Daemon {
                 Some(event) = discoveries.recv() => self.discovery(event),
                 _ = retry.tick() => self.retry_nearby(),
                 _ = keepalive.tick() => self.input.keepalive(),
+                () = input::deadline(wake_deadline) => {},
                 () = input::deadline(deadline) => self.poll_focus().await,
                 () = clipboard::deadline(clipboard_deadline) => self.clipboard.expire_held_clipboard(Instant::now()),
                 () = clipboard::deadline(files_deadline) => self.expire_files(Instant::now()),
@@ -316,6 +321,7 @@ impl Daemon {
                     for peer in peers { self.start_waiting_files(peer); }
                 }
             }
+            self.finish_wake(Instant::now()).await;
             self.flush_link_losses().await;
             if self.input.failed && !a7n_platform::permissions::missing().is_empty() {
                 self.retry_input_after_permission_loss().await;
@@ -334,7 +340,15 @@ impl Daemon {
         match command {
             Command::Shutdown(_) => unreachable!("shutdown is handled by the run loop"),
             Command::Switch { machine, reply } => {
-                let _ = reply.send(self.switch_machine(machine).await);
+                let result = self.switch_machine(machine).await.map(|()| {
+                    self.wol.pending.as_ref().and_then(|pending| {
+                        self.pins.get(&pending.peer).map(|entry| entry.name.clone())
+                    })
+                });
+                let _ = reply.send(result);
+            }
+            Command::Wake { machine, reply } => {
+                let _ = reply.send(self.wake_peer(machine, wol::WakeAction::Only, Instant::now()));
             }
             Command::SetPaused { paused, reply } => {
                 self.set_paused(paused).await;
@@ -421,6 +435,10 @@ impl Daemon {
                             handle.connection.close_reason().is_none() && !handle.sender.is_closed()
                         }),
                         rtt_ms: None,
+                        can_wake: entry.hw_addr.is_some(),
+                        waking: self.wol.pending.as_ref().is_some_and(|pending| {
+                            pending.peer == id && pending.deadline > Instant::now()
+                        }),
                     })
                 })
                 .collect(),

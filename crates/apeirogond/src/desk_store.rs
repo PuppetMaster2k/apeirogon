@@ -242,10 +242,15 @@ fn store_member(pins: &mut PinStore, member: &a7n_core::desk::Member) {
         .get(&member.id())
         .filter(|entry| entry.pin == member.pin())
         .and_then(|entry| entry.spki_der.clone());
+    let hw_addr = pins
+        .get(&member.id())
+        .filter(|entry| entry.pin == member.pin())
+        .and_then(|entry| entry.hw_addr);
     pins.add(Entry {
         machine_id: member.id(),
         pin: member.pin(),
         name: member.name().to_owned(),
         spki_der,
+        hw_addr,
     });
 }

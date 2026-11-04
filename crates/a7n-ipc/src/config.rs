@@ -95,6 +95,7 @@ impl Default for InputConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct PeerConfig {
     pub allow_drive: bool,
+    pub wake: bool,
     pub clipboard: ClipboardPolicy,
     pub files: ClipboardPolicy,
     pub modifier_mode: ModifierMode,
@@ -105,6 +106,7 @@ impl Default for PeerConfig {
     fn default() -> Self {
         Self {
             allow_drive: true,
+            wake: true,
             clipboard: ClipboardPolicy::default(),
             files: ClipboardPolicy::Ask,
             modifier_mode: ModifierMode::default(),
@@ -335,7 +337,7 @@ impl Config {
                 })?),
                 ["input", "natural_scrolling"]
                 | ["notifications", "files"]
-                | ["peers", _, "allow_drive"]
+                | ["peers", _, "allow_drive" | "wake"]
                 | ["sync", "settings"] => {
                     toml::Value::Boolean(value.parse().map_err(|_| {
                         ConfigError::Invalid(format!("{key} must be true or false"))

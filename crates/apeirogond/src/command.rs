@@ -24,6 +24,10 @@ pub(crate) enum Command {
     },
     Switch {
         machine: MachineId,
+        reply: Reply<Option<String>>,
+    },
+    Wake {
+        machine: MachineId,
         reply: Reply<()>,
     },
     Status(Reply<Status>),

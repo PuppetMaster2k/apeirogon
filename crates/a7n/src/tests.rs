@@ -92,6 +92,8 @@ fn write_response_status_displays_identity_and_peer_states() {
                 name: "peer".into(),
                 connected,
                 rtt_ms: None,
+                can_wake: false,
+                waking: false,
             })
             .collect(),
         nearby: Vec::new(),
@@ -218,6 +220,12 @@ fn write_response_pairing_and_completion_display_expected_output() {
                 name: "peer".into(),
             },
             "Paired with peer (0123456789abcdef0123456789abcdef)\n",
+        ),
+        (
+            Response::Waking {
+                name: "desktop".into(),
+            },
+            "Waking desktop…\n",
         ),
         (Response::Done, ""),
     ];

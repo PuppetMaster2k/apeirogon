@@ -60,6 +60,14 @@ Initial packets reveal the ALPN; with TLS 1.3 both certificates are encrypted. T
 5. Both sides compute the capability intersection from `PeerInfo.capabilities`. Capabilities are the minor-version features: one is used only if both sides list it.
 6. Both send `Desk` and `Layout` (sections 6 and 7).
 
+`PeerInfo.hw_addr` contains the six-byte MAC of the interface carrying this
+link, or is empty if unavailable. Receivers ignore values whose length is not
+six, whose bytes are all zero, or whose multicast bit (bit 0 of the first byte)
+is set. After authenticating a paired link, they persist the last valid value
+beside its pin for local wake-on-LAN; missing or invalid values do not erase a
+previous valid address. Hardware addresses are never logged or synced through
+desk membership/settings. No new capability or wire field is required.
+
 Limits: handshake timeout 5 s, 4 concurrent unauthenticated connections per listener, first `Hello` max 4096 bytes. If both machines dial each other simultaneously, the link initiated by the larger machine id is kept.
 
 ## 5. Pairing

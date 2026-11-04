@@ -44,6 +44,14 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
             execute(
                 commands,
                 |reply| Command::Switch { machine, reply },
+                |name| name.map_or(Response::Done, |name| Response::Waking { name }),
+            )
+            .await
+        }
+        Request::Wake { machine } => {
+            execute(
+                commands,
+                |reply| Command::Wake { machine, reply },
                 |()| Response::Done,
             )
             .await

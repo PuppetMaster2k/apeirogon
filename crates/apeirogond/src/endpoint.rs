@@ -57,7 +57,8 @@ pub(crate) async fn dial(
     let handshake = async {
         let connection = endpoint.connect(addr, TLS_SERVER_NAME)?.await?;
         let peer = peer_machine_id(&connection)?;
-        let result = handshake::initiate(connection.clone(), local).await;
+        let local = handshake::local_info(&connection, endpoint, local);
+        let result = handshake::initiate(connection.clone(), &local).await;
         if result.is_err()
             && matches!(connection.close_reason(),
             Some(quinn::ConnectionError::ApplicationClosed(close)) if close.error_code == CLOSE_SUPERSEDED)

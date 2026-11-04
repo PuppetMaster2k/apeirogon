@@ -510,11 +510,14 @@ impl Daemon {
             return;
         };
         let actions = if driven {
+            self.wol.pending = None;
             self.input.focus.handover(target, Some(landing))
         } else {
-            if !self.links.by_peer.contains_key(&target) {
+            if !self.is_linked(target) {
+                let _ = self.auto_wake(target, super::wol::WakeAction::Edge(landing), now());
                 return;
             }
+            self.wol.pending = None;
             self.input.focus.take(
                 Take {
                     target,

@@ -34,10 +34,12 @@ impl Daemon {
     async fn apply_hotkey(&mut self, hotkey: Hotkey) {
         let actions = match hotkey {
             Hotkey::Home => {
+                self.wol.pending = None;
                 crate::log::event!("kind=hotkey action=home");
                 self.input.focus.go_home()
             }
             Hotkey::Lock => {
+                self.wol.pending = None;
                 crate::log::event!("kind=hotkey action=lock");
                 self.input.focus.toggle_lock();
                 Vec::new()
@@ -59,6 +61,7 @@ impl Daemon {
 
     pub(crate) async fn set_paused(&mut self, paused: bool) {
         if paused {
+            self.wol.pending = None;
             let actions = self.input.focus.go_home();
             self.input_actions(actions).await;
         }
@@ -69,6 +72,7 @@ impl Daemon {
         &mut self,
         target: a7n_proto::MachineId,
     ) -> Result<(), crate::daemon::DaemonError> {
+        self.wol.pending = None;
         if self.input.paused && target != self.identity.machine_id {
             return Err(crate::daemon::DaemonError::Paused);
         }
@@ -87,7 +91,8 @@ impl Daemon {
                 now(),
             )
         } else {
-            return Err(crate::daemon::DaemonError::NotConnected);
+            self.auto_wake(target, crate::daemon::wol::WakeAction::Switch, now())?;
+            self.input.focus.go_home()
         };
         self.input_actions(actions).await;
         Ok(())

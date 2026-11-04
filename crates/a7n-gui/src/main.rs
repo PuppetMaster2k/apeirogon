@@ -119,6 +119,9 @@ impl App {
                     self.message = format!("Paired with {name}");
                     self.pairing = None;
                 }
+                Update::Response(Ok(Response::Waking { name })) => {
+                    self.message = format!("Waking {name}…");
+                }
                 Update::Response(Ok(Response::Done)) => self.message = "Done".into(),
                 Update::Response(Ok(_)) => self.message = "Unexpected daemon response".into(),
                 Update::Response(Err(error)) => {

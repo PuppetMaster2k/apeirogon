@@ -269,6 +269,7 @@ Rules:
 - Show the full machine ID in mono `text3` with a copy icon button. Don't use the ID as the visible name.
 - Don't list the local machine under **Paired machines** (the old UI showed MARCEL-EBIZ-NB in both places).
 - Show empty sections as a dashed-border card with an icon, a sentence and a hint, never as a blank heading.
+- Offline paired machines with a remembered hardware address show a Secondary **Wake** button. While a wake is pending, show a Warning **Waking…** badge and disable Wake until it completes or expires. Wake sends a packet without moving focus.
 - **Join pairing** stays disabled until both the address and the code are filled in.
 
 ### Peers & policies
@@ -294,6 +295,7 @@ theme::setting_row(ui, "Clipboard",
 - Use the same human key names in chords, remap keycaps and ComboBox values/options (`R Alt`, `Scroll Lock`, `Home`, `L Ctrl`). Meta is Win on Windows, Cmd on macOS and Super elsewhere; stored values keep the config syntax.
 - Choose modifier mode with an Auto / Off / Custom segmented control. Auto swaps Cmd and Ctrl between a Mac and a PC. Only Custom shows the remap grid and "Reset all".
 - Show custom modifier remaps as a grid: `keycap("L Ctrl")` → `ARROW_RIGHT` → a ComboBox. **Draw remapped entries in accent** (accent border and `accent_text` value) so changes stand out. Add a "Reset all" Ghost button.
+- Add **Wake automatically** below Allow drive, with leaf key `wake`: “Wake this machine when you switch to it while offline.” Default on; local only.
 - Clipboard offers Both, Send, Receive, Ask and Off. Ask help: "Incoming copies wait for your confirmation."
 - Files sits below Clipboard with Both, Send, Receive, Ask (default) and Off. Help: "Ask shows a confirmation before files are saved."
 - A machine-wide Receive directory `setting_row` sits above the peer list, including when no peers are paired. Show the effective path in mono with a Ghost "Change…" button that opens a mono text input and "Done". Hint: `files.receive_dir`. Require an absolute path; use the existing validation error and Save changes flow. The default is the OS downloads directory plus `Apeirogon`, falling back to `~/Downloads/Apeirogon`.

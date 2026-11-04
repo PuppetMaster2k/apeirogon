@@ -183,6 +183,20 @@ impl App {
                     }
                 },
             );
+            ui.separator();
+            let key = format!("{prefix}.wake");
+            let mut wake = self.value(&key, "true") == "true";
+            theme::setting_row(
+                ui,
+                "Wake automatically",
+                "Wake this machine when you switch to it while offline.",
+                Some("wake"),
+                |ui| {
+                    if theme::toggle(ui, &mut wake).changed() {
+                        self.edit(&key, if wake { "true" } else { "false" }, "true");
+                    }
+                },
+            );
             for (name, title, default, help) in [
                 (
                     "clipboard",

@@ -226,6 +226,7 @@ async fn receive_focus_unavailable_or_denied_refuses_not_allowed() {
             pin: a.identity.pin,
             name: "owner".into(),
             spki_der: None,
+            hw_addr: None,
         });
         b.sync_trust().unwrap();
         // Trust the responder for A's outgoing TLS handshake.
@@ -309,6 +310,7 @@ async fn receive_input_full_injector_waits_and_delivers_both_events() {
         pin: daemon.identity.pin,
         name: "owner".into(),
         spki_der: None,
+        hw_addr: None,
     });
     daemon
         .receive_from(
@@ -453,4 +455,58 @@ async fn finish_input_retry_after_backend_closes_restores_input() {
     assert!(!daemon.input.failed);
     assert!(daemon.status().input.is_none());
     restarted.grab(true).await;
+}
+
+#[tokio::test]
+async fn captured_offline_edge_waits_for_resistance_before_waking() {
+    // Arrange
+    let (mut daemon, _dir, _input) = daemon(true);
+    let peer = MachineId::try_from(&[42; MachineId::LEN][..]).unwrap();
+    daemon.pins.add(Entry {
+        machine_id: peer,
+        pin: daemon.identity.pin,
+        name: "desktop".into(),
+        spki_der: None,
+        hw_addr: Some([2; 6]),
+    });
+    daemon.layout.state = daemon
+        .layout
+        .state
+        .edit(
+            [daemon.identity.machine_id, peer]
+                .into_iter()
+                .zip([0, 100])
+                .map(|(id, x)| Placement {
+                    id,
+                    x,
+                    y: 0,
+                    width: 100,
+                    height: 100,
+                })
+                .collect(),
+            daemon.identity.machine_id,
+        )
+        .unwrap();
+    let (packets, mut received) = mpsc::channel(1);
+    daemon.wol.sender = Box::new(move |mac| {
+        packets.try_send(mac).unwrap();
+        Ok(())
+    });
+    daemon
+        .captured(Some(Captured::Pointer {
+            x: 99,
+            y: 50,
+            dx: 1,
+            dy: 0,
+        }))
+        .await;
+    assert!(received.try_recv().is_err());
+
+    // Act
+    daemon.captured(Some(pointer(true))).await;
+
+    // Assert
+    assert_eq!(received.try_recv().unwrap(), [2; 6]);
+    assert!(daemon.status().peers[0].waking);
+    assert_eq!(daemon.input.focus.cursor(), Cursor::Home);
 }

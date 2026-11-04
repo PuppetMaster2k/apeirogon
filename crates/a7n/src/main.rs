@@ -63,6 +63,8 @@ enum Command {
     Unpair { machine: String },
     /// Move focus to a machine by id, unique hex prefix (at least 4), or exact name.
     Switch { machine: String },
+    /// Wake a paired machine without moving focus.
+    Wake { machine: String },
     /// Manage the per-user daemon.
     Daemon {
         #[command(subcommand)]
@@ -114,6 +116,9 @@ async fn run(command: Command) -> Result<()> {
         Command::Daemon { command } => return daemon::run(command).await,
         Command::Logs { follow, lines } => return logs::run(lines, follow).await,
         Command::Switch { machine } => Request::Switch {
+            machine: resolve_machine(&machine).await?,
+        },
+        Command::Wake { machine } => Request::Wake {
             machine: resolve_machine(&machine).await?,
         },
         Command::Send {
@@ -268,7 +273,9 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
             }
             writeln!(output, "{} {} (this machine)", status.name, status.machine)?;
             for peer in &status.peers {
-                let state = if peer.connected {
+                let state = if peer.waking {
+                    "waking"
+                } else if peer.connected {
                     "connected"
                 } else {
                     "offline"
@@ -297,6 +304,7 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
         Response::Paired { machine, name } => {
             writeln!(output, "Paired with {name} ({machine})")?;
         }
+        Response::Waking { name } => writeln!(output, "Waking {name}…")?,
         Response::Done => {}
         Response::FilesOffered { .. } => bail!("unexpected file offer response from daemon"),
         Response::Layout(_) => bail!("unexpected layout response from daemon"),

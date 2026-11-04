@@ -25,6 +25,8 @@ async fn request_status_returns_same_status_info() {
             name: "peer".to_owned(),
             connected: true,
             rtt_ms: Some(7),
+            can_wake: false,
+            waking: false,
         }],
         nearby: vec![NearbyMachine {
             id: MachineId::try_from([3; MachineId::LEN].as_slice()).unwrap(),
