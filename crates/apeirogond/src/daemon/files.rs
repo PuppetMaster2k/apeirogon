@@ -47,6 +47,7 @@ pub(super) struct State {
     active: HashMap<u64, Active>,
     /// Pastes waiting for the download with this active id, answered when it ends.
     pastes: HashMap<u64, Vec<oneshot::Sender<Option<Vec<u8>>>>>,
+    accepts: HashMap<(MachineId, u64), crate::command::Reply<()>>,
     /// The copied files this machine serves for its current clipboard generation.
     clipboard_offer: Option<(u64, Arc<Offer>)>,
     /// The last pasted copy, so pasting again hands out the same paths.
@@ -119,6 +120,7 @@ pub(super) enum Failure {
     Integrity,
     Invalid,
     Io,
+    NoSpace,
 }
 
 type Result<T> = std::result::Result<T, Failure>;
@@ -187,7 +189,9 @@ impl Daemon {
             Ok(()) => SendOutcome::Completed,
             Err(Failure::LinkLost) => return,
             Err(Failure::Cancelled) => SendOutcome::Cancelled,
-            Err(Failure::Integrity | Failure::Invalid | Failure::Io) => SendOutcome::Failed,
+            Err(Failure::Integrity | Failure::Invalid | Failure::Io | Failure::NoSpace) => {
+                SendOutcome::Failed
+            }
         };
         if self.files.finished_sends.len() == FINISHED_SENDS_KEPT {
             self.files.finished_sends.pop_front();
@@ -248,6 +252,7 @@ impl Daemon {
     }
 
     pub(in crate::daemon) fn files_link_down(&mut self, peer: MachineId) {
+        self.files.accepts.retain(|(id, _), _| *id != peer);
         for active in self
             .files
             .active
@@ -305,6 +310,10 @@ impl Daemon {
                     ClipboardPolicy::Receive | ClipboardPolicy::Both | ClipboardPolicy::Ask
                 )
         });
+        let incoming = &self.files.incoming;
+        self.files
+            .accepts
+            .retain(|key, _| incoming.contains_key(key));
     }
 
     pub(in crate::daemon) fn cancel_file_transfer(
@@ -349,6 +358,18 @@ impl Daemon {
             return;
         };
         let result = outcome.as_ref().map(|_| ()).map_err(|failure| *failure);
+        if let Some(reply) = (active.kind == Kind::Offer
+            && active.direction == TransferDirection::Receive)
+            .then(|| self.files.accepts.remove(&(active.peer, active.offer)))
+            .flatten()
+        {
+            let error = if result == Err(Failure::NoSpace) {
+                DaemonError::NoSpace
+            } else {
+                DaemonError::InvalidRequest("file receive failed before starting")
+            };
+            let _ = reply.send(Err(error));
+        }
         if let Some(transfers) = self
             .clipboard
             .links
@@ -368,12 +389,19 @@ impl Daemon {
         }
         if let Err(reason) = result {
             let reason = match reason {
-                Failure::Integrity => a7n_proto::v1::AbortReason::Integrity,
-                Failure::Io => a7n_proto::v1::AbortReason::IoError,
-                Failure::Invalid => a7n_proto::v1::AbortReason::Refused,
-                Failure::Cancelled | Failure::LinkLost => a7n_proto::v1::AbortReason::Cancelled,
-            }
-            .as_str_name();
+                Failure::NoSpace => {
+                    if active.kind == Kind::Offer {
+                        crate::log::event!("kind=file_offer_no_space");
+                    }
+                    "no_space"
+                }
+                Failure::Integrity => a7n_proto::v1::AbortReason::Integrity.as_str_name(),
+                Failure::Io => a7n_proto::v1::AbortReason::IoError.as_str_name(),
+                Failure::Invalid => a7n_proto::v1::AbortReason::Refused.as_str_name(),
+                Failure::Cancelled | Failure::LinkLost => {
+                    a7n_proto::v1::AbortReason::Cancelled.as_str_name()
+                }
+            };
             crate::log::event!("kind=file_transfer_failed reason={reason}");
         }
         self.start_waiting_files(active.peer);

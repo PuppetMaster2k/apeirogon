@@ -281,6 +281,10 @@ crates/
     offer id) and the outcome of recently ended sends (`finished_sends`, session
     state, at most 16; link loss is not an outcome because the offer resumes). File offers use an
     independent generation namespace and do not change the receiving clipboard.
+  - Local IPC version 5 adds a distinct `no_space` error when accepting files.
+    Before downloading, the receiver checks the remaining bytes after rehashing
+    partial data plus a 256 MiB safety margin. A failed free-space query is
+    logged and receiving proceeds.
   - Local IPC version 3 adds status field `missing_permissions` and
     `RequestPermission { permission }`. The daemon owns the macOS
     Accessibility and Input Monitoring grants, so it reports what is missing,

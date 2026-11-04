@@ -42,3 +42,29 @@ cargo install a7n apeirogond a7n-gui --locked
 
 Start the daemon with `a7n daemon start`, then open `a7n-gui`.
 Use `a7n daemon enable` to start it automatically at login.
+
+## Files
+
+Copy files or folders in your file manager and paste them on another paired
+machine. Files download on paste into `files.receive_dir`, which defaults to
+your Downloads directory under `Apeirogon` (`~/Downloads/Apeirogon` as a fallback).
+
+To send files directly:
+
+```sh
+a7n send <peer> <path>...
+a7n files accept <peer>
+a7n files reject <peer>
+a7n files cancel <id>
+```
+
+`<peer>` is a peer name, machine id or unique hex prefix of at least four digits.
+`a7n send` follows the transfer; add `--no-wait` to return after offering it.
+Use `a7n status` or the GUI to see held offers, progress and transfer ids for
+cancellation. Accept or reject an offer on the receiving machine.
+
+Per-peer `peers.<id>.files` defaults to `ask`: incoming sends need confirmation,
+while a local paste counts as consent. Policies are `both`, `send`, `receive`,
+`ask` and `off`. Receiving requires enough free space for the remaining download
+plus a 256 MiB margin. Files are verified before publishing; existing files
+are preserved by choosing a new name on collisions.

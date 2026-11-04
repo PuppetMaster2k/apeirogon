@@ -12,6 +12,7 @@ fn error_response_daemon_failures_maps_safe_categories() {
         ),
         (DaemonError::PairingBusy, ErrorKind::Busy),
         (DaemonError::NotPaired, ErrorKind::NotPaired),
+        (DaemonError::NoSpace, ErrorKind::NoSpace),
         (
             DaemonError::Pairing(crate::pairing::PairingError::Refused),
             ErrorKind::PairingRefused,

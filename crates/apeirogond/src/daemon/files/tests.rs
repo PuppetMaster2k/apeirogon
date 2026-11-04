@@ -13,6 +13,7 @@ use crate::daemon::test_peer::{Peer, TEST_TIMEOUT};
 
 mod paste;
 mod resume;
+mod space;
 
 fn tempdir() -> TempDir {
     tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap()

@@ -201,6 +201,7 @@ fn error_response(error: &DaemonError) -> Response {
             ErrorKind::InvalidRequest
         }
         DaemonError::NotConnected => ErrorKind::NotConnected,
+        DaemonError::NoSpace => ErrorKind::NoSpace,
         DaemonError::NotPaired => ErrorKind::NotPaired,
         DaemonError::Pairing(_) => ErrorKind::PairingRefused,
         _ => ErrorKind::Internal,

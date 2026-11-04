@@ -91,6 +91,8 @@ pub(crate) enum DaemonError {
     InvalidRequest(&'static str),
     #[error("machine is not connected")]
     NotConnected,
+    #[error("not enough free space in the receive directory")]
+    NoSpace,
     #[error("trust snapshot lock poisoned")]
     TrustPoisoned,
 }
@@ -347,7 +349,7 @@ impl Daemon {
             }
             Command::SendFiles { peer, paths, reply } => self.offer_files(peer, paths, reply),
             Command::FilesAccept { peer, reply } => {
-                let _ = reply.send(self.accept_files(peer));
+                self.accept_files_with_reply(peer, reply);
             }
             Command::FilesReject { peer, reply } => {
                 let _ = reply.send(self.reject_files(peer));
