@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.1...v0.15.2) (2026-11-04)
+
+
+### Bug Fixes
+
+* **daemon:** harden peer input and simplify the daemon ([#147](https://github.com/PuppetMaster2k/apeirogon/issues/147)) ([eeb7312](https://github.com/PuppetMaster2k/apeirogon/commit/eeb731286bc0126ce4d12acd4d27380ab86ba34e))
+
 ## [0.15.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.0...v0.15.1) (2026-11-04)
 
 
