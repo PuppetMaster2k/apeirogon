@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use a7n_proto::{MachineId, ProtoError, v1};
+use a7n_proto::{MachineId, ProtoError, limits, v1};
 
 pub const SYNCED_KEYS: &[&str] = &[
     "input.speed",
@@ -26,6 +26,9 @@ impl TryFrom<&v1::SettingsSync> for Settings {
     type Error = ProtoError;
 
     fn try_from(wire: &v1::SettingsSync) -> Result<Self, Self::Error> {
+        if wire.set_at > limits::COUNTER_MAX {
+            return Err(ProtoError::CounterTooLarge);
+        }
         Ok(Self {
             set_at: wire.set_at,
             by: MachineId::try_from(wire.by.as_slice())?,

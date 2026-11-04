@@ -41,8 +41,13 @@ impl LayoutStore {
 }
 
 fn read_layout(path: &Path) -> Result<Option<Layout>, ()> {
-    let Some(wire) = crate::control_file::read::<v1::Layout>(path)? else {
+    let Some(mut wire) = crate::control_file::read::<v1::Layout>(path)? else {
         return Ok(None);
     };
+    // Releases before the counter limit accepted any version; restart such a
+    // layout at 0 so the desk can edit it again (PROTOCOL.md 7).
+    if wire.version > a7n_proto::limits::COUNTER_MAX {
+        wire.version = 0;
+    }
     Layout::try_from(&wire).map(Some).map_err(|_| ())
 }

@@ -74,3 +74,15 @@ fn newer_timestamp_and_machine_id_order_requires_strict_increase() {
     }
     assert!(newer(None, &current));
 }
+
+#[test]
+fn try_from_set_at_above_counter_max_is_rejected() {
+    // Arrange
+    let wire = settings(a7n_proto::limits::COUNTER_MAX + 1, 1).to_proto();
+
+    // Act
+    let result = Settings::try_from(&wire);
+
+    // Assert
+    assert!(matches!(result, Err(ProtoError::CounterTooLarge)));
+}

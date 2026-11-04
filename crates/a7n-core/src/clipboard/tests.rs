@@ -328,3 +328,19 @@ fn accept_files_item_with_digest_or_inline_data_is_rejected() {
         assert_eq!(result.unwrap_err(), ClipboardError::Digest);
     }
 }
+
+#[test]
+fn accept_generation_above_counter_max_is_rejected() {
+    // Arrange
+    let wire = announce(
+        vec![item(TEXT_PLAIN, 2)],
+        generation(limits::COUNTER_MAX + 1, 1),
+    )
+    .unwrap();
+
+    // Act
+    let result = accept(None, &wire);
+
+    // Assert
+    assert!(matches!(result, Err(ClipboardError::Generation)));
+}

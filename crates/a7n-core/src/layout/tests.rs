@@ -240,9 +240,11 @@ fn try_from_malformed_ids_and_overlapping_wire_rejects() {
     bad_author.by.clear();
     let mut bad_machine = valid.clone();
     bad_machine.machines[0].id.clear();
-    let mut overlap = valid;
+    let mut overlap = valid.clone();
     overlap.machines[1].x = 50;
-    for wire in [bad_author, bad_machine, overlap] {
+    let mut huge_version = valid;
+    huge_version.version = limits::COUNTER_MAX + 1;
+    for wire in [bad_author, bad_machine, overlap, huge_version] {
         // Act
         let result = Layout::try_from(&wire);
 
