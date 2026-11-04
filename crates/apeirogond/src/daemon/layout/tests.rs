@@ -100,3 +100,33 @@ fn load_corrupt_or_invalid_layout_starts_empty() {
         assert_eq!(store.state, Layout::empty(own));
     }
 }
+
+#[test]
+fn load_saturated_layout_restarts_version_and_keeps_placements() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("layout.pb");
+    let own = MachineId::try_from(&[1; MachineId::LEN][..]).unwrap();
+    let placed = Layout::empty(own)
+        .edit(
+            vec![Placement {
+                id: own,
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+            }],
+            own,
+        )
+        .unwrap();
+    let mut saturated = placed.to_proto();
+    saturated.version = u64::MAX;
+    std::fs::write(&path, prost::Message::encode_to_vec(&saturated)).unwrap();
+
+    // Act
+    let restored = LayoutStore::load(&path, own);
+
+    // Assert
+    assert_eq!(restored.state.version(), 0);
+    assert_eq!(restored.state.placements(), placed.placements());
+}

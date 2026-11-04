@@ -24,6 +24,9 @@ pub enum ProtoError {
     /// The length prefix is not a valid varint.
     #[error("malformed varint length prefix")]
     BadLengthPrefix,
+    /// A version counter is above `limits::COUNTER_MAX`.
+    #[error("counter exceeds the protocol limit")]
+    CounterTooLarge,
     /// The body is not a valid protobuf message.
     #[error(transparent)]
     Decode(#[from] prost::DecodeError),

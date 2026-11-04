@@ -117,7 +117,6 @@ impl Layout {
     /// Rejects invalid placements and an exhausted version counter.
     pub fn edit(&self, placements: Vec<Placement>, own_id: MachineId) -> Result<Self, LayoutError> {
         validate(&placements)?;
-        // ponytail: versions stop at u64::MAX; change the protocol before exhausting it.
         let version = self
             .version
             .checked_add(1)
@@ -208,6 +207,9 @@ impl TryFrom<&v1::Layout> for Layout {
     fn try_from(value: &v1::Layout) -> Result<Self, Self::Error> {
         if value.machines.len() > limits::LAYOUT_MACHINES_MAX {
             return Err(LayoutError::TooManyMachines);
+        }
+        if value.version > limits::COUNTER_MAX {
+            return Err(ProtoError::CounterTooLarge.into());
         }
         let by = MachineId::try_from(value.by.as_slice())?;
         let placements = value

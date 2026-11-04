@@ -63,6 +63,10 @@ pub const IMAGE_MAX_DIMENSION: u32 = 16_384;
 pub const IMAGE_DECODED_MAX: usize = 256 * 1024 * 1024;
 /// Inline clipboard bytes per announce, summed over items (section 14).
 pub const CLIPBOARD_INLINE_MAX: usize = 64 * 1024;
+/// Largest layout version, settings `set_at` or clipboard generation a peer
+/// may send (section 14). Far above any honest value, far below `u64::MAX`, so
+/// one hostile message cannot exhaust a counter.
+pub const COUNTER_MAX: u64 = 1 << 53;
 /// Largest number of machines in a desk layout (section 14).
 pub const LAYOUT_MACHINES_MAX: usize = 64;
 

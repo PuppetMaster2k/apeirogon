@@ -103,6 +103,7 @@ The layout is a 2D canvas on which each machine's whole virtual desktop (all its
 - One `Layout` describes the whole desk and is sent to every member.
 - A layout contains at most 64 machines (section 14), with unique 16-byte ids and a 16-byte `by`. Rectangles MUST have nonzero dimensions, fit signed 32-bit canvas coordinates, and have disjoint interiors (touching edges are allowed). Invalid layouts are ignored without closing the link.
 - A local edit sets `version = max(seen) + 1`, `by = own id`. The newest `(version, by)` wins; a machine whose unsent edit loses shows a notice.
+- A layout whose `version` exceeds 2^53 (section 14) is ignored. A stored layout above that limit is loaded with `version = 0`.
 - When the pointer leaves the owner's current machine across a shared edge segment, the owner computes `Landing` (edge and offset) on the target from the layout.
 
 ## 8. Ownership and routing
@@ -133,7 +134,7 @@ The layout is a 2D canvas on which each machine's whole virtual desktop (all its
 The clipboard is *live*: every copy is announced; data moves when someone pastes.
 
 - Every local clipboard change creates a new generation: `generation = max(seen) + 1`, origin = own id.
-- The machine sends `ClipboardAnnounce` to every connected peer whose policy allows it. Order: higher `generation` wins, tie broken by larger `origin`.
+- The machine sends `ClipboardAnnounce` to every connected peer whose policy allows it. Order: higher `generation` wins, tie broken by larger `origin`. An announce whose `generation` exceeds 2^53 (section 14) is ignored.
 - **Sensitive content is never announced.** The source MUST check the OS markers (macOS `org.nspasteboard.ConcealedType`, Windows `ExcludeClipboardContentFromMonitorProcessing`, KDE `x-kde-passwordManagerHint`) and the local app deny-list; marked content creates no announce. This check cannot be disabled.
 - Small items are pushed eagerly in `inline_data`, as long as the announce's total inline bytes stay at or below 64 KiB. Other items carry only `size` and `sha256` and are **fetched on paste**: the OS paste request on the receiving machine triggers `TransferRequest{clipboard = (origin, generation), item_index}`. Where the OS cannot delay a paste, the receiver fetches eagerly when the item is below a configurable limit.
 - On Linux, files are delivered on paste as `text/uri-list` pointing into the receive directory: the paste request triggers the transfer, and the paths are handed out once the files are verified. Above a size threshold the receiver shows progress.
@@ -173,7 +174,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 
 ## 13. Settings sync and policy
 
-- `SettingsSync` shares convenience settings (hotkeys, speed multipliers and the like) across the desk. Receivers MUST apply only keys on a fixed allow-list and ignore everything else.
+- `SettingsSync` shares convenience settings (hotkeys, speed multipliers and the like) across the desk. Receivers MUST apply only keys on a fixed allow-list and ignore everything else. A `SettingsSync` whose `set_at` exceeds 2^53 (section 14) is ignored.
 - Security settings are never synced and never changeable by a peer: `allow_drive`, per-peer clipboard and file policy, the clipboard app deny-list, and the sensitive-content check.
 - Per peer, the user controls `allow_drive` (announced with `Accepts`) and clipboard and file policy. Clipboard policy is local config `peers.<id>.clipboard`: `both` (default), `send`, `receive`, `ask`, or `off`. The app deny-list is local config `clipboard.deny_apps`, edited in the file.
 - File policy is local config `peers.<id>.files`: `both`, `send`, `receive`, `ask` (default), or `off`; `ask` requires confirmation before incoming files are saved. Local `files.receive_dir` selects an absolute receive directory, defaulting to the OS downloads directory plus `Apeirogon` (falling back to `~/Downloads/Apeirogon`). Neither key is synced or changeable by a peer.
@@ -204,6 +205,7 @@ With `ask`, sending behaves like `both`, while incoming copies are validated and
 | Image dimension max | 16384 pixels |
 | Decoded image max (RGBA) | 256 MiB |
 | Inline clipboard total per announce | 64 KiB |
+| Layout version, settings `set_at`, clipboard generation | at most 2^53 |
 | Machines per layout | 64 |
 | File manifest entries max | 10000 |
 | File manifest path max | 4096 UTF-8 bytes |

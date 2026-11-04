@@ -30,7 +30,7 @@ impl Clock {
     }
 
     pub fn next(&mut self, own: MachineId) -> Generation {
-        // ponytail: exhaustion stops advancing; widen the wire counter if it ever becomes reachable.
+        // Peers cannot push `seen` past `limits::COUNTER_MAX`, so this never saturates.
         self.seen = self.seen.saturating_add(1);
         Generation {
             generation: self.seen,
@@ -165,6 +165,8 @@ pub enum ClipboardError {
     Length,
     #[error("clipboard digest is invalid")]
     Digest,
+    #[error("clipboard generation exceeds the protocol limit")]
+    Generation,
 }
 
 #[derive(Debug)]
@@ -181,6 +183,9 @@ pub fn accept(
     current: Option<Generation>,
     incoming: &ClipboardAnnounce,
 ) -> Result<Option<Received>, ClipboardError> {
+    if incoming.generation > limits::COUNTER_MAX {
+        return Err(ClipboardError::Generation);
+    }
     let generation = Generation {
         generation: incoming.generation,
         origin: MachineId::try_from(incoming.origin.as_slice())
