@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.12.0...v0.13.0) (2026-11-04)
+
+
+### Features
+
+* **daemon:** notify about large incoming transfers and held file offers ([#140](https://github.com/PuppetMaster2k/apeirogon/issues/140)) ([e46f477](https://github.com/PuppetMaster2k/apeirogon/commit/e46f477e2ce1a5d19f93781fb35829e7059acdbf))
+
 ## [0.12.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.11.0...v0.12.0) (2026-11-04)
 
 
