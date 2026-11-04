@@ -14,6 +14,8 @@ use tokio::sync::mpsc;
 use crate::identity::{self, IdentityError};
 
 /// Application close code for the link that lost a simultaneous dial.
+/// Application close code for an ordinary close.
+pub(crate) const CLOSE_NORMAL: VarInt = VarInt::from_u32(0);
 pub(crate) const CLOSE_SUPERSEDED: VarInt = VarInt::from_u32(1);
 
 /// Application close code for a link the peer stopped talking to.
@@ -46,6 +48,8 @@ pub(crate) enum LinkError {
     InboundClosed,
     #[error("peer sent an invalid handshake message")]
     InvalidHello,
+    #[error("input sequence exhausted")]
+    InputSeqExhausted,
     #[error("peer presented no certificate")]
     NoPeerCertificate,
     #[error(transparent)]

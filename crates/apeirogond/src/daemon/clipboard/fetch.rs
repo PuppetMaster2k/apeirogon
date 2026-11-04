@@ -23,21 +23,16 @@ impl Daemon {
             .announce
             .as_ref()
             .and_then(|wire| wire.items.get(request.item_index as usize).cloned());
-        if self.clipboard.current != Some(request.generation)
-            || peer == self.identity.machine_id
-            || !matches!(
-                self.clipboard_policy(peer),
-                super::ClipboardPolicy::Both
-                    | super::ClipboardPolicy::Receive
-                    | super::ClipboardPolicy::Ask
-            )
-            || !self.links.by_peer.contains_key(&peer)
-            || item.is_none()
-        {
+        let Some(item) = item.filter(|_| {
+            self.clipboard.current == Some(request.generation)
+                && peer != self.identity.machine_id
+                && self.clipboard_policy(peer).receives()
+                && self.links.by_peer.contains_key(&peer)
+        }) else {
             reject(request, "unavailable");
             return;
-        }
-        if item.as_ref().is_some_and(|item| item.mime == FILES) {
+        };
+        if item.mime == FILES {
             self.paste_files(request);
             return;
         }
@@ -45,7 +40,7 @@ impl Daemon {
             reject(request, "link_lost");
             return;
         };
-        let Ok(permit) = transfers.fetch_slots.clone().try_acquire_owned() else {
+        let Ok(permit) = transfers.slots.clone().try_acquire_owned() else {
             reject(request, "busy");
             return;
         };
@@ -73,7 +68,6 @@ impl Daemon {
             }),
         );
         let events = self.events.clone();
-        let item = item.expect("item checked above");
         let task = self.tasks.spawn(async move {
             let result = timeout(limits::CLIPBOARD_FETCH_TIMEOUT, async {
                 let (mut stream, mut buf) = receiver.await.map_err(|_| "link_lost")?;
@@ -83,8 +77,8 @@ impl Daemon {
             .unwrap_or(Err("timeout"));
             if let Err(reason) = result {
                 crate::log::event!("kind=clipboard_fetch_failed reason={reason}");
-                if reason == "frame" {
-                    connection.close(0u32.into(), b"");
+                if reason == MALFORMED_FRAME {
+                    connection.close(crate::link::CLOSE_NORMAL, b"");
                 }
             }
             drop(permit);
@@ -114,12 +108,7 @@ impl Daemon {
             && self.clipboard.current == Some(request.generation)
             && self.clipboard.handle.is_some()
             && self.clipboard.announce.is_some()
-            && matches!(
-                self.clipboard_policy(peer),
-                super::ClipboardPolicy::Both
-                    | super::ClipboardPolicy::Receive
-                    | super::ClipboardPolicy::Ask
-            );
+            && self.clipboard_policy(peer).receives();
         self.start_waiting_files(peer);
         if valid {
             let _ = request.reply.send(data);
@@ -152,7 +141,7 @@ impl Daemon {
                         ))
                         .await;
                 }
-                Ok(Err("frame")) => connection.close(0u32.into(), b""),
+                Ok(Err(MALFORMED_FRAME)) => connection.close(crate::link::CLOSE_NORMAL, b""),
                 _ => crate::log::event!("kind=clipboard_fetch_failed reason=open"),
             }
             drop(permit);
@@ -189,7 +178,7 @@ impl Daemon {
         let Some(transfers) = self.clipboard.links.get(&peer) else {
             return;
         };
-        let Ok(permit) = transfers.send_slots.clone().try_acquire_owned() else {
+        let Ok(permit) = transfers.slots.clone().try_acquire_owned() else {
             crate::log::event!("kind=clipboard_fetch_failed reason=busy");
             return;
         };
@@ -299,16 +288,19 @@ async fn send(
     Ok(())
 }
 
+/// The error of a malformed transfer frame, which closes the link (PROTOCOL.md 11).
+pub(in crate::daemon) const MALFORMED_FRAME: &str = "frame";
+
 pub(in crate::daemon) async fn read(
     stream: &mut RecvStream,
     buf: &mut Vec<u8>,
 ) -> Result<Option<Frame>, &'static str> {
     loop {
         if let Some((frame, used)) =
-            decode_frame::<TransferFrame>(buf, FrameKind::Transfer).map_err(|_| "frame")?
+            decode_frame::<TransferFrame>(buf, FrameKind::Transfer).map_err(|_| MALFORMED_FRAME)?
         {
             buf.drain(..used);
-            return frame.frame.map(Some).ok_or("frame");
+            return frame.frame.map(Some).ok_or(MALFORMED_FRAME);
         }
         // A bounded read prevents a peer from making us buffer arbitrarily beyond a frame.
         let chunk = stream

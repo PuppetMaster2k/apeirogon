@@ -17,7 +17,6 @@ use super::Daemon;
 use super::files::files_top_level;
 
 mod ask;
-pub(super) use ask::deadline;
 
 // A local UX limit keeps unattended confirmations from lingering; this is not a wire limit.
 const CLIPBOARD_ASK_TIMEOUT: Duration = Duration::from_secs(60);
@@ -34,25 +33,23 @@ pub(super) struct Transfers {
     pub(in crate::daemon) id: usize,
     pub(in crate::daemon) next: u64,
     pub(in crate::daemon) pending: HashMap<u64, oneshot::Sender<(quinn::RecvStream, Vec<u8>)>>,
-    pub(in crate::daemon) send_slots: Arc<Semaphore>,
+    /// Sends and fetches share the per-link transfer limit (PROTOCOL.md 14).
+    pub(in crate::daemon) slots: Arc<Semaphore>,
     read_slots: Arc<Semaphore>,
     send_tasks: HashMap<u64, tokio::task::AbortHandle>,
     fetch_tasks: HashMap<u64, tokio::task::AbortHandle>,
-    pub(in crate::daemon) fetch_slots: Arc<Semaphore>,
 }
 
 impl Transfers {
     fn new(id: usize, next: u64) -> Self {
-        let slots = Arc::new(Semaphore::new(limits::CONCURRENT_TRANSFERS_PER_LINK));
         Self {
             id,
             next,
             pending: HashMap::new(),
-            send_slots: slots.clone(),
+            slots: Arc::new(Semaphore::new(limits::CONCURRENT_TRANSFERS_PER_LINK)),
             send_tasks: HashMap::new(),
             fetch_tasks: HashMap::new(),
             read_slots: Arc::new(Semaphore::new(limits::CONCURRENT_TRANSFERS_PER_LINK)),
-            fetch_slots: slots,
         }
     }
 }
@@ -110,8 +107,7 @@ impl Daemon {
             current,
             held: self.held_clipboard(),
             peers: self
-                .status()
-                .peers
+                .peer_infos()
                 .into_iter()
                 .map(|peer| PeerClipboard {
                     machine: peer.id,
@@ -151,10 +147,7 @@ impl Daemon {
 
     pub(super) fn clipboard_can_send(&self, peer: MachineId) -> bool {
         self.clipboard.handle.is_some()
-            && matches!(
-                self.clipboard_policy(peer),
-                ClipboardPolicy::Both | ClipboardPolicy::Send | ClipboardPolicy::Ask
-            )
+            && self.clipboard_policy(peer).sends()
             && self
                 .links
                 .by_peer
@@ -300,17 +293,18 @@ impl Daemon {
     }
 
     pub(super) fn receive_clipboard(&mut self, peer: MachineId, wire: &ClipboardAnnounce) {
+        // Links carry only the sender's own clipboard (no relaying), so a
+        // foreign origin is a spoof that would also hide that machine's copies.
+        if wire.origin != peer.as_bytes() {
+            crate::log::event!("kind=clipboard_rejected reason=origin");
+            return;
+        }
         // Observe the counter even for disabled policies or malformed payloads.
         self.clipboard.clock.observe(&Generation {
             generation: wire.generation,
             origin: self.identity.machine_id,
         });
-        if self.clipboard.handle.is_none()
-            || !matches!(
-                self.clipboard_policy(peer),
-                ClipboardPolicy::Both | ClipboardPolicy::Receive | ClipboardPolicy::Ask
-            )
-        {
+        if self.clipboard.handle.is_none() || !self.clipboard_policy(peer).receives() {
             return;
         }
         if self.clipboard_policy(peer) == ClipboardPolicy::Ask {

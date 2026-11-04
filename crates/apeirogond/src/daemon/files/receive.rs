@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::path::PathBuf;
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use a7n_core::files::ValidManifest;
 use a7n_proto::limits;
@@ -10,7 +13,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::timeout;
 
 use super::{Event, Failure, Progress, Result, staging};
-use crate::daemon::clipboard::fetch::read;
+use crate::daemon::clipboard::fetch::{MALFORMED_FRAME, read};
 
 mod verify;
 pub(super) use verify::apply;
@@ -44,41 +47,73 @@ pub(super) struct Receive {
     pub progress: Arc<Progress>,
     pub events: mpsc::Sender<Event>,
     pub connection: Connection,
+    pub reserved: Arc<AtomicU64>,
+}
+
+/// The bytes one receive still has to write, held in the shared total until dropped.
+pub(super) struct Reservation<'a> {
+    reserved: &'a AtomicU64,
+    bytes: u64,
+    /// What other receives had reserved when this one joined.
+    pub(super) others: u64,
+}
+
+impl<'a> Reservation<'a> {
+    pub(super) fn new(reserved: &'a AtomicU64, bytes: u64) -> Self {
+        let others = reserved.fetch_add(bytes, Ordering::Relaxed);
+        Self {
+            reserved,
+            bytes,
+            others,
+        }
+    }
+}
+
+impl Drop for Reservation<'_> {
+    fn drop(&mut self) {
+        self.reserved.fetch_sub(self.bytes, Ordering::Relaxed);
+    }
+}
+
+fn space_left(path: &std::path::Path, reserved: u64) -> std::io::Result<u64> {
+    a7n_platform::transfer_fs::available_space(path).map(|space| space.saturating_sub(reserved))
 }
 
 pub(super) async fn run(mut job: Receive) -> Result<Vec<PathBuf>> {
+    let mut cancelled = job.cancelled.clone();
     let result = tokio::select! {
         biased;
-        _ = job.cancelled.changed() => Err(*job.cancelled.borrow()),
-        result = download(&job.manifest, &job.stage, &job.destination, &mut job.receiver, &job.progress, &job.events, job.id) => result,
+        _ = cancelled.changed() => Err(*cancelled.borrow()),
+        result = download(&mut job) => result,
     };
     if result.is_err() && !matches!(result, Err(Failure::LinkLost | Failure::NoSpace)) {
         let _ = std::fs::remove_dir_all(&job.stage);
     }
     if result == Err(Failure::Invalid) {
         // Malformed transfer framing closes the link, as for clipboard fetches.
-        job.connection.close(0u32.into(), b"");
+        job.connection.close(crate::link::CLOSE_NORMAL, b"");
     }
     result
 }
 
-async fn download(
-    manifest: &ValidManifest,
-    stage: &std::path::Path,
-    receive_dir: &std::path::Path,
-    receiver: &mut oneshot::Receiver<(RecvStream, Vec<u8>)>,
-    progress: &Progress,
-    events: &mpsc::Sender<Event>,
-    id: u64,
-) -> Result<Vec<PathBuf>> {
+async fn download(job: &mut Receive) -> Result<Vec<PathBuf>> {
+    let Receive {
+        id,
+        manifest,
+        stage,
+        destination: receive_dir,
+        receiver,
+        progress,
+        events,
+        reserved,
+        ..
+    } = job;
+    let id = *id;
     // Refuse fresh downloads before even creating staging on a full filesystem.
     if !stage.try_exists().map_err(|_| Failure::Io)? {
-        check_space(
-            receive_dir,
-            progress.bytes_total,
-            0,
-            a7n_platform::transfer_fs::available_space,
-        )?;
+        check_space(receive_dir, progress.bytes_total, 0, |path| {
+            space_left(path, reserved.load(Ordering::Relaxed))
+        })?;
     }
     let mut partial = staging::prepare(stage, manifest)?;
     let resumed = partial
@@ -87,12 +122,11 @@ async fn download(
         .flatten()
         .map(|file| file.written)
         .sum();
-    check_space(
-        receive_dir,
-        progress.bytes_total,
-        resumed,
-        a7n_platform::transfer_fs::available_space,
-    )?;
+    // Reserve before checking, so two receives starting together each see the other.
+    let reservation = Reservation::new(reserved, progress.bytes_total.saturating_sub(resumed));
+    check_space(receive_dir, progress.bytes_total, resumed, |path| {
+        space_left(path, reservation.others)
+    })?;
     progress.bytes.store(resumed, Ordering::Relaxed);
     events
         .send(Event::FilesReady {
@@ -110,7 +144,7 @@ async fn download(
             .await
             .map_err(|_| Failure::LinkLost)?
             .map_err(|reason| {
-                if reason == "frame" {
+                if reason == MALFORMED_FRAME {
                     Failure::Invalid
                 } else {
                     Failure::LinkLost

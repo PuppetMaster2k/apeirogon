@@ -8,7 +8,6 @@ use std::path::PathBuf;
 use a7n_core::clipboard::{FILES, Generation};
 use a7n_core::files::ValidManifest;
 use a7n_ipc::TransferDirection;
-use a7n_ipc::config::ClipboardPolicy;
 use a7n_platform::clipboard::{PasteRequest, uri_list};
 use a7n_proto::MachineId;
 use a7n_proto::v1::{Capability, ClipboardAnnounce, FileManifest, TransferCancel, envelope::Body};
@@ -44,10 +43,7 @@ impl Daemon {
             .handle
             .as_ref()
             .is_some_and(|handle| handle.files)
-            && matches!(
-                self.files_policy(peer),
-                ClipboardPolicy::Receive | ClipboardPolicy::Both | ClipboardPolicy::Ask
-            )
+            && self.files_policy(peer).receives()
             && self
                 .links
                 .by_peer

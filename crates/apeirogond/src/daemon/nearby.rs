@@ -62,9 +62,7 @@ impl Daemon {
         if self.pins.get(&id).is_none()
             || self.discovery_dials.contains(&id)
             || self.discovery_dials.len() >= MAX_NEARBY
-            || self.links.by_peer.get(&id).is_some_and(|handle| {
-                handle.connection.close_reason().is_none() && !handle.sender.is_closed()
-            })
+            || self.is_linked(id)
         {
             return;
         }
@@ -81,7 +79,7 @@ impl Daemon {
                 let result = match result {
                     Ok(link) if link.peer_id != id => {
                         // A LAN hint must not redirect us to another paired machine.
-                        link.connection.close(0u32.into(), b"");
+                        link.connection.close(crate::link::CLOSE_NORMAL, b"");
                         continue;
                     }
                     Ok(link) => Ok(Box::new(link)),

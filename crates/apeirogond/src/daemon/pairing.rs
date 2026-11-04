@@ -21,22 +21,27 @@ impl Daemon {
         connection: Connection,
         permit: OwnedSemaphorePermit,
     ) -> Result<(), DaemonError> {
-        let open = {
-            let mut snapshot = self.trust.write().map_err(|_| DaemonError::TrustPoisoned)?;
-            let open = snapshot.pairing_open();
-            snapshot.pairing_until = None;
-            open
-        };
-        let host = self.host.take();
+        // Refused or rate-limited attempts must not close the window, or any
+        // LAN host could cancel pairing for everyone.
+        let open = self
+            .trust
+            .read()
+            .map_err(|_| DaemonError::TrustPoisoned)?
+            .pairing_open();
         let allowed = open
+            && self.host.is_some()
             && !self.host_busy
             && self
                 .limiter
                 .allow(connection.remote_address().ip(), Instant::now());
-        let Some(host) = host.filter(|_| allowed) else {
-            connection.close(0u32.into(), b"");
+        let Some(host) = allowed.then(|| self.host.take()).flatten() else {
+            connection.close(crate::link::CLOSE_NORMAL, b"");
             return Ok(());
         };
+        self.trust
+            .write()
+            .map_err(|_| DaemonError::TrustPoisoned)?
+            .pairing_until = None;
         self.host_busy = true;
         let info = self.info.clone();
         let events = self.events.clone();

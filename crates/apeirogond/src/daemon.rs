@@ -8,9 +8,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use a7n_core::layout::LayoutError;
 use a7n_core::pairing::{AttemptLimiter, HostPairing, Paired, PairingCode};
-use a7n_ipc::config::{Config, ConfigError};
+use a7n_ipc::config::Config;
 use a7n_proto::v1::{Envelope, PairDone, PeerInfo, envelope::Body};
 use a7n_proto::{MachineId, limits};
 use quinn::Endpoint;
@@ -18,20 +17,22 @@ use rand_core::OsRng;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
 
-use crate::command::{Command, Reply, Status};
-use crate::desk_store::{DeskStore, DeskStoreError};
+use crate::command::{Command, Reply};
+use crate::desk_store::DeskStore;
 use crate::endpoint;
-use crate::identity::{self, Identity, IdentityError};
+use crate::identity::{self, Identity};
 use crate::layout_store::LayoutStore;
 use crate::link::{Link, LinkError, Links};
 use crate::pairing::PairingError;
-use crate::pin_store::{Entry, PinStore, PinStoreError};
+use crate::pin_store::{Entry, PinStore};
 use crate::settings_store::SettingsStore;
-use crate::tls::{self, TlsError, TrustSnapshot, TrustedPins};
+use crate::tls::{self, TrustSnapshot, TrustedPins};
 
 mod clipboard;
+mod command;
 mod config;
 mod connections;
+mod error;
 mod files;
 mod input;
 mod layout;
@@ -52,51 +53,12 @@ const MAILBOX_CAPACITY: usize = 64;
 /// Bound the number of source-address rate-limit buckets.
 const PAIRING_SOURCES: usize = 256;
 
+pub(crate) use error::DaemonError;
 pub(crate) use input::Retried as InputRetried;
 
 type TransferStream = (MachineId, usize, quinn::RecvStream);
 
 type Inbound = (MachineId, usize, Envelope);
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum DaemonError {
-    #[error(transparent)]
-    Config(#[from] ConfigError),
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    Identity(#[from] IdentityError),
-    #[error(transparent)]
-    Pins(#[from] PinStoreError),
-    #[error(transparent)]
-    Desk(#[from] DeskStoreError),
-    #[error(transparent)]
-    Layout(#[from] LayoutError),
-    #[error(transparent)]
-    Tls(#[from] TlsError),
-    #[error(transparent)]
-    Link(#[from] LinkError),
-    #[error(transparent)]
-    Pairing(#[from] PairingError),
-    #[error(transparent)]
-    Permission(#[from] a7n_platform::permissions::PermissionError),
-    #[error("system time precedes the Unix epoch")]
-    Clock(#[from] std::time::SystemTimeError),
-    #[error("pairing exchange already active")]
-    PairingBusy,
-    #[error("input sharing is paused")]
-    Paused,
-    #[error("machine is not paired")]
-    NotPaired,
-    #[error("{0}")]
-    InvalidRequest(&'static str),
-    #[error("machine is not connected")]
-    NotConnected,
-    #[error("not enough free space in the receive directory")]
-    NoSpace,
-    #[error("trust snapshot lock poisoned")]
-    TrustPoisoned,
-}
 
 enum Event {
     Link(Result<Box<Link>, LinkError>, Option<Reply<()>>),
@@ -296,8 +258,8 @@ impl Daemon {
                 _ = keepalive.tick() => self.input.keepalive(),
                 () = input::deadline(wake_deadline) => {},
                 () = input::deadline(deadline) => self.poll_focus().await,
-                () = clipboard::deadline(clipboard_deadline) => self.clipboard.expire_held_clipboard(Instant::now()),
-                () = clipboard::deadline(files_deadline) => self.expire_files(Instant::now()),
+                () = input::deadline(clipboard_deadline) => self.clipboard.expire_held_clipboard(Instant::now()),
+                () = input::deadline(files_deadline) => self.expire_files(Instant::now()),
                 Some(stream) = self.transfer_rx.recv() => self.clipboard_stream(stream),
                 event = clipboard::next(&mut self.clipboard.handle) => match event {
                     clipboard::Event::Changed(change) => self.clipboard_changed(change),
@@ -309,10 +271,10 @@ impl Daemon {
                 Some((peer, id, envelope)) = self.inbound_rx.recv() => {
                     if self.is_current(peer, id) && self.receive_from(peer, envelope).await.is_err() {
                         if let Some(handle) = self.links.by_peer.remove(&peer) {
-                            handle.connection.close(0u32.into(), b"");
+                            handle.connection.close(crate::link::CLOSE_NORMAL, b"");
                         }
                         self.input_link_lost(peer);
-                        crate::log::event!("kind=desk_failed");
+                        crate::log::event!("kind=peer_message_failed");
                     }
                 }
                 Some(_) = self.tasks.join_next(), if !self.tasks.is_empty() => {
@@ -333,120 +295,6 @@ impl Daemon {
                 )
                 .into());
             }
-        }
-    }
-
-    async fn command(&mut self, command: Command) -> Result<(), DaemonError> {
-        match command {
-            Command::Shutdown(_) => unreachable!("shutdown is handled by the run loop"),
-            Command::Switch { machine, reply } => {
-                let result = self.switch_machine(machine).await.map(|()| {
-                    self.wol.pending.as_ref().and_then(|pending| {
-                        self.pins.get(&pending.peer).map(|entry| entry.name.clone())
-                    })
-                });
-                let _ = reply.send(result);
-            }
-            Command::Wake { machine, reply } => {
-                let _ = reply.send(self.wake_peer(machine, wol::WakeAction::Only, Instant::now()));
-            }
-            Command::SetPaused { paused, reply } => {
-                self.set_paused(paused).await;
-                let _ = reply.send(Ok(()));
-            }
-            Command::ReloadConfig(reply) => {
-                let result = self.reload_config().await;
-                let _ = reply.send(result);
-            }
-            Command::Status(reply) => {
-                let _ = reply.send(Ok(self.status()));
-            }
-            Command::SendFiles { peer, paths, reply } => self.offer_files(peer, paths, reply),
-            Command::FilesAccept { peer, reply } => {
-                self.accept_files_with_reply(peer, reply);
-            }
-            Command::FilesReject { peer, reply } => {
-                let _ = reply.send(self.reject_files(peer));
-            }
-            Command::CancelTransfer { id, reply } => {
-                let _ = reply.send(self.cancel_file_transfer(id));
-            }
-            Command::ClipboardStatus(reply) => {
-                let _ = reply.send(Ok(self.clipboard_status()));
-            }
-            Command::ClipboardAccept(reply) => {
-                let _ = reply.send(self.accept_clipboard());
-            }
-            Command::ClipboardReject(reply) => {
-                let _ = reply.send(self.reject_clipboard());
-            }
-            Command::GetLayout(reply) => {
-                let _ = reply.send(Ok(self.layout_info()));
-            }
-            Command::SetLayout { placed, reply } => {
-                let _ = reply.send(self.set_layout(placed));
-            }
-            Command::PairHost(reply) => {
-                let _ = reply.send(self.open_pairing());
-            }
-            Command::PairJoin { addr, code, reply } => {
-                self.join(addr, code, reply);
-            }
-            Command::Unpair { machine, reply } => {
-                let result = self.unpair(machine);
-                self.sync_trust()?;
-                self.drop_untrusted();
-                let _ = reply.send(result);
-            }
-            Command::Connect { addr, reply } => {
-                self.connect(addr, reply);
-            }
-            Command::RequestPermission { permission, reply } => {
-                let _ =
-                    reply.send(a7n_platform::permissions::request(permission).map_err(Into::into));
-            }
-        }
-        Ok(())
-    }
-
-    fn status(&self) -> Status {
-        Status {
-            input: self.input.unavailable.clone(),
-            held_clipboard: self.held_clipboard(),
-            transfers: self.file_transfers(),
-            held_files: self.held_files(),
-            finished_sends: self.finished_sends(),
-            pid: std::process::id(),
-            paused: self.input.paused,
-            focused: match self.input.focus.cursor() {
-                a7n_core::focus::Cursor::Home => self.identity.machine_id,
-                a7n_core::focus::Cursor::Driving(peer) => peer,
-            },
-            machine: self.identity.machine_id,
-            name: self.info.name.clone(),
-            peers: self
-                .pins
-                .machine_ids()
-                .filter_map(|id| {
-                    self.pins.get(&id).map(|entry| a7n_ipc::PeerInfo {
-                        id,
-                        name: entry.name.clone(),
-                        connected: self.links.by_peer.get(&id).is_some_and(|handle| {
-                            handle.connection.close_reason().is_none() && !handle.sender.is_closed()
-                        }),
-                        rtt_ms: None,
-                        can_wake: entry.hw_addr.is_some(),
-                        waking: self.wol.pending.as_ref().is_some_and(|pending| {
-                            pending.peer == id && pending.deadline > Instant::now()
-                        }),
-                    })
-                })
-                .collect(),
-            nearby: self.nearby_status(),
-            missing_permissions: a7n_platform::permissions::missing()
-                .into_iter()
-                .map(Into::into)
-                .collect(),
         }
     }
 
@@ -533,7 +381,7 @@ impl Daemon {
                 return true;
             }
             // A slow peer catches up from persistent state on its next handshake.
-            handle.connection.close(0u32.into(), b"");
+            handle.connection.close(crate::link::CLOSE_NORMAL, b"");
             lost.push(*peer);
             false
         });
@@ -548,7 +396,7 @@ impl Daemon {
             if self.pins.get(peer).is_some() {
                 return true;
             }
-            handle.connection.close(0u32.into(), b"");
+            handle.connection.close(crate::link::CLOSE_NORMAL, b"");
             lost.push(*peer);
             false
         });
@@ -567,7 +415,7 @@ impl Daemon {
 
 impl Drop for Daemon {
     fn drop(&mut self) {
-        self.endpoint.close(0u32.into(), b"");
+        self.endpoint.close(crate::link::CLOSE_NORMAL, b"");
     }
 }
 

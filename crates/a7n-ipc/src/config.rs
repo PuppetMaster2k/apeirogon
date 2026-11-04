@@ -132,6 +132,20 @@ pub enum ClipboardPolicy {
     Off,
 }
 
+impl ClipboardPolicy {
+    /// Whether this machine offers its copies to the peer (`ask` only gates receiving).
+    #[must_use]
+    pub fn sends(self) -> bool {
+        matches!(self, Self::Both | Self::Send | Self::Ask)
+    }
+
+    /// Whether the peer's copies may reach this machine, after confirmation for `ask`.
+    #[must_use]
+    pub fn receives(self) -> bool {
+        matches!(self, Self::Both | Self::Receive | Self::Ask)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModifierMode {

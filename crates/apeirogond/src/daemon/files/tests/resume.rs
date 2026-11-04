@@ -200,7 +200,7 @@ async fn cancel_file_transfer_active_receive_cleans_staging_and_releases_slot() 
     assert!(!stage.exists());
     assert!(b.files.incoming.is_empty());
     assert_eq!(
-        b.clipboard.links[&peer].fetch_slots.available_permits(),
+        b.clipboard.links[&peer].slots.available_permits(),
         a7n_proto::limits::CONCURRENT_TRANSFERS_PER_LINK
     );
 }
@@ -248,7 +248,7 @@ async fn receive_file_offer_shared_slots_queues_until_clipboard_slot_is_released
     fs::write(&source, b"payload").unwrap();
     connect(&mut a, &mut b).await;
     let permit = b.clipboard.links[&peer]
-        .send_slots
+        .slots
         .clone()
         .try_acquire_many_owned(
             u32::try_from(a7n_proto::limits::CONCURRENT_TRANSFERS_PER_LINK).unwrap(),
@@ -269,7 +269,7 @@ async fn receive_file_offer_shared_slots_queues_until_clipboard_slot_is_released
     // Assert
     assert_eq!(b.file_transfers().len(), 1);
     assert_eq!(
-        b.clipboard.links[&peer].send_slots.available_permits(),
+        b.clipboard.links[&peer].slots.available_permits(),
         a7n_proto::limits::CONCURRENT_TRANSFERS_PER_LINK - 1
     );
 }

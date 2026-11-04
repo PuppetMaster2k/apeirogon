@@ -19,6 +19,12 @@ pub(super) struct PendingConnect {
 }
 
 impl Daemon {
+    pub(super) fn is_linked(&self, peer: MachineId) -> bool {
+        self.links.by_peer.get(&peer).is_some_and(|handle| {
+            handle.connection.close_reason().is_none() && !handle.sender.is_closed()
+        })
+    }
+
     pub(super) fn accept(
         &mut self,
         connection: Connection,
@@ -49,7 +55,7 @@ impl Daemon {
                 Ok(())
             }
             _ => {
-                connection.close(0u32.into(), b"");
+                connection.close(crate::link::CLOSE_NORMAL, b"");
                 Ok(())
             }
         }
@@ -171,9 +177,7 @@ impl Daemon {
 
     fn finish_connects(&mut self) {
         for pending in std::mem::take(&mut self.pending_connects) {
-            let live = self.links.by_peer.get(&pending.peer).is_some_and(|handle| {
-                handle.connection.close_reason().is_none() && !handle.sender.is_closed()
-            });
+            let live = self.is_linked(pending.peer);
             if live {
                 let _ = pending.reply.send(Ok(()));
             } else if Instant::now() >= pending.deadline {
@@ -188,7 +192,7 @@ impl Daemon {
 
     pub(super) fn register(&mut self, link: Link) -> Result<(), DaemonError> {
         if !self.trusted(&link.connection) {
-            link.connection.close(0u32.into(), b"");
+            link.connection.close(crate::link::CLOSE_NORMAL, b"");
             return Err(crate::link::LinkError::InvalidHello.into());
         }
         self.pins
@@ -242,7 +246,7 @@ impl Daemon {
         self.tasks.spawn(async move {
             let connection = link.connection.clone();
             let _ = link_driver::drive(link, inbound, outbound, transfers).await;
-            connection.close(0u32.into(), b"");
+            connection.close(crate::link::CLOSE_NORMAL, b"");
             let _ = events.send(Event::Ended(peer, id)).await;
         });
         Ok(())

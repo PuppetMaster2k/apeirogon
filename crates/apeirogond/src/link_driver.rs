@@ -14,8 +14,8 @@ use tokio::time::{Instant, sleep_until};
 use crate::handshake::{read_frame, send_envelope};
 use crate::link::{CLOSE_SILENT, CLOSE_UNACKED, Link, LinkError, Role};
 
-/// `Ack.held_us` while nothing is injected. Once input injection lands (#12)
-/// this becomes the time between dealing with a batch and sending its Ack.
+/// `Ack.held_us` until the time between dealing with a batch and sending its
+/// Ack is measured.
 const HELD_US_NOT_MEASURED: u32 = 0;
 
 /// What woke the loop.
@@ -96,7 +96,9 @@ pub(crate) async fn drive(
                     }
                 } else {
                     if let Some(Body::Input(batch)) = &mut envelope.body {
-                        input_seq = input_seq.checked_add(1).ok_or(LinkError::InvalidHello)?;
+                        input_seq = input_seq
+                            .checked_add(1)
+                            .ok_or(LinkError::InputSeqExhausted)?;
                         batch.seq = input_seq;
                         liveness.on_input_sent(batch.seq, now);
                     }

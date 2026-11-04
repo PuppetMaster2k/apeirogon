@@ -9,6 +9,7 @@ use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
 use super::*;
+use crate::command::Status;
 
 pub(super) const TEST_TIMEOUT: Duration = Duration::from_secs(15);
 

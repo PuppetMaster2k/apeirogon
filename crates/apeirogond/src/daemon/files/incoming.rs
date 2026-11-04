@@ -32,6 +32,13 @@ pub(super) struct Download {
 }
 
 impl Daemon {
+    /// Starts a receive no user waits on, so a refusal only needs a log line.
+    pub(in crate::daemon) fn log_receive_start(&mut self, peer: MachineId, offer: u64) {
+        if self.start_file_receive(peer, offer).is_err() {
+            crate::log::event!("kind=file_receive_not_started");
+        }
+    }
+
     pub(in crate::daemon) fn receive_file_offer(
         &mut self,
         peer: MachineId,
@@ -40,10 +47,9 @@ impl Daemon {
         if !self.files_capable(peer) || wire.origin != peer.as_bytes() || !wire.send {
             return;
         }
-        if matches!(
-            self.files_policy(peer),
-            ClipboardPolicy::Off | ClipboardPolicy::Send
-        ) {
+        let policy = self.files_policy(peer);
+        let ask = policy == ClipboardPolicy::Ask;
+        if !policy.receives() {
             crate::log::event!("kind=file_offer_ignored");
             return;
         }
@@ -71,14 +77,12 @@ impl Daemon {
             }
             incoming.announced_link = self.links.by_peer[&peer].connection.stable_id();
             if !incoming.active && incoming.deadline.is_none() {
-                let _ = self.start_file_receive(peer, wire.generation);
+                self.log_receive_start(peer, wire.generation);
             }
             return;
         }
-        if self.files_policy(peer) == ClipboardPolicy::Ask {
-            self.files
-                .incoming
-                .retain(|(id, _), incoming| *id != peer || incoming.deadline.is_none());
+        if ask {
+            self.drop_held_offers(peer);
         }
         if self
             .files
@@ -94,7 +98,6 @@ impl Daemon {
             return;
         };
         let staging = super::staging::new_stage(&receive_dir, peer, wire.generation);
-        let ask = self.files_policy(peer) == ClipboardPolicy::Ask;
         if ask {
             self.notify_files(
                 peer,
@@ -115,7 +118,7 @@ impl Daemon {
             },
         );
         if !ask {
-            let _ = self.start_file_receive(peer, wire.generation);
+            self.log_receive_start(peer, wire.generation);
         }
     }
 
@@ -148,10 +151,7 @@ impl Daemon {
         if !self.links.by_peer.contains_key(&peer) {
             return Err(DaemonError::NotConnected);
         }
-        if !matches!(
-            self.files_policy(peer),
-            ClipboardPolicy::Receive | ClipboardPolicy::Both | ClipboardPolicy::Ask
-        ) {
+        if !self.files_policy(peer).receives() {
             return Err(DaemonError::InvalidRequest("file receiving is disabled"));
         }
         self.files
@@ -165,9 +165,7 @@ impl Daemon {
 
     pub(in crate::daemon) fn reject_files(&mut self, peer: MachineId) -> Result<(), DaemonError> {
         let before = self.files.incoming.len();
-        self.files
-            .incoming
-            .retain(|(id, _), incoming| *id != peer || incoming.deadline.is_none());
+        self.drop_held_offers(peer);
         if self.files.incoming.len() == before {
             return Err(DaemonError::InvalidRequest(
                 "no file offer waiting for confirmation",
@@ -184,10 +182,7 @@ impl Daemon {
         if !self.files_capable(peer) {
             return Err(DaemonError::NotConnected);
         }
-        if !matches!(
-            self.files_policy(peer),
-            ClipboardPolicy::Receive | ClipboardPolicy::Both | ClipboardPolicy::Ask
-        ) {
+        if !self.files_policy(peer).receives() {
             return Err(DaemonError::InvalidRequest("file receiving is disabled"));
         }
         let incoming = self
@@ -232,7 +227,7 @@ impl Daemon {
             .links
             .get_mut(&peer)
             .ok_or(DaemonError::NotConnected)?;
-        let Ok(permit) = transfers.fetch_slots.clone().try_acquire_owned() else {
+        let Ok(permit) = transfers.slots.clone().try_acquire_owned() else {
             return Ok(None);
         };
         transfers.next = transfers
@@ -267,6 +262,7 @@ impl Daemon {
         );
         let events = self.events.clone();
         let connection = self.links.by_peer[&peer].connection.clone();
+        let reserved = self.files.reserved.clone();
         self.tasks.spawn(async move {
             let runtime = tokio::runtime::Handle::current();
             let worker_events = events.clone();
@@ -281,6 +277,7 @@ impl Daemon {
                     progress,
                     events: worker_events,
                     connection,
+                    reserved,
                 }))
             })
             .await

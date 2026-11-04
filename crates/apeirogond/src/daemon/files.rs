@@ -54,6 +54,9 @@ pub(super) struct State {
     /// The last pasted copy, so pasting again hands out the same paths.
     pasted: Option<paste::Pasted>,
     finished_sends: VecDeque<FinishedSend>,
+    /// Bytes that running receives still have to write, shared with their
+    /// workers so parallel receives cannot together overrun the free space.
+    reserved: Arc<std::sync::atomic::AtomicU64>,
 }
 
 struct Incoming {
@@ -149,10 +152,7 @@ impl Daemon {
                 "peer does not support file offers",
             ));
         }
-        if !matches!(
-            self.files_policy(peer),
-            ClipboardPolicy::Send | ClipboardPolicy::Both | ClipboardPolicy::Ask
-        ) {
+        if !self.files_policy(peer).sends() {
             return Err(DaemonError::InvalidRequest("file sending is disabled"));
         }
         Ok(())
@@ -223,6 +223,13 @@ impl Daemon {
             .collect()
     }
 
+    /// Drops offers from `peer` that wait for the user; running ones keep going.
+    fn drop_held_offers(&mut self, peer: MachineId) {
+        self.files
+            .incoming
+            .retain(|(id, _), incoming| *id != peer || incoming.deadline.is_none());
+    }
+
     pub(in crate::daemon) fn files_deadline(&self) -> Option<Instant> {
         self.files
             .incoming
@@ -262,9 +269,7 @@ impl Daemon {
         {
             let _ = active.cancel.send(Failure::LinkLost);
         }
-        self.files
-            .incoming
-            .retain(|(id, _), incoming| *id != peer || incoming.deadline.is_none());
+        self.drop_held_offers(peer);
         if self.pins.get(&peer).is_none() {
             self.files.offers.retain(|(id, _), _| *id != peer);
         }
@@ -278,38 +283,30 @@ impl Daemon {
             .filter(|(_, active)| {
                 let policy = self.files_policy(active.peer);
                 match active.direction {
-                    TransferDirection::Send => !matches!(
-                        policy,
-                        ClipboardPolicy::Send | ClipboardPolicy::Both | ClipboardPolicy::Ask
-                    ),
-                    TransferDirection::Receive => !matches!(
-                        policy,
-                        ClipboardPolicy::Receive | ClipboardPolicy::Both | ClipboardPolicy::Ask
-                    ),
+                    TransferDirection::Send => !policy.sends(),
+                    TransferDirection::Receive => !policy.receives(),
                 }
             })
             .map(|(&id, _)| id)
             .collect();
         for id in cancelled {
-            let _ = self.cancel_file_transfer(id);
+            if self.cancel_file_transfer(id).is_err() {
+                crate::log::event!("kind=file_cancel_failed");
+            }
         }
         let config = &self.config;
         self.files.offers.retain(|(peer, _), _| {
-            matches!(
-                config
-                    .peer(peer)
-                    .map_or(ClipboardPolicy::Ask, |policy| policy.files),
-                ClipboardPolicy::Send | ClipboardPolicy::Both | ClipboardPolicy::Ask
-            )
+            config
+                .peer(peer)
+                .map_or(ClipboardPolicy::Ask, |policy| policy.files)
+                .sends()
         });
         self.files.incoming.retain(|(peer, _), incoming| {
             incoming.active
-                || matches!(
-                    config
-                        .peer(peer)
-                        .map_or(ClipboardPolicy::Ask, |policy| policy.files),
-                    ClipboardPolicy::Receive | ClipboardPolicy::Both | ClipboardPolicy::Ask
-                )
+                || config
+                    .peer(peer)
+                    .map_or(ClipboardPolicy::Ask, |policy| policy.files)
+                    .receives()
         });
         let incoming = &self.files.incoming;
         self.files
@@ -440,7 +437,7 @@ impl Daemon {
                     .get(&(active.peer, active.offer))
                     .is_some_and(|incoming| self.is_current(active.peer, incoming.announced_link))
             {
-                let _ = self.start_file_receive(active.peer, active.offer);
+                self.log_receive_start(active.peer, active.offer);
             }
         } else {
             self.files.incoming.remove(&(active.peer, active.offer));
@@ -469,7 +466,7 @@ impl Daemon {
             .map(|((_, offer), _)| *offer)
             .collect();
         for offer in waiting {
-            let _ = self.start_file_receive(peer, offer);
+            self.log_receive_start(peer, offer);
         }
     }
 }

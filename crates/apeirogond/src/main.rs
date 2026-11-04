@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod command;
+mod control_file;
 mod daemon;
 mod desk_store;
 mod discovery;

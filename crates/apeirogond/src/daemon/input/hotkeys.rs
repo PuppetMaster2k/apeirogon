@@ -3,7 +3,7 @@
 use a7n_core::hotkey::Hotkey;
 use a7n_proto::v1::input_event;
 
-use super::{Captured, Cursor, Daemon, Take, now};
+use super::{Captured, Cursor, Daemon, now};
 
 impl Daemon {
     pub(super) async fn match_hotkey(&mut self, event: &Captured) -> bool {
@@ -78,23 +78,33 @@ impl Daemon {
         }
         let actions = if target == self.identity.machine_id {
             self.input.focus.go_home()
-        } else if self.links.by_peer.get(&target).is_some_and(|handle| {
-            handle.connection.close_reason().is_none() && !handle.sender.is_closed()
-        }) {
-            self.input.focus.take(
-                Take {
-                    target,
-                    landing: None,
-                    resistance_px: 0,
-                    reach: self.links.by_peer.keys().copied().collect(),
-                },
-                now(),
-            )
+        } else if self.is_linked(target) {
+            self.take_peer(target, None, now())
         } else {
             self.auto_wake(target, crate::daemon::wol::WakeAction::Switch, now())?;
             self.input.focus.go_home()
         };
         self.input_actions(actions).await;
         Ok(())
+    }
+}
+
+impl Daemon {
+    /// Takes the peer at once; edge resistance was already overcome or does not apply.
+    pub(in crate::daemon) fn take_peer(
+        &mut self,
+        target: a7n_proto::MachineId,
+        landing: Option<a7n_proto::v1::Landing>,
+        now: std::time::Instant,
+    ) -> Vec<super::Action> {
+        self.input.focus.take(
+            super::Take {
+                target,
+                landing,
+                resistance_px: 0,
+                reach: self.links.by_peer.keys().copied().collect(),
+            },
+            now,
+        )
     }
 }

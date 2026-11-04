@@ -216,3 +216,20 @@ async fn accept_clipboard_link_gone_returns_not_connected() {
     assert!(daemon.clipboard.held.is_none());
     assert!(commands.try_recv().is_err());
 }
+
+#[tokio::test]
+async fn receive_clipboard_foreign_origin_is_ignored() {
+    // Arrange
+    let (mut daemon, _dir, _changes, mut commands) = daemon();
+    let peer = daemon.identity.machine_id;
+    let spoofed = MachineId::try_from([7; MachineId::LEN].as_slice()).unwrap();
+    daemon.clipboard_changed(Some(change("local")));
+    let previous = daemon.clipboard.current;
+
+    // Act
+    daemon.receive_clipboard(peer, &wire(spoofed, 10, "spoofed"));
+
+    // Assert
+    assert!(commands.try_recv().is_err());
+    assert_eq!(daemon.clipboard.current, previous);
+}
