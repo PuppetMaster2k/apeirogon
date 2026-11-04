@@ -120,6 +120,7 @@ async fn accept_files_ask_policy_downloads_after_confirmation() {
     // Act
     b.command(|reply| Command::FilesAccept {
         peer: a.machine,
+        offer_id: status.held_files[0].offer_id,
         reply,
     })
     .await
@@ -201,12 +202,13 @@ async fn receive_files_tampered_content_removes_staging_without_publishing() {
     let (a, b) = (Peer::run(a, a_dir), Peer::run(b, b_dir));
     a.pair(&b).await;
     offer(&a, &b, source.clone()).await;
-    b.wait(|status| !status.held_files.is_empty()).await;
+    let status = b.wait(|status| !status.held_files.is_empty()).await;
     fs::write(source, b"tampered").unwrap();
 
     // Act
     b.command(|reply| Command::FilesAccept {
         peer: a.machine,
+        offer_id: status.held_files[0].offer_id,
         reply,
     })
     .await

@@ -162,6 +162,8 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 - At most four live offers per peer are retained locally, with one held confirmation per peer. `receive`/`both` receive immediately, `ask` holds for up to 60 seconds, and `send`/`off` ignore incoming offers. Sending is allowed with `send`/`both`/`ask`.
 - Local IPC version 4 adds `SendFiles { peer, paths }` (reply: offer id and skipped symlink count), `FilesAccept { peer }`, `FilesReject { peer }`, `CancelTransfer { id }`, held file metadata and active transfer progress. Transfer ids in status are daemon-local; cancellation uses these ids. Status exposes peer, direction, file/byte counts and top-level entry counts without file names or paths. Update local clients and daemon together.
 - Local IPC version 5 adds the `no_space` error category. Accepting a held file offer waits for receive preparation and the free-space check; insufficient space reports "not enough free space in the receive directory". Receives require the remaining bytes after verified resume plus a 256 MiB safety margin. A failed space query is logged and does not block receiving.
+- Local IPC version 6 adds `Wake`, a `Waking` switch response, and per-peer `can_wake` and `waking` status flags. Hardware addresses stay inside the daemon.
+- Local IPC version 7 exposes `offer_id` on held files and `generation` on held clipboard copies. Accept requests carry these identities (peer and offer id for files, origin machine and generation for clipboard) and are refused if the held item changed. Update the daemon and local clients together.
 - Flow control: provided by QUIC. At most 4 concurrent transfers per link. Transfer streams SHOULD get lower priority than stream 0.
 
 ## 12. Drag and drop

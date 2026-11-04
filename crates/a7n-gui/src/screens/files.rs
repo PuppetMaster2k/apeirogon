@@ -34,7 +34,10 @@ impl App {
                     if theme::button(ui, ButtonKind::Primary, ButtonSize::Md, None, "Accept")
                         .clicked()
                     {
-                        self.send(Command::Request(Request::FilesAccept { peer: held.peer }));
+                        self.send(Command::Request(Request::FilesAccept {
+                            peer: held.peer,
+                            offer_id: held.offer_id,
+                        }));
                     }
                     if theme::button(ui, ButtonKind::Ghost, ButtonSize::Md, None, "Reject")
                         .clicked()

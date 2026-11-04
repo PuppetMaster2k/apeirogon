@@ -309,6 +309,10 @@ do not.
     independent generation namespace and do not change the receiving clipboard.
   - Local IPC version 6 adds `Wake`, a `Waking` switch response, and per-peer
     `can_wake` and `waking` status flags. Hardware addresses stay inside the daemon.
+  - Local IPC version 7 exposes `offer_id` on held files and `generation` on held
+    clipboard copies. Accept requests carry these identities (peer and offer id
+    for files, origin machine and generation for clipboard) and are refused if
+    the held item changed. Update the daemon and local clients together.
   - Local IPC version 5 adds a distinct `no_space` error when accepting files.
     Before downloading, the receiver checks the remaining bytes after rehashing
     partial data plus a 256 MiB safety margin. A failed free-space query is

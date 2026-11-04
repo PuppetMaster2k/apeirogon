@@ -30,9 +30,28 @@ pub(super) enum Command {
 
 pub(super) async fn run(command: Command) -> Result<()> {
     let request = match command {
-        Command::Accept { peer } => Request::FilesAccept {
-            peer: resolve_machine(&peer).await?,
-        },
+        Command::Accept { peer } => {
+            let peer = resolve_machine(&peer).await?;
+            let Response::Status(status) =
+                connect_client().await?.request(&Request::Status).await?
+            else {
+                bail!("expected status from daemon");
+            };
+            let held = status
+                .held_files
+                .iter()
+                .find(|held| held.peer == peer)
+                .context("no file offer waiting for confirmation")?;
+            {
+                let mut output = io::stdout().lock();
+                write_held(&mut output, &status, held)?;
+                output.flush()?;
+            }
+            Request::FilesAccept {
+                peer,
+                offer_id: held.offer_id,
+            }
+        }
         Command::Reject { peer } => Request::FilesReject {
             peer: resolve_machine(&peer).await?,
         },

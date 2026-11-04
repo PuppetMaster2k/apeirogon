@@ -42,6 +42,7 @@ impl Daemon {
         }
         Some(HeldClipboard {
             machine: held.peer,
+            generation: held.wire.generation,
             name: self
                 .pins
                 .get(&held.peer)
@@ -80,14 +81,20 @@ impl Daemon {
         crate::log::event!("kind=clipboard_held");
     }
 
-    pub(in crate::daemon) fn accept_clipboard(&mut self) -> Result<(), DaemonError> {
+    pub(in crate::daemon) fn accept_clipboard(
+        &mut self,
+        machine: MachineId,
+        generation: u64,
+    ) -> Result<(), DaemonError> {
         self.clipboard.expire_held_clipboard(Instant::now());
         let held = self
             .clipboard
             .held
-            .take()
+            .take_if(|held| {
+                held.wire.origin == machine.as_bytes() && held.wire.generation == generation
+            })
             .ok_or(DaemonError::InvalidRequest(
-                "no clipboard copy is waiting for confirmation",
+                "clipboard copy changed; review it again",
             ))?;
         if !self.is_linked(held.peer) {
             crate::log::event!("kind=clipboard_dropped");

@@ -34,6 +34,6 @@ pub use types::{
 };
 
 /// Local API major version, independent of the peer protobuf protocol.
-pub const IPC_VERSION: u32 = 6;
+pub const IPC_VERSION: u32 = 7;
 /// Maximum JSON payload bytes per line, excluding the terminating newline.
 pub const MAX_LINE_LENGTH: usize = 64 * 1024;

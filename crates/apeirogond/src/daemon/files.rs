@@ -213,8 +213,9 @@ impl Daemon {
                     .deadline
                     .is_some_and(|deadline| deadline > Instant::now())
             })
-            .map(|(&(peer, _), incoming)| HeldFiles {
+            .map(|(&(peer, offer_id), incoming)| HeldFiles {
                 peer,
+                offer_id,
                 files: Progress::new(&incoming.manifest, 0).files_total,
                 top_level_entries: u32::try_from(staging::roots(&incoming.manifest).len())
                     .unwrap_or(u32::MAX),

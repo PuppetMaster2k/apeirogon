@@ -77,15 +77,9 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
             .await
         }
         Request::Status => execute(commands, Command::Status, Response::Status).await,
-        Request::ClipboardStatus => {
-            execute(commands, Command::ClipboardStatus, Response::Clipboard).await
-        }
-        Request::ClipboardAccept => {
-            execute(commands, Command::ClipboardAccept, |()| Response::Done).await
-        }
-        Request::ClipboardReject => {
-            execute(commands, Command::ClipboardReject, |()| Response::Done).await
-        }
+        clipboard @ (Request::ClipboardStatus
+        | Request::ClipboardAccept { .. }
+        | Request::ClipboardReject) => dispatch_clipboard(clipboard, commands).await,
         Request::PairHost => {
             execute(commands, Command::PairHost, |code| Response::PairCode {
                 code,
@@ -136,6 +130,33 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
     }
 }
 
+async fn dispatch_clipboard(request: Request, commands: &mpsc::Sender<Command>) -> Response {
+    match request {
+        Request::ClipboardStatus => {
+            execute(commands, Command::ClipboardStatus, Response::Clipboard).await
+        }
+        Request::ClipboardAccept {
+            machine,
+            generation,
+        } => {
+            execute(
+                commands,
+                |reply| Command::ClipboardAccept {
+                    machine,
+                    generation,
+                    reply,
+                },
+                |()| Response::Done,
+            )
+            .await
+        }
+        Request::ClipboardReject => {
+            execute(commands, Command::ClipboardReject, |()| Response::Done).await
+        }
+        _ => unreachable!("only clipboard requests are dispatched here"),
+    }
+}
+
 async fn dispatch_files(request: Request, commands: &mpsc::Sender<Command>) -> Response {
     match request {
         Request::SendFiles { peer, paths } => {
@@ -149,10 +170,14 @@ async fn dispatch_files(request: Request, commands: &mpsc::Sender<Command>) -> R
             )
             .await
         }
-        Request::FilesAccept { peer } => {
+        Request::FilesAccept { peer, offer_id } => {
             execute(
                 commands,
-                |reply| Command::FilesAccept { peer, reply },
+                |reply| Command::FilesAccept {
+                    peer,
+                    offer_id,
+                    reply,
+                },
                 |()| Response::Done,
             )
             .await
