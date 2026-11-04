@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.4](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.3...v0.15.4) (2026-11-04)
+
+
+### Bug Fixes
+
+* **ipc:** accept confirms the held offer the user saw ([#154](https://github.com/PuppetMaster2k/apeirogon/issues/154)) ([d9cc847](https://github.com/PuppetMaster2k/apeirogon/commit/d9cc84737a0fe09319d22fdeae4f1afaea930662))
+
 ## [0.15.3](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.2...v0.15.3) (2026-11-04)
 
 
