@@ -30,11 +30,19 @@ async fn clipboard_paste_large_copy_with_both_or_ask_fetches_source_bytes() {
         let (a, b) = (Peer::run(a, a_dir), Peer::run(b, b_dir));
         a.pair(&b).await;
         if ask {
-            b.wait(|s| s.held_clipboard.is_some()).await;
-            assert!(commands.try_recv().is_err());
-            b.command(crate::command::Command::ClipboardAccept)
+            let held = b
+                .wait(|s| s.held_clipboard.is_some())
                 .await
+                .held_clipboard
                 .unwrap();
+            assert!(commands.try_recv().is_err());
+            b.command(|reply| crate::command::Command::ClipboardAccept {
+                machine: held.machine,
+                generation: held.generation,
+                reply,
+            })
+            .await
+            .unwrap();
         }
         let ClipboardCommand::Set {
             generation,

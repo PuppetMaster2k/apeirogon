@@ -174,7 +174,10 @@ impl App {
                         )
                         .clicked()
                         {
-                            action = Some(Request::ClipboardAccept);
+                            action = Some(Request::ClipboardAccept {
+                                machine: held.machine,
+                                generation: held.generation,
+                            });
                         }
                         if theme::button(
                             ui,

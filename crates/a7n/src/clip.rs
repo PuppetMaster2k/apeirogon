@@ -2,8 +2,8 @@
 
 use std::io::{self, Write};
 
-use a7n_ipc::ClipboardInfo;
 use a7n_ipc::config::ClipboardPolicy;
+use a7n_ipc::{ClipboardInfo, HeldClipboard};
 
 #[derive(Debug, clap::Subcommand)]
 pub(super) enum Command {
@@ -46,14 +46,7 @@ pub(super) fn write_status(output: &mut impl Write, info: &ClipboardInfo) -> io:
         writeln!(output, "current copy: none")?;
     }
     if let Some(held) = &info.held {
-        writeln!(
-            output,
-            "waiting for confirmation: {}, {} items, {} B, {}",
-            held.name,
-            held.items,
-            held.size,
-            held.kinds_label()
-        )?;
+        write_held(output, held)?;
     }
     write!(output, "peers:")?;
     if info.peers.is_empty() {
@@ -72,4 +65,15 @@ pub(super) fn write_status(output: &mut impl Write, info: &ClipboardInfo) -> io:
         write!(output, "{separator} {} {policy} {link}", peer.name)?;
     }
     writeln!(output)
+}
+
+pub(super) fn write_held(output: &mut impl Write, held: &HeldClipboard) -> io::Result<()> {
+    writeln!(
+        output,
+        "waiting for confirmation: {}, {} items, {} B, {}",
+        held.name,
+        held.items,
+        held.size,
+        held.kinds_label()
+    )
 }

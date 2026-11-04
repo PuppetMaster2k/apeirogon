@@ -35,6 +35,7 @@ pub enum Request {
     FilesAccept {
         #[serde(with = "machine_id")]
         peer: MachineId,
+        offer_id: u64,
     },
     FilesReject {
         #[serde(with = "machine_id")]
@@ -44,7 +45,11 @@ pub enum Request {
         id: u64,
     },
     ClipboardStatus,
-    ClipboardAccept,
+    ClipboardAccept {
+        #[serde(with = "machine_id")]
+        machine: MachineId,
+        generation: u64,
+    },
     ClipboardReject,
     GetLayout,
     SetLayout {
@@ -178,6 +183,7 @@ pub struct StatusInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HeldFiles {
+    pub offer_id: u64,
     #[serde(with = "machine_id")]
     pub peer: MachineId,
     pub files: u32,
@@ -240,6 +246,7 @@ pub struct ClipboardInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HeldClipboard {
+    pub generation: u64,
     #[serde(with = "machine_id")]
     pub machine: MachineId,
     pub name: String,

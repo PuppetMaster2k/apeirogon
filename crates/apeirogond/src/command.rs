@@ -38,6 +38,7 @@ pub(crate) enum Command {
     },
     FilesAccept {
         peer: MachineId,
+        offer_id: u64,
         reply: Reply<()>,
     },
     FilesReject {
@@ -49,7 +50,11 @@ pub(crate) enum Command {
         reply: Reply<()>,
     },
     ClipboardStatus(Reply<a7n_ipc::ClipboardInfo>),
-    ClipboardAccept(Reply<()>),
+    ClipboardAccept {
+        machine: MachineId,
+        generation: u64,
+        reply: Reply<()>,
+    },
     ClipboardReject(Reply<()>),
     GetLayout(Reply<a7n_ipc::LayoutInfo>),
     SetLayout {

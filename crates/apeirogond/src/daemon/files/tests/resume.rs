@@ -171,8 +171,40 @@ async fn expire_files_confirmation_deadline_drops_held_offer() {
 
     // Assert
     assert!(b.files.incoming.is_empty());
-    assert!(b.accept_files(peer).is_err());
+    assert!(b.accept_files(peer, 1).is_err());
     assert!(!b.config.files.receive_dir().unwrap().exists());
+}
+
+#[tokio::test]
+async fn accept_files_replaced_offer_returns_invalid_request_without_receiving() {
+    // Arrange
+    let (mut a, a_dir) = daemon();
+    let (mut b, _b_dir) = daemon();
+    let peer = a.identity.machine_id;
+    let source = a_dir.path().join("source");
+    fs::write(&source, b"payload").unwrap();
+    connect(&mut a, &mut b).await;
+    let first = offer::build(peer, 1, vec![source.clone()]).unwrap().wire;
+    b.receive_file_offer(peer, &first);
+    let seen = b.held_files().pop().unwrap();
+    let newer = offer::build(peer, 2, vec![source]).unwrap().wire;
+    b.receive_file_offer(peer, &newer);
+
+    // Act
+    let result = b.accept_files(seen.peer, seen.offer_id);
+
+    // Assert
+    assert!(matches!(
+        result,
+        Err(DaemonError::InvalidRequest(
+            "file offer changed; review it again"
+        ))
+    ));
+    assert_eq!(b.file_transfers(), []);
+    assert!(!b.config.files.receive_dir().unwrap().exists());
+    let held = b.held_files();
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].offer_id, newer.generation);
 }
 
 #[tokio::test]
@@ -257,7 +289,7 @@ async fn receive_file_offer_shared_slots_queues_until_clipboard_slot_is_released
     let wire = offer::build(peer, 1, vec![source]).unwrap().wire;
     b.config.set(&format!("peers.{peer}.files"), "ask").unwrap();
     b.receive_file_offer(peer, &wire);
-    b.accept_files(peer).unwrap();
+    b.accept_files(peer, 1).unwrap();
     assert!(b.files.active.is_empty());
     assert_eq!(b.held_files(), []);
     let link = b.clipboard.links[&peer].id;

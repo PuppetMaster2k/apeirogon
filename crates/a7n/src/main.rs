@@ -135,7 +135,27 @@ async fn run(command: Command) -> Result<()> {
         Command::Resume => Request::SetPaused { paused: false },
         Command::Clip { command } => match command {
             None => Request::ClipboardStatus,
-            Some(clip::Command::Accept) => Request::ClipboardAccept,
+            Some(clip::Command::Accept) => {
+                let Response::Clipboard(info) = connect_client()
+                    .await?
+                    .request(&Request::ClipboardStatus)
+                    .await?
+                else {
+                    bail!("expected clipboard status from daemon");
+                };
+                let held = info
+                    .held
+                    .context("no clipboard copy is waiting for confirmation")?;
+                {
+                    let mut output = io::stdout().lock();
+                    clip::write_held(&mut output, &held)?;
+                    output.flush()?;
+                }
+                Request::ClipboardAccept {
+                    machine: held.machine,
+                    generation: held.generation,
+                }
+            }
             Some(clip::Command::Reject) => Request::ClipboardReject,
         },
         Command::Pair { target: None } => Request::PairHost,

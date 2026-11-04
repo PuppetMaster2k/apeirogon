@@ -125,9 +125,10 @@ impl Daemon {
     pub(in crate::daemon) fn accept_files_with_reply(
         &mut self,
         peer: MachineId,
+        offer_id: u64,
         reply: crate::command::Reply<()>,
     ) {
-        match self.accept_files(peer) {
+        match self.accept_files(peer, offer_id) {
             Ok(offer) => {
                 self.files.accepts.insert((peer, offer), reply);
             }
@@ -137,17 +138,23 @@ impl Daemon {
         }
     }
 
-    pub(in crate::daemon) fn accept_files(&mut self, peer: MachineId) -> Result<u64, DaemonError> {
+    pub(in crate::daemon) fn accept_files(
+        &mut self,
+        peer: MachineId,
+        offer_id: u64,
+    ) -> Result<u64, DaemonError> {
         self.expire_files(Instant::now());
-        let key = self
+        let key = (peer, offer_id);
+        if self
             .files
             .incoming
-            .iter()
-            .find(|((id, _), incoming)| *id == peer && incoming.deadline.is_some())
-            .map(|(key, _)| *key)
-            .ok_or(DaemonError::InvalidRequest(
-                "no file offer waiting for confirmation",
-            ))?;
+            .get(&key)
+            .is_none_or(|incoming| incoming.deadline.is_none())
+        {
+            return Err(DaemonError::InvalidRequest(
+                "file offer changed; review it again",
+            ));
+        }
         if !self.links.by_peer.contains_key(&peer) {
             return Err(DaemonError::NotConnected);
         }

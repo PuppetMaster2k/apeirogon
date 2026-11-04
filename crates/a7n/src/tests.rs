@@ -75,6 +75,7 @@ fn write_response_status_displays_identity_and_peer_states() {
         finished_sends: Vec::new(),
         held_files: vec![HeldFiles {
             peer: machine,
+            offer_id: 1,
             files: 2,
             top_level_entries: 1,
             total_size: 100,

@@ -47,12 +47,21 @@ async fn accept_clipboard_held_newest_applies_copy() {
     a.pair(&b).await;
     b.wait(|s| s.held_clipboard.is_some()).await;
     changes.send(change("newest")).await.unwrap();
-    b.wait(|s| s.held_clipboard.as_ref().is_some_and(|held| held.size == 6))
-        .await;
+    let held = b
+        .wait(|s| s.held_clipboard.as_ref().is_some_and(|held| held.size == 6))
+        .await
+        .held_clipboard
+        .unwrap();
     assert!(commands.try_recv().is_err());
 
     // Act
-    let result = b.command(Command::ClipboardAccept).await;
+    let result = b
+        .command(|reply| Command::ClipboardAccept {
+            machine: held.machine,
+            generation: held.generation,
+            reply,
+        })
+        .await;
 
     // Assert
     assert!(result.is_ok());
@@ -88,7 +97,7 @@ async fn accept_clipboard_newer_generation_arrived_is_rejected() {
         let current = daemon.clipboard.current;
 
         // Act
-        let result = daemon.accept_clipboard();
+        let result = daemon.accept_clipboard(peer, 10);
 
         // Assert
         assert!(matches!(result, Err(DaemonError::InvalidRequest(_))));
@@ -96,6 +105,39 @@ async fn accept_clipboard_newer_generation_arrived_is_rejected() {
         assert_eq!(daemon.clipboard.current, current);
         assert!(commands.try_recv().is_err());
     }
+}
+
+#[tokio::test]
+async fn accept_clipboard_replaced_generation_returns_invalid_request_and_keeps_newer_held() {
+    // Arrange
+    let (mut daemon, _dir, _changes, mut commands) = daemon();
+    let peer = daemon.identity.machine_id;
+    daemon
+        .config
+        .set(&format!("peers.{peer}.clipboard"), "ask")
+        .unwrap();
+    daemon.receive_clipboard(peer, &wire(peer, 10, "held"));
+    let seen = daemon.held_clipboard().unwrap();
+    let newer = wire(peer, 11, "newer");
+    daemon.receive_clipboard(peer, &newer);
+
+    // Act
+    let result = daemon.accept_clipboard(seen.machine, seen.generation);
+
+    // Assert
+    assert!(matches!(
+        result,
+        Err(DaemonError::InvalidRequest(
+            "clipboard copy changed; review it again"
+        ))
+    ));
+    assert_eq!(daemon.clipboard.held.as_ref().unwrap().wire, newer);
+    assert_eq!(
+        daemon.held_clipboard().unwrap().generation,
+        newer.generation
+    );
+    assert!(daemon.clipboard.current.is_none());
+    assert!(commands.try_recv().is_err());
 }
 
 #[tokio::test]
@@ -209,7 +251,7 @@ async fn accept_clipboard_link_gone_returns_not_connected() {
     daemon.receive_clipboard(peer, &wire(peer, 10, "held"));
 
     // Act
-    let result = daemon.accept_clipboard();
+    let result = daemon.accept_clipboard(peer, 10);
 
     // Assert
     assert!(matches!(result, Err(DaemonError::NotConnected)));

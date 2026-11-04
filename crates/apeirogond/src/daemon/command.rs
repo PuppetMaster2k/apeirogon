@@ -32,8 +32,12 @@ impl Daemon {
                 let _ = reply.send(Ok(self.status()));
             }
             Command::SendFiles { peer, paths, reply } => self.offer_files(peer, paths, reply),
-            Command::FilesAccept { peer, reply } => {
-                self.accept_files_with_reply(peer, reply);
+            Command::FilesAccept {
+                peer,
+                offer_id,
+                reply,
+            } => {
+                self.accept_files_with_reply(peer, offer_id, reply);
             }
             Command::FilesReject { peer, reply } => {
                 let _ = reply.send(self.reject_files(peer));
@@ -44,8 +48,12 @@ impl Daemon {
             Command::ClipboardStatus(reply) => {
                 let _ = reply.send(Ok(self.clipboard_status()));
             }
-            Command::ClipboardAccept(reply) => {
-                let _ = reply.send(self.accept_clipboard());
+            Command::ClipboardAccept {
+                machine,
+                generation,
+                reply,
+            } => {
+                let _ = reply.send(self.accept_clipboard(machine, generation));
             }
             Command::ClipboardReject(reply) => {
                 let _ = reply.send(self.reject_clipboard());
