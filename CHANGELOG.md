@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.3](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.2...v0.15.3) (2026-11-04)
+
+
+### Bug Fixes
+
+* bound peer-supplied version counters ([#153](https://github.com/PuppetMaster2k/apeirogon/issues/153)) ([9b3d0de](https://github.com/PuppetMaster2k/apeirogon/commit/9b3d0de110a100dc248311bc59b9c5e3fc0bc73e))
+
 ## [0.15.2](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.1...v0.15.2) (2026-11-04)
 
 
