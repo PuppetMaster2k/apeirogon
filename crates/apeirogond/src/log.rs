@@ -1,13 +1,41 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::fmt;
+use std::fmt::{self, Write as _};
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const LOG_FILE_MAX: u64 = 1024 * 1024;
-static WRITER: Mutex<()> = Mutex::new(());
+const LOG_LINES_PER_SECOND: u32 = 50;
+static WRITER: Mutex<State> = Mutex::new(State {
+    second: 0,
+    lines: 0,
+    suppressed: 0,
+});
+
+#[derive(Default)]
+struct State {
+    second: u64,
+    lines: u32,
+    suppressed: u64,
+}
+
+impl State {
+    fn admit(&mut self, second: u64) -> Option<u64> {
+        if second > self.second {
+            self.second = second;
+            self.lines = 0;
+        }
+        if self.lines >= LOG_LINES_PER_SECOND {
+            self.suppressed = self.suppressed.saturating_add(1);
+            return None;
+        }
+        let suppressed = std::mem::take(&mut self.suppressed);
+        self.lines += 1 + u32::from(suppressed > 0);
+        Some(suppressed)
+    }
+}
 
 macro_rules! event {
     ($($arg:tt)*) => { $crate::log::write(format_args!($($arg)*)) };
@@ -15,15 +43,23 @@ macro_rules! event {
 pub(crate) use event;
 
 pub(crate) fn write(args: fmt::Arguments<'_>) {
+    let Ok(mut state) = WRITER.lock() else {
+        return;
+    };
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let line = format!("{} {args}\n", timestamp(seconds));
-    let _ = io::stderr().lock().write_all(line.as_bytes());
-    let Ok(_guard) = WRITER.lock() else {
+    let Some(suppressed) = state.admit(seconds) else {
         return;
     };
+    let stamp = timestamp(seconds);
+    let mut line = String::new();
+    if suppressed > 0 {
+        let _ = writeln!(line, "{stamp} kind=log_suppressed count={suppressed}");
+    }
+    let _ = writeln!(line, "{stamp} {args}");
+    let _ = io::stderr().lock().write_all(line.as_bytes());
     if let Ok(path) = a7n_platform::fs::log_path() {
         let _ = append(&path, line.as_bytes());
     }
@@ -79,6 +115,26 @@ fn timestamp(seconds: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admit_line_flood_limits_output_and_reports_suppressed() {
+        // Arrange
+        let mut state = State::default();
+
+        // Act
+        let admitted: Vec<_> = (0..LOG_LINES_PER_SECOND).map(|_| state.admit(1)).collect();
+        let overflow = state.admit(1);
+        let next = state.admit(2);
+        let remaining = (0..LOG_LINES_PER_SECOND)
+            .filter(|_| state.admit(2).is_some())
+            .count();
+
+        // Assert
+        assert!(admitted.iter().all(|result| *result == Some(0)));
+        assert_eq!(overflow, None);
+        assert_eq!(next, Some(1));
+        assert_eq!(remaining, LOG_LINES_PER_SECOND as usize - 2);
+    }
 
     #[test]
     fn append_limit_crossed_rotates_and_replaces_backup() {

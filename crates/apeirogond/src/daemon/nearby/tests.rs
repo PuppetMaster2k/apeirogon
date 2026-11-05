@@ -110,3 +110,45 @@ async fn discovery_full_registry_ignores_new_ids_and_forgets_lost_peers() {
     assert!(!daemon.nearby.contains_key(&existing));
     assert!(!daemon.nearby.contains_key(&extra));
 }
+
+#[tokio::test]
+async fn discovery_full_unpaired_table_accepts_paired_and_preserves_lost_addresses() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let mut daemon = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+    let paired = MachineId::try_from(&[255; MachineId::LEN][..]).unwrap();
+    daemon.pins.add(Entry {
+        machine_id: paired,
+        pin: daemon.identity.pin,
+        name: "paired".into(),
+        spki_der: None,
+        hw_addr: None,
+    });
+    // Keep the test in-process without starting a dial.
+    daemon.discovery_dials.insert(paired);
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, a7n_proto::limits::DEFAULT_UDP_PORT));
+    for seed in 0..MAX_NEARBY {
+        let mut bytes = [0; MachineId::LEN];
+        bytes[..size_of::<usize>()].copy_from_slice(&seed.to_be_bytes());
+        daemon
+            .nearby
+            .insert(MachineId::try_from(bytes.as_slice()).unwrap(), vec![addr]);
+    }
+    let fresh = SocketAddr::from((Ipv6Addr::LOCALHOST, addr.port()));
+
+    // Act
+    daemon.discovery(DiscoveryEvent::Discovered(Announcement {
+        id: paired,
+        addrs: vec![addr],
+    }));
+    let accepted = daemon.nearby.len();
+    daemon.discovery(DiscoveryEvent::Discovered(Announcement {
+        id: paired,
+        addrs: vec![fresh, fresh],
+    }));
+    daemon.discovery(DiscoveryEvent::Lost(paired));
+
+    // Assert
+    assert_eq!(accepted, MAX_NEARBY);
+    assert_eq!(daemon.nearby[&paired], vec![fresh, addr]);
+}

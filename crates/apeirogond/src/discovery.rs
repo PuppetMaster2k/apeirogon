@@ -141,10 +141,9 @@ fn service_event(
                 service.addresses.iter().map(mdns_sd::ScopedIp::to_ip_addr),
                 service.port,
             )?;
-            if names.len() >= MAX_NEARBY && !names.contains_key(&service.fullname) {
-                return None;
+            if names.len() < MAX_NEARBY || names.contains_key(&service.fullname) {
+                names.insert(service.fullname, announcement.id);
             }
-            names.insert(service.fullname, announcement.id);
             Some(Event::Discovered(announcement))
         }
         ServiceEvent::ServiceRemoved(_, name) => names.remove(&name).map(Event::Lost),
