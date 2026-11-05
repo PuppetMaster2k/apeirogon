@@ -335,24 +335,27 @@ impl eframe::App for App {
                     .inner_margin(egui::Margin::symmetric(40, 32)),
             )
             .show(ui, |ui| {
-                ui.set_max_width(theme::size::CONTENT_MAX_W);
+                ui.set_max_width(ui.available_width().min(theme::size::CONTENT_MAX_W));
                 ui.add_enabled_ui(self.worker.commands.capacity() > 0, |ui| {
-                    if self.status.is_none() {
-                        self.daemon_unavailable(ui);
-                        return;
-                    }
-                    let missing = self.missing_permissions();
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        if let Some(missing) = &missing {
-                            self.permissions(ui, missing);
-                            return;
-                        }
-                        match self.screen {
-                            Screen::Machines => self.machines(ui),
-                            Screen::Layout => self.layout_screen(ui),
-                            Screen::Hotkeys | Screen::Policies => self.settings(ui),
-                        }
-                    });
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            if self.status.is_none() {
+                                self.daemon_unavailable(ui);
+                                return;
+                            }
+                            let missing = self.missing_permissions();
+                            if let Some(missing) = &missing {
+                                self.permissions(ui, missing);
+                                return;
+                            }
+                            match self.screen {
+                                Screen::Machines => self.machines(ui),
+                                Screen::Layout => self.layout_screen(ui),
+                                Screen::Hotkeys | Screen::Policies => self.settings(ui),
+                            }
+                        });
                 });
             });
     }
@@ -363,7 +366,9 @@ fn main() -> eframe::Result {
         "Apeirogon",
         eframe::NativeOptions {
             renderer: eframe::Renderer::Glow,
-            viewport: egui::ViewportBuilder::default().with_inner_size([900.0, 650.0]),
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([900.0, 650.0])
+                .with_min_inner_size([720.0, 480.0]),
             ..Default::default()
         },
         Box::new(|cc| Ok(Box::new(App::new(cc)?))),

@@ -64,8 +64,8 @@ pub(crate) fn chord(ui: &mut Ui, chord: &str) {
         })
         .sum();
     ui.allocate_ui_with_layout(
-        vec2(width, size::CONTROL_H),
-        Layout::left_to_right(Align::Center),
+        vec2(width.min(ui.available_width()), size::CONTROL_H),
+        Layout::left_to_right(Align::Center).with_main_wrap(true),
         |ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
             for key in keys {

@@ -24,7 +24,7 @@ pub(crate) use card::{card, empty_card, icon_tile};
 pub(crate) use icon_button::{IconButtonKind, icon_button};
 pub(crate) use keycap::{chord, key_name, keycap};
 pub(crate) use nav_item::nav_item;
-pub(crate) use page_header::{overline, page_header};
+pub(crate) use page_header::{STACK_WIDTH, overline, page_header};
 pub(crate) use palette::{DARK, LIGHT, Palette};
 pub(crate) use segmented::segmented;
 pub(crate) use setting_row::setting_row;

@@ -176,9 +176,12 @@ impl App {
                     ui.vertical(|ui| {
                         ui.label("Nearby machine");
                         machine_id(ui, nearby.id);
-                        ui.label(
-                            egui::RichText::new(nearby.addr.to_string())
-                                .font(theme::font_mono(13.0)),
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(nearby.addr.to_string())
+                                    .font(theme::font_mono(13.0)),
+                            )
+                            .truncate(),
                         );
                     });
                 });
@@ -199,7 +202,12 @@ impl App {
 
     fn pairing_ui(&mut self, ui: &mut egui::Ui) {
         theme::overline(ui, "Pair a machine");
-        ui.columns(2, |columns| {
+        let count = if ui.available_width() < theme::STACK_WIDTH {
+            1
+        } else {
+            2
+        };
+        ui.columns(count, |columns| {
             theme::card(&mut columns[0], |ui| {
                 ui.heading("Host pairing");
                 ui.label("Show a one-time code on this machine and enter it on the other one.");
@@ -224,7 +232,7 @@ impl App {
                     self.send(Command::Request(Request::PairHost));
                 }
             });
-            theme::card(&mut columns[1], |ui| self.join_pairing(ui));
+            theme::card(&mut columns[count - 1], |ui| self.join_pairing(ui));
         });
     }
 
@@ -275,36 +283,50 @@ impl App {
 
 fn machine_identity(ui: &mut egui::Ui, name: &str, id: MachineId, kind: BadgeKind, status: &str) {
     ui.horizontal(|ui| {
-        theme::icon_tile(ui, icon::MONITOR);
-        ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = 2.0;
-            ui.spacing_mut().interact_size.y = 22.0;
-            ui.horizontal_wrapped(|ui| {
-                ui.label(
-                    egui::RichText::new(name)
-                        .font(theme::font_medium(14.0))
-                        .color(theme::Palette::of(ui.ctx()).text),
-                );
-                theme::badge(ui, kind, status);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            copy_id(ui, id);
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                theme::icon_tile(ui, icon::MONITOR);
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    ui.spacing_mut().interact_size.y = 22.0;
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(name)
+                                    .font(theme::font_medium(14.0))
+                                    .color(theme::Palette::of(ui.ctx()).text),
+                            )
+                            .truncate(),
+                        );
+                        theme::badge(ui, kind, status);
+                    });
+                    id_label(ui, id);
+                });
             });
-            id_label(ui, id);
         });
-        copy_id(ui, id);
     });
 }
 
 fn machine_id(ui: &mut egui::Ui, id: MachineId) {
     ui.horizontal(|ui| {
-        id_label(ui, id);
-        copy_id(ui, id);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            copy_id(ui, id);
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                id_label(ui, id);
+            });
+        });
     });
 }
 
 fn id_label(ui: &mut egui::Ui, id: MachineId) {
-    ui.label(
-        egui::RichText::new(id.to_string())
-            .font(theme::font_mono(12.0))
-            .color(theme::Palette::of(ui.ctx()).text3),
+    ui.add(
+        egui::Label::new(
+            egui::RichText::new(id.to_string())
+                .font(theme::font_mono(12.0))
+                .color(theme::Palette::of(ui.ctx()).text3),
+        )
+        .truncate(),
     );
 }
 

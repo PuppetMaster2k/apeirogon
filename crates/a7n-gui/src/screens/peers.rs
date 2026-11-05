@@ -17,6 +17,7 @@ const MODIFIERS: [&str; 8] = [
     "right_meta",
 ];
 const PEER_DETAILS_MIN_WIDTH: f32 = 640.0;
+const PEER_LIST_WIDTH: f32 = 200.0;
 
 impl App {
     pub(super) fn peers(&mut self, ui: &mut egui::Ui) {
@@ -44,68 +45,67 @@ impl App {
         if !peers.iter().any(|peer| Some(peer.id) == self.selected_peer) {
             self.selected_peer = Some(peers[0].id);
         }
-        let list_width = 200.0;
-        egui::ScrollArea::horizontal()
-            .id_salt("peer_details")
-            .show(ui, |ui| {
-                ui.set_width(
-                    ui.available_width()
-                        .max(list_width + PEER_DETAILS_MIN_WIDTH + 16.0),
-                );
-                ui.horizontal_top(|ui| {
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(list_width, 0.0),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            theme::overline(ui, "Paired machines");
-                            for peer in &peers {
-                                ui.push_id(peer.id, |ui| {
-                                    if theme::nav_item(
-                                        ui,
-                                        icon::MONITOR,
-                                        &peer.name,
-                                        Some(peer.id) == self.selected_peer,
-                                    )
-                                    .clicked()
-                                    {
-                                        self.selected_peer = Some(peer.id);
-                                    }
-                                    theme::badge(
-                                        ui,
-                                        if peer.connected {
-                                            BadgeKind::Online
-                                        } else {
-                                            BadgeKind::Offline
-                                        },
-                                        if peer.connected { "Online" } else { "Offline" },
-                                    );
-                                    let id = peer.id.to_string();
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "{}…{}",
-                                            &id[..8],
-                                            &id[id.len() - 4..]
-                                        ))
-                                        .font(theme::font_mono(12.0))
-                                        .color(theme::Palette::of(ui.ctx()).text3),
-                                    );
-                                    ui.add_space(theme::size::ROW_GAP);
-                                });
-                            }
-                        },
-                    );
-                    ui.add_space(8.0);
-                    ui.vertical(|ui| {
-                        ui.set_width(ui.available_width().max(PEER_DETAILS_MIN_WIDTH));
-                        if let Some(peer) = peers
-                            .iter()
-                            .find(|peer| Some(peer.id) == self.selected_peer)
-                        {
-                            self.peer_settings(ui, peer);
-                        }
-                    });
-                });
+        let wide = ui.available_width() >= PEER_LIST_WIDTH + PEER_DETAILS_MIN_WIDTH + 16.0;
+        let layout = if wide {
+            egui::Layout::left_to_right(egui::Align::Min)
+        } else {
+            egui::Layout::top_down(egui::Align::Min)
+        };
+        ui.with_layout(layout, |ui| {
+            let list_width = if wide {
+                PEER_LIST_WIDTH
+            } else {
+                ui.available_width()
+            };
+            ui.allocate_ui_with_layout(
+                egui::vec2(list_width, 0.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| self.peer_list(ui, &peers),
+            );
+            ui.add_space(8.0);
+            ui.vertical(|ui| {
+                if let Some(peer) = peers
+                    .iter()
+                    .find(|peer| Some(peer.id) == self.selected_peer)
+                {
+                    self.peer_settings(ui, peer);
+                }
             });
+        });
+    }
+
+    fn peer_list(&mut self, ui: &mut egui::Ui, peers: &[PeerInfo]) {
+        theme::overline(ui, "Paired machines");
+        for peer in peers {
+            ui.push_id(peer.id, |ui| {
+                if theme::nav_item(
+                    ui,
+                    icon::MONITOR,
+                    &peer.name,
+                    Some(peer.id) == self.selected_peer,
+                )
+                .clicked()
+                {
+                    self.selected_peer = Some(peer.id);
+                }
+                theme::badge(
+                    ui,
+                    if peer.connected {
+                        BadgeKind::Online
+                    } else {
+                        BadgeKind::Offline
+                    },
+                    if peer.connected { "Online" } else { "Offline" },
+                );
+                let id = peer.id.to_string();
+                ui.label(
+                    egui::RichText::new(format!("{}…{}", &id[..8], &id[id.len() - 4..]))
+                        .font(theme::font_mono(12.0))
+                        .color(theme::Palette::of(ui.ctx()).text3),
+                );
+                ui.add_space(theme::size::ROW_GAP);
+            });
+        }
     }
 
     fn receive_directory(&mut self, ui: &mut egui::Ui) {
@@ -146,7 +146,12 @@ impl App {
                                     self.editing_receive_dir = false;
                                 }
                             } else {
-                                ui.label(egui::RichText::new(&value).font(theme::font_mono(13.0)));
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&value).font(theme::font_mono(13.0)),
+                                    )
+                                    .truncate(),
+                                );
                                 if theme::button(
                                     ui,
                                     ButtonKind::Ghost,
