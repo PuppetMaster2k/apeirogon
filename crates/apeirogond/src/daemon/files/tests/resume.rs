@@ -39,11 +39,11 @@ async fn connect(a: &mut Daemon, b: &mut Daemon) {
 
 async fn step(daemon: &mut Daemon) {
     tokio::select! {
-        Some(event) = daemon.event_rx.recv() => daemon.event(event),
-        Some((peer, link, envelope)) = daemon.inbound_rx.recv() => {
+        Some(event) = daemon.mailboxes.event_rx.recv() => daemon.event(event),
+        Some((peer, link, envelope)) = daemon.mailboxes.inbound_rx.recv() => {
             if daemon.is_current(peer, link) { daemon.receive_from(peer, envelope).await.unwrap(); }
         },
-        Some(stream) = daemon.transfer_rx.recv() => daemon.clipboard_stream(stream),
+        Some(stream) = daemon.mailboxes.transfer_rx.recv() => daemon.clipboard_stream(stream),
     }
 }
 
@@ -77,7 +77,7 @@ async fn receive_files_link_loss_resumes_only_verified_prefix_remainder() {
     let request = timeout(TEST_TIMEOUT, async {
         loop {
             tokio::select! {
-                Some((_, _, envelope)) = a.inbound_rx.recv() => {
+                Some((_, _, envelope)) = a.mailboxes.inbound_rx.recv() => {
                     if let Some(Body::TransferRequest(request)) = envelope.body { break request; }
                 },
                 () = step(&mut b) => {},
@@ -134,7 +134,7 @@ async fn receive_files_link_loss_resumes_only_verified_prefix_remainder() {
     let resumed: TransferRequest = timeout(TEST_TIMEOUT, async {
         loop {
             tokio::select! {
-                Some((_, _, envelope)) = a.inbound_rx.recv() => {
+                Some((_, _, envelope)) = a.mailboxes.inbound_rx.recv() => {
                     if let Some(Body::TransferRequest(request)) = envelope.body { break request; }
                 },
                 () = step(&mut b) => {},

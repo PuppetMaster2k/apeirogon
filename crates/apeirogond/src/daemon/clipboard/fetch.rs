@@ -9,11 +9,19 @@ use a7n_proto::v1::{
 use a7n_proto::{MachineId, limits};
 use quinn::Connection;
 use sha2::{Digest, Sha256};
-use tokio::sync::oneshot;
+use tokio::sync::{OwnedSemaphorePermit, oneshot};
 use tokio::time::timeout;
 
 use crate::daemon::transfer::{self, TransferError, read, write};
 use crate::daemon::{Daemon, Event, TransferStream};
+
+struct Fetch {
+    connection: Connection,
+    permit: OwnedSemaphorePermit,
+    link: usize,
+    transfer_id: u64,
+    receiver: oneshot::Receiver<(quinn::RecvStream, Vec<u8>)>,
+}
 
 impl Daemon {
     pub(in crate::daemon) fn clipboard_paste(&mut self, request: PasteRequest) {
@@ -36,32 +44,79 @@ impl Daemon {
             self.paste_files(request);
             return;
         }
+        let fetch = match self.prepare_clipboard_fetch(peer) {
+            Ok(fetch) => fetch,
+            Err(error) => {
+                reject(request, error);
+                return;
+            }
+        };
+        self.start_clipboard_fetch(request, item, fetch);
+    }
+
+    fn prepare_clipboard_fetch(&mut self, peer: MachineId) -> Result<Fetch, TransferError> {
         let Some(link) = self.links.by_peer.get(&peer) else {
-            reject(request, TransferError::LinkLost);
-            return;
+            return Err(TransferError::LinkLost);
         };
         let connection = link.connection.clone();
         let Some(transfers) = self.clipboard.links.get_mut(&peer) else {
-            reject(request, TransferError::LinkLost);
-            return;
+            return Err(TransferError::LinkLost);
         };
         let Ok(permit) = transfers.slots.clone().try_acquire_owned() else {
-            reject(request, TransferError::Busy);
-            return;
+            return Err(TransferError::Busy);
         };
         transfers.pending.retain(|_, reply| !reply.is_closed());
         let Some(next) = transfers.next.checked_add(2) else {
-            reject(request, TransferError::TransferIdExhausted);
-            return;
+            return Err(TransferError::TransferIdExhausted);
         };
         transfers.next = next;
         let id = transfers.id;
         let (sender, receiver) = oneshot::channel();
         transfers.pending.insert(next, sender);
+        Ok(Fetch {
+            connection,
+            permit,
+            link: id,
+            transfer_id: next,
+            receiver,
+        })
+    }
+
+    fn start_clipboard_fetch(&mut self, request: PasteRequest, item: ClipboardItem, job: Fetch) {
+        let peer = request.generation.origin;
+        let Fetch {
+            connection,
+            permit,
+            link,
+            transfer_id,
+            receiver,
+        } = job;
+        self.request_clipboard_fetch(&request, transfer_id);
+        let events = self.mailboxes.events.clone();
+        let task = self.tasks.spawn(async move {
+            let result = fetch(receiver, &item, &connection).await;
+            drop(permit);
+            let _ = events
+                .send(Event::ClipboardFetched {
+                    peer,
+                    link,
+                    request,
+                    data: result.ok(),
+                })
+                .await;
+        });
+        if let Some(transfers) = self.clipboard.links.get_mut(&peer) {
+            transfers.fetch_tasks.retain(|_, task| !task.is_finished());
+            transfers.fetch_tasks.insert(transfer_id, task);
+        }
+    }
+
+    fn request_clipboard_fetch(&mut self, request: &PasteRequest, transfer_id: u64) {
+        let peer = request.generation.origin;
         self.send_input(
             peer,
             Body::TransferRequest(TransferRequest {
-                transfer_id: next,
+                transfer_id,
                 source: Some(Source::Clipboard(ClipboardRef {
                     origin: peer.as_bytes().to_vec(),
                     generation: request.generation.generation,
@@ -71,34 +126,6 @@ impl Daemon {
                 resume: Vec::new(),
             }),
         );
-        let events = self.events.clone();
-        let task = self.tasks.spawn(async move {
-            let result = timeout(limits::CLIPBOARD_FETCH_TIMEOUT, async {
-                let (mut stream, mut buf) = receiver.await.map_err(|_| TransferError::LinkLost)?;
-                receive(&mut stream, &mut buf, &item).await
-            })
-            .await
-            .unwrap_or(Err(TransferError::Timeout));
-            if let Err(reason) = result {
-                crate::log::event!("kind=clipboard_fetch_failed reason={reason}");
-                if reason == TransferError::Frame {
-                    connection.close(crate::link::CLOSE_NORMAL, b"");
-                }
-            }
-            drop(permit);
-            let _ = events
-                .send(Event::ClipboardFetched {
-                    peer,
-                    link: id,
-                    request,
-                    data: result.ok(),
-                })
-                .await;
-        });
-        if let Some(transfers) = self.clipboard.links.get_mut(&peer) {
-            transfers.fetch_tasks.retain(|_, task| !task.is_finished());
-            transfers.fetch_tasks.insert(next, task);
-        }
     }
 
     pub(in crate::daemon) fn clipboard_fetched(
@@ -132,7 +159,7 @@ impl Daemon {
             return;
         };
         let connection = link.connection.clone();
-        let events = self.events.clone();
+        let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
             let mut buf = Vec::new();
             match timeout(limits::CLIPBOARD_FETCH_TIMEOUT, read(&mut stream, &mut buf)).await {
@@ -216,6 +243,26 @@ impl Daemon {
             }
         }
     }
+}
+
+async fn fetch(
+    receiver: oneshot::Receiver<(quinn::RecvStream, Vec<u8>)>,
+    item: &ClipboardItem,
+    connection: &Connection,
+) -> Result<Vec<u8>, TransferError> {
+    let result = timeout(limits::CLIPBOARD_FETCH_TIMEOUT, async {
+        let (mut stream, mut buf) = receiver.await.map_err(|_| TransferError::LinkLost)?;
+        receive(&mut stream, &mut buf, item).await
+    })
+    .await
+    .unwrap_or(Err(TransferError::Timeout));
+    if let Err(reason) = result {
+        crate::log::event!("kind=clipboard_fetch_failed reason={reason}");
+        if reason == TransferError::Frame {
+            connection.close(crate::link::CLOSE_NORMAL, b"");
+        }
+    }
+    result
 }
 
 pub(in crate::daemon) fn reject(request: PasteRequest, reason: TransferError) {

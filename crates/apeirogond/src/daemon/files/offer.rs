@@ -63,7 +63,7 @@ impl Daemon {
         };
         *self.files.building.entry(peer).or_default() += 1;
         let origin = self.identity.machine_id;
-        let events = self.events.clone();
+        let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
             let result = tokio::task::spawn_blocking(move || build(origin, offer, paths))
                 .await

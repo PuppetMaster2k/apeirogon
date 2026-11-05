@@ -42,7 +42,7 @@ impl Daemon {
         wire: ClipboardAnnounce,
         paths: Vec<PathBuf>,
     ) {
-        let events = self.events.clone();
+        let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
                 offer::build(generation.origin, generation.generation, paths)

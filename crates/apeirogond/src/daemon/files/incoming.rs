@@ -57,23 +57,20 @@ impl Daemon {
             crate::log::event!("kind=file_offer_ignored");
             return;
         }
-        let Some(manifest) = wire.files.as_ref() else {
+        let Some(valid) = validate_offer(wire) else {
             return;
         };
-        if wire.items.len() != 1
-            || wire.items[0].mime != clipboard::FILES
-            || wire.items[0].size != manifest.total_size
-            || !wire.items[0].inline_data.is_empty()
-            || !wire.items[0].sha256.is_empty()
-            || manifest.entries.is_empty()
-        {
-            crate::log::event!("kind=file_offer_rejected");
-            return;
-        }
-        let Ok(valid) = ValidManifest::try_from(manifest) else {
-            crate::log::event!("kind=file_offer_rejected");
-            return;
-        };
+        self.update_file_offer(peer, wire, valid, announced_link, ask);
+    }
+
+    fn update_file_offer(
+        &mut self,
+        peer: MachineId,
+        wire: &ClipboardAnnounce,
+        valid: ValidManifest,
+        announced_link: usize,
+        ask: bool,
+    ) {
         let key = (peer, wire.generation);
         if let Some(incoming) = self.files.incoming.get_mut(&key) {
             if incoming.wire != *wire {
@@ -85,6 +82,17 @@ impl Daemon {
             }
             return;
         }
+        self.store_file_offer(peer, wire, valid, announced_link, ask);
+    }
+
+    fn store_file_offer(
+        &mut self,
+        peer: MachineId,
+        wire: &ClipboardAnnounce,
+        valid: ValidManifest,
+        announced_link: usize,
+        ask: bool,
+    ) {
         if ask {
             self.drop_held_offers(peer);
         }
@@ -105,12 +113,12 @@ impl Daemon {
         if ask {
             self.notify_files(
                 peer,
-                &Progress::new(&valid, manifest.total_size),
+                &Progress::new(&valid, wire.items[0].size),
                 Notice::Offered,
             );
         }
         self.files.incoming.insert(
-            key,
+            (peer, wire.generation),
             Incoming {
                 wire: wire.clone(),
                 manifest: valid,
@@ -224,15 +232,7 @@ impl Daemon {
     /// Starts the download task unless every transfer slot of the link is taken.
     /// Returns the id of the started transfer.
     pub(super) fn spawn_receive(&mut self, download: Download) -> Result<Option<u64>, DaemonError> {
-        let Download {
-            peer,
-            offer,
-            kind,
-            manifest,
-            stage,
-            receive_dir,
-            total_size,
-        } = download;
+        let peer = download.peer;
         let Some(link) = self.links.by_peer.get(&peer) else {
             return Err(DaemonError::NotConnected);
         };
@@ -259,8 +259,23 @@ impl Daemon {
         let link = transfers.id;
         let (sender, receiver) = oneshot::channel();
         transfers.pending.insert(wire_id, sender);
+        let job = self.register_file_receive(download, id, link, wire_id, receiver, connection);
+        self.spawn_file_receive(job, permit);
+        Ok(Some(id))
+    }
+
+    fn register_file_receive(
+        &mut self,
+        download: Download,
+        id: u64,
+        link: usize,
+        wire_id: u64,
+        receiver: oneshot::Receiver<(quinn::RecvStream, Vec<u8>)>,
+        connection: quinn::Connection,
+    ) -> super::receive::Receive {
+        let peer = download.peer;
         let (cancel, cancelled) = watch::channel(Failure::Cancelled);
-        let progress = Arc::new(Progress::new(&manifest, total_size));
+        let progress = Arc::new(Progress::new(&download.manifest, download.total_size));
         self.notify_files(peer, &progress, Notice::Receiving);
         self.files.active.insert(
             id,
@@ -268,36 +283,41 @@ impl Daemon {
                 peer,
                 link,
                 wire_id,
-                offer,
-                kind,
+                offer: download.offer,
+                kind: download.kind,
                 direction: TransferDirection::Receive,
                 cancel,
                 progress: progress.clone(),
             },
         );
-        let events = self.events.clone();
-        let reserved = self.files.reserved.clone();
+        super::receive::Receive {
+            id,
+            manifest: download.manifest,
+            stage: download.stage,
+            destination: download.receive_dir,
+            receiver,
+            cancelled,
+            progress,
+            events: self.mailboxes.events.clone(),
+            connection,
+            reserved: self.files.reserved.clone(),
+        }
+    }
+
+    fn spawn_file_receive(
+        &mut self,
+        job: super::receive::Receive,
+        permit: tokio::sync::OwnedSemaphorePermit,
+    ) {
+        let id = job.id;
+        let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
-            let worker_events = events.clone();
-            let result = super::worker::run(super::receive::run(super::receive::Receive {
-                id,
-                manifest,
-                stage,
-                destination: receive_dir,
-                receiver,
-                cancelled,
-                progress,
-                events: worker_events,
-                connection,
-                reserved,
-            }))
-            .await;
+            let result = super::worker::run(super::receive::run(job)).await;
             drop(permit);
             let _ = events
                 .send(super::Event::FilesFinished { id, result })
                 .await;
         });
-        Ok(Some(id))
     }
 
     pub(in crate::daemon) fn files_ready(&mut self, id: u64, resume: Vec<FileResume>) {
@@ -332,4 +352,23 @@ impl Daemon {
             }),
         );
     }
+}
+
+fn validate_offer(wire: &ClipboardAnnounce) -> Option<ValidManifest> {
+    let manifest = wire.files.as_ref()?;
+    if wire.items.len() != 1
+        || wire.items[0].mime != clipboard::FILES
+        || wire.items[0].size != manifest.total_size
+        || !wire.items[0].inline_data.is_empty()
+        || !wire.items[0].sha256.is_empty()
+        || manifest.entries.is_empty()
+    {
+        crate::log::event!("kind=file_offer_rejected");
+        return None;
+    }
+    let Ok(valid) = ValidManifest::try_from(manifest) else {
+        crate::log::event!("kind=file_offer_rejected");
+        return None;
+    };
+    Some(valid)
 }

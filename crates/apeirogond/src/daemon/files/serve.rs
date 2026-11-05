@@ -11,11 +11,22 @@ use a7n_proto::v1::{
 };
 use a7n_proto::{MachineId, limits};
 use quinn::{Connection, SendStream};
-use tokio::sync::watch;
+use tokio::sync::{OwnedSemaphorePermit, watch};
 use tokio::time::timeout;
 
 use super::{Active, Daemon, Event, Failure, Kind, Offer, Progress, Result};
 use crate::daemon::transfer::{self, TransferError, write};
+
+struct FileSend {
+    peer: MachineId,
+    link: usize,
+    connection: Connection,
+    permit: OwnedSemaphorePermit,
+    request: TransferRequest,
+    offer: Arc<Offer>,
+    kind: Kind,
+    offer_id: u64,
+}
 
 impl Daemon {
     pub(in crate::daemon) fn files_request(
@@ -41,16 +52,28 @@ impl Daemon {
         let Some(offer) = offer else {
             return false;
         };
+        self.serve_files(peer, request, offer, kind, reference.generation);
+        true
+    }
+
+    fn serve_files(
+        &mut self,
+        peer: MachineId,
+        request: &TransferRequest,
+        offer: Arc<Offer>,
+        kind: Kind,
+        offer_id: u64,
+    ) {
         let Some(handle) = self.links.by_peer.get(&peer) else {
-            return true;
+            return;
         };
         let connection = handle.connection.clone();
         let Some(transfers) = self.clipboard.links.get(&peer) else {
-            return true;
+            return;
         };
         let Ok(permit) = transfers.slots.clone().try_acquire_owned() else {
             crate::log::event!("kind=file_transfer_refused reason=busy");
-            return true;
+            return;
         };
         let link = transfers.id;
         let duplicate = self.files.active.values().any(|active| {
@@ -58,7 +81,7 @@ impl Daemon {
                 && active.link == link
                 && active.direction == TransferDirection::Send
                 && (active.wire_id == request.transfer_id
-                    || (active.offer == reference.generation && active.kind == kind))
+                    || (active.offer == offer_id && active.kind == kind))
         });
         let unsupported =
             kind == Kind::Offer && (self.check_file_send(peer).is_err() || request.item_index != 0);
@@ -68,43 +91,57 @@ impl Daemon {
                 let _ = refuse(&connection, wire_id).await;
                 drop(permit);
             });
-            return true;
+            return;
         }
+        self.spawn_file_send(FileSend {
+            peer,
+            link,
+            connection,
+            permit,
+            request: request.clone(),
+            offer,
+            kind,
+            offer_id,
+        });
+    }
+
+    fn spawn_file_send(&mut self, job: FileSend) {
         let Some(id) = self.files.next_transfer.checked_add(1) else {
-            return true;
+            return;
         };
         self.files.next_transfer = id;
-        let progress = Arc::new(Progress::new(&offer.manifest, offer.wire.items[0].size));
+        let progress = Arc::new(Progress::new(
+            &job.offer.manifest,
+            job.offer.wire.items[0].size,
+        ));
         let (cancel, mut cancelled) = watch::channel(Failure::Cancelled);
         self.files.active.insert(
             id,
             Active {
-                peer,
-                link,
-                wire_id: request.transfer_id,
-                offer: reference.generation,
-                kind,
+                peer: job.peer,
+                link: job.link,
+                wire_id: job.request.transfer_id,
+                offer: job.offer_id,
+                kind: job.kind,
                 direction: TransferDirection::Send,
                 cancel,
                 progress: progress.clone(),
             },
         );
-        let request = request.clone();
-        let events = self.events.clone();
+        let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
             let result = super::worker::run(async move {
                 tokio::select! {
                     biased;
                     _ = cancelled.changed() => Err(*cancelled.borrow()),
-                    result = send(&connection, &request, &offer, &progress) => result,
+                    result = send(&job.connection, &job.request, &job.offer, &progress) => result,
                 }
             })
             .await;
-            drop(permit);
+            drop(job.permit);
             let result = result.map(|()| Vec::new());
             let _ = events.send(Event::FilesFinished { id, result }).await;
         });
-        true
     }
 }
 

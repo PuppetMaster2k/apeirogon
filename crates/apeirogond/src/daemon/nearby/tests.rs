@@ -75,7 +75,7 @@ async fn discovery_unpaired_peer_lists_address_without_dialing() {
         daemon.status().nearby,
         vec![a7n_ipc::NearbyMachine { id, addr }]
     );
-    assert!(daemon.discovery_dials.is_empty());
+    assert!(daemon.nearby.discovery_dials.is_empty());
     assert!(daemon.tasks.is_empty());
     assert!(daemon.links.by_peer.is_empty());
 }
@@ -96,7 +96,7 @@ async fn discovery_full_registry_ignores_new_ids_and_forgets_lost_peers() {
         }));
     }
     let extra = MachineId::try_from(&[255; MachineId::LEN][..]).unwrap();
-    let existing = *daemon.nearby.keys().next().unwrap();
+    let existing = *daemon.nearby.nearby.keys().next().unwrap();
 
     // Act
     daemon.discovery(DiscoveryEvent::Discovered(Announcement {
@@ -106,9 +106,9 @@ async fn discovery_full_registry_ignores_new_ids_and_forgets_lost_peers() {
     daemon.discovery(DiscoveryEvent::Lost(existing));
 
     // Assert
-    assert_eq!(daemon.nearby.len(), MAX_NEARBY - 1);
-    assert!(!daemon.nearby.contains_key(&existing));
-    assert!(!daemon.nearby.contains_key(&extra));
+    assert_eq!(daemon.nearby.nearby.len(), MAX_NEARBY - 1);
+    assert!(!daemon.nearby.nearby.contains_key(&existing));
+    assert!(!daemon.nearby.nearby.contains_key(&extra));
 }
 
 #[tokio::test]
@@ -125,12 +125,13 @@ async fn discovery_full_unpaired_table_accepts_paired_and_preserves_lost_address
         hw_addr: None,
     });
     // Keep the test in-process without starting a dial.
-    daemon.discovery_dials.insert(paired);
+    daemon.nearby.discovery_dials.insert(paired);
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, a7n_proto::limits::DEFAULT_UDP_PORT));
     for seed in 0..MAX_NEARBY {
         let mut bytes = [0; MachineId::LEN];
         bytes[..size_of::<usize>()].copy_from_slice(&seed.to_be_bytes());
         daemon
+            .nearby
             .nearby
             .insert(MachineId::try_from(bytes.as_slice()).unwrap(), vec![addr]);
     }
@@ -141,7 +142,7 @@ async fn discovery_full_unpaired_table_accepts_paired_and_preserves_lost_address
         id: paired,
         addrs: vec![addr],
     }));
-    let accepted = daemon.nearby.len();
+    let accepted = daemon.nearby.nearby.len();
     daemon.discovery(DiscoveryEvent::Discovered(Announcement {
         id: paired,
         addrs: vec![fresh, fresh],
@@ -150,5 +151,5 @@ async fn discovery_full_unpaired_table_accepts_paired_and_preserves_lost_address
 
     // Assert
     assert_eq!(accepted, MAX_NEARBY);
-    assert_eq!(daemon.nearby[&paired], vec![fresh, addr]);
+    assert_eq!(daemon.nearby.nearby[&paired], vec![fresh, addr]);
 }
