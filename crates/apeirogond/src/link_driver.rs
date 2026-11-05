@@ -36,27 +36,55 @@ enum Event {
 /// frames in `link.control_buf`, `read_datagram` and `sleep_until` hold no
 /// state. Mailbox receive is cancel-safe; writes complete outside `select!`.
 pub(crate) async fn drive(
-    mut link: Link,
+    link: Link,
     inbound: mpsc::Sender<(MachineId, usize, Envelope)>,
     mut outbound: mpsc::Receiver<Envelope>,
     transfers: mpsc::Sender<(MachineId, usize, quinn::RecvStream)>,
 ) -> Result<DropReason, LinkError> {
-    let mut liveness = Liveness::new(core_role(link.role), std::time::Instant::now());
-    let mut send_buf = Vec::new();
-    let mut input_seq = 0u64;
-    // When the partial frame in `control_buf` started; a `select!` wake-up
-    // restarts `read_frame`'s own timer, so the 30 s bound is kept here.
-    let mut partial_since: Option<std::time::Instant> = None;
+    let mut driver = Driver {
+        liveness: Liveness::new(core_role(link.role), std::time::Instant::now()),
+        link,
+        send_buf: Vec::new(),
+        input_seq: 0,
+        partial_since: None,
+    };
     loop {
-        let frame_deadline = partial_since.map(|since| since + limits::FRAME_READ_TIMEOUT);
-        let deadline =
-            Instant::from_std(frame_deadline.map_or(liveness.next_deadline(), |frame| {
-                frame.min(liveness.next_deadline())
-            }));
+        let (event, now) = driver.next_event(&mut outbound).await?;
+        driver
+            .handle_event(event, &inbound, &transfers, now)
+            .await?;
+        if let Some(reason) = driver.poll_liveness(now).await? {
+            return Ok(reason);
+        }
+    }
+}
+
+struct Driver {
+    link: Link,
+    liveness: Liveness,
+    send_buf: Vec<u8>,
+    input_seq: u64,
+    // A select wake-up restarts read_frame's timer, so keep the partial-frame bound here.
+    partial_since: Option<std::time::Instant>,
+}
+
+impl Driver {
+    async fn next_event(
+        &mut self,
+        outbound: &mut mpsc::Receiver<Envelope>,
+    ) -> Result<(Event, std::time::Instant), LinkError> {
+        let frame_deadline = self
+            .partial_since
+            .map(|since| since + limits::FRAME_READ_TIMEOUT);
+        let deadline = Instant::from_std(
+            frame_deadline.map_or(self.liveness.next_deadline(), |frame| {
+                frame.min(self.liveness.next_deadline())
+            }),
+        );
         let event = tokio::select! {
-            stream = link.connection.accept_uni() => Event::Transfer(stream?),
-            frame = read_frame(&mut link.control_recv, &mut link.control_buf, FrameKind::Control) => Event::Frame(frame?),
-            datagram = link.connection.read_datagram() => motion_event(&datagram?)?,
+            stream = self.link.connection.accept_uni() => Event::Transfer(stream?),
+            frame = read_frame(&mut self.link.control_recv, &mut self.link.control_buf, FrameKind::Control) => Event::Frame(frame?),
+            datagram = self.link.connection.read_datagram() => motion_event(&datagram?)?,
             envelope = outbound.recv() => Event::Outbound(envelope),
             () = sleep_until(deadline) => Event::Timer,
         };
@@ -64,73 +92,110 @@ pub(crate) async fn drive(
         if frame_deadline.is_some_and(|frame| now >= frame) {
             return Err(LinkError::Timeout);
         }
+        Ok((event, now))
+    }
+
+    async fn handle_event(
+        &mut self,
+        event: Event,
+        inbound: &mpsc::Sender<(MachineId, usize, Envelope)>,
+        transfers: &mpsc::Sender<(MachineId, usize, quinn::RecvStream)>,
+        now: std::time::Instant,
+    ) -> Result<(), LinkError> {
         match event {
             Event::Frame(envelope) => {
-                liveness.on_received(now);
+                self.liveness.on_received(now);
                 handle_frame(
-                    &mut link,
-                    &mut liveness,
-                    &mut send_buf,
-                    &inbound,
+                    &mut self.link,
+                    &mut self.liveness,
+                    &mut self.send_buf,
+                    inbound,
                     envelope,
                     now,
                 )
                 .await?;
             }
             Event::Datagram(envelope) => {
-                liveness.on_received(now);
-                forward(&inbound, &link, envelope).await?;
+                self.liveness.on_received(now);
+                forward(inbound, &self.link, envelope).await?;
             }
-            Event::Outbound(Some(mut envelope)) => {
-                if matches!(envelope.body, Some(Body::Motion(_))) {
-                    send_buf.clear();
-                    encode_datagram(&envelope, &mut send_buf);
-                    // ponytail: one small allocation per motion datagram; pool buffers if profiling shows it.
-                    if let Err(error) = link.connection.send_datagram(send_buf.clone().into()) {
-                        match error {
-                            quinn::SendDatagramError::ConnectionLost(error) => {
-                                return Err(error.into());
-                            }
-                            _ => crate::log::event!("kind=motion_dropped"),
-                        }
-                    }
-                } else {
-                    if let Some(Body::Input(batch)) = &mut envelope.body {
-                        input_seq = input_seq
-                            .checked_add(1)
-                            .ok_or(LinkError::InputSeqExhausted)?;
-                        batch.seq = input_seq;
-                        liveness.on_input_sent(batch.seq, now);
-                    }
-                    if let Some(body) = envelope.body {
-                        send_envelope(&mut link.control_send, &mut send_buf, body).await?;
-                    }
-                }
+            Event::Outbound(Some(envelope)) => {
+                self.send_outbound(envelope, now).await?;
             }
             Event::Outbound(None) => return Err(LinkError::InboundClosed),
             Event::Transfer(stream) => {
                 transfers
-                    .send((link.peer_id, link.connection.stable_id(), stream))
+                    .send((self.link.peer_id, self.link.connection.stable_id(), stream))
                     .await
                     .map_err(|_| LinkError::InboundClosed)?;
             }
             Event::Timer => {}
         }
-        partial_since = if link.control_buf.is_empty() {
+        self.partial_since = if self.link.control_buf.is_empty() {
             None
         } else {
-            partial_since.or(Some(now))
+            self.partial_since.or(Some(now))
         };
-        match liveness.poll(now) {
-            Poll::Idle => {}
-            Poll::SendPing(ping) => {
-                send_envelope(&mut link.control_send, &mut send_buf, Body::Ping(ping)).await?;
+        Ok(())
+    }
+
+    async fn send_outbound(
+        &mut self,
+        mut envelope: Envelope,
+        now: std::time::Instant,
+    ) -> Result<(), LinkError> {
+        if matches!(envelope.body, Some(Body::Motion(_))) {
+            self.send_buf.clear();
+            encode_datagram(&envelope, &mut self.send_buf);
+            // ponytail: one small allocation per motion datagram; pool buffers if profiling shows it.
+            if let Err(error) = self
+                .link
+                .connection
+                .send_datagram(self.send_buf.clone().into())
+            {
+                match error {
+                    quinn::SendDatagramError::ConnectionLost(error) => {
+                        return Err(error.into());
+                    }
+                    _ => crate::log::event!("kind=motion_dropped"),
+                }
             }
-            Poll::Drop(reason) => {
-                link.connection.close(close_code(reason), b"");
-                return Ok(reason);
+        } else {
+            if let Some(Body::Input(batch)) = &mut envelope.body {
+                self.input_seq = self
+                    .input_seq
+                    .checked_add(1)
+                    .ok_or(LinkError::InputSeqExhausted)?;
+                batch.seq = self.input_seq;
+                self.liveness.on_input_sent(batch.seq, now);
+            }
+            if let Some(body) = envelope.body {
+                send_envelope(&mut self.link.control_send, &mut self.send_buf, body).await?;
             }
         }
+        Ok(())
+    }
+
+    async fn poll_liveness(
+        &mut self,
+        now: std::time::Instant,
+    ) -> Result<Option<DropReason>, LinkError> {
+        match self.liveness.poll(now) {
+            Poll::Idle => {}
+            Poll::SendPing(ping) => {
+                send_envelope(
+                    &mut self.link.control_send,
+                    &mut self.send_buf,
+                    Body::Ping(ping),
+                )
+                .await?;
+            }
+            Poll::Drop(reason) => {
+                self.link.connection.close(close_code(reason), b"");
+                return Ok(Some(reason));
+            }
+        }
+        Ok(None)
     }
 }
 

@@ -3,7 +3,7 @@
 use a7n_proto::v1::{Envelope, envelope::Body};
 use a7n_proto::{ALPN_LINK, ALPN_PAIR, MachineId, limits};
 use quinn::Connection;
-use tokio::sync::{OwnedSemaphorePermit, mpsc, oneshot};
+use tokio::sync::{OwnedSemaphorePermit, mpsc};
 use tokio::time::{Instant, timeout_at};
 
 use super::{Daemon, DaemonError, Event};
@@ -40,7 +40,7 @@ impl Daemon {
             Some(ALPN_LINK) if self.trusted(&connection) => {
                 let peer = identity::machine_id_of(&peer_certificate(&connection)?)?;
                 let accepts_drive = self.allow_drive(peer);
-                let events = self.events.clone();
+                let events = self.mailboxes.events.clone();
                 let info = handshake::local_info(&connection, &self.endpoint, &self.info);
                 self.tasks.spawn(async move {
                     let result = timeout_at(
@@ -76,6 +76,71 @@ impl Daemon {
 
     pub(super) fn event(&mut self, event: Event) {
         match event {
+            Event::DiscoveryDialEnded(peer) => {
+                self.nearby.discovery_dials.remove(&peer);
+            }
+            Event::Link(Err(LinkError::Superseded(peer)), Some(reply)) => {
+                self.wait_for_connect(peer, reply);
+            }
+            Event::ExpireConnects => self.finish_connects(),
+            Event::Link(result, reply) => {
+                self.link_received(result, reply);
+            }
+            Event::PairingEnded => self.pairing.host_busy = false,
+            Event::Confirmed {
+                entry,
+                paired,
+                reply,
+            } => {
+                let _ = reply.send(self.admit(&entry, paired));
+            }
+            Event::Joined {
+                result,
+                addr,
+                reply,
+            } => {
+                self.joined(result, addr, reply);
+            }
+            Event::Ended(peer, id) => {
+                // An old task can finish after its replacement is registered.
+                if self.is_current(peer, id) {
+                    self.links.by_peer.remove(&peer);
+                    self.input_link_lost(peer);
+                }
+            }
+            event => self.transfer_event(event),
+        }
+    }
+
+    fn wait_for_connect(&mut self, peer: MachineId, reply: Reply<()>) {
+        let deadline = Instant::now() + limits::HANDSHAKE_TIMEOUT;
+        self.pending_connects.push(PendingConnect {
+            peer,
+            deadline,
+            reply,
+        });
+        self.finish_connects();
+        let events = self.mailboxes.events.clone();
+        self.tasks.spawn(async move {
+            tokio::time::sleep_until(deadline).await;
+            let _ = events.send(Event::ExpireConnects).await;
+        });
+    }
+
+    fn link_received(&mut self, result: Result<Box<Link>, LinkError>, reply: Option<Reply<()>>) {
+        let result = result
+            .map_err(DaemonError::from)
+            .and_then(|link| self.register(*link));
+        if let Some(reply) = reply {
+            let _ = reply.send(result);
+        } else if result.is_err() {
+            crate::log::event!("kind=handshake_failed");
+        }
+        self.finish_connects();
+    }
+
+    fn transfer_event(&mut self, event: Event) {
+        match event {
             Event::FilesBuilt {
                 peer,
                 link,
@@ -98,75 +163,7 @@ impl Daemon {
                 request,
                 data,
             } => self.clipboard_fetched(peer, link, request, data),
-            Event::DiscoveryDialEnded(peer) => {
-                self.discovery_dials.remove(&peer);
-            }
-            Event::Link(Err(LinkError::Superseded(peer)), Some(reply)) => {
-                let deadline = Instant::now() + limits::HANDSHAKE_TIMEOUT;
-                self.pending_connects.push(PendingConnect {
-                    peer,
-                    deadline,
-                    reply,
-                });
-                self.finish_connects();
-                let events = self.events.clone();
-                self.tasks.spawn(async move {
-                    tokio::time::sleep_until(deadline).await;
-                    let _ = events.send(Event::ExpireConnects).await;
-                });
-            }
-            Event::ExpireConnects => self.finish_connects(),
-            Event::Link(result, reply) => {
-                let result = result
-                    .map_err(DaemonError::from)
-                    .and_then(|link| self.register(*link));
-                if let Some(reply) = reply {
-                    let _ = reply.send(result);
-                } else if result.is_err() {
-                    crate::log::event!("kind=handshake_failed");
-                }
-                self.finish_connects();
-            }
-            Event::PairingEnded => self.host_busy = false,
-            Event::Confirmed {
-                entry,
-                paired,
-                reply,
-            } => {
-                let _ = reply.send(self.admit(&entry, paired));
-            }
-            Event::Joined {
-                result,
-                addr,
-                reply,
-            } => {
-                let result = result.map_err(DaemonError::from).and_then(|entry| {
-                    self.store_peer(entry.clone())?;
-                    Ok(entry)
-                });
-                match result {
-                    Ok(entry) => {
-                        let (connected, receiver) = oneshot::channel();
-                        self.connect(addr, connected);
-                        self.tasks.spawn(async move {
-                            if !matches!(receiver.await, Ok(Ok(()))) {
-                                crate::log::event!("kind=post_pair_connect_failed");
-                            }
-                            let _ = reply.send(Ok(entry));
-                        });
-                    }
-                    Err(error) => {
-                        let _ = reply.send(Err(error));
-                    }
-                }
-            }
-            Event::Ended(peer, id) => {
-                // An old task can finish after its replacement is registered.
-                if self.is_current(peer, id) {
-                    self.links.by_peer.remove(&peer);
-                    self.input_link_lost(peer);
-                }
-            }
+            _ => unreachable!("only transfer events are dispatched here"),
         }
     }
 
@@ -213,6 +210,14 @@ impl Daemon {
             }
             self.input_link_lost(peer);
         }
+        self.send_link_state(&link, &sender);
+        self.clipboard_link_up(peer);
+        self.files_link_up(peer);
+        self.spawn_link_driver(link, outbound);
+        Ok(())
+    }
+
+    fn send_link_state(&self, link: &Link, sender: &mpsc::Sender<Envelope>) {
         // Both sides send Desk immediately, before the driver handles input.
         let _ = sender.try_send(Envelope {
             body: Some(Body::Desk(self.desk.to_desk())),
@@ -230,21 +235,23 @@ impl Daemon {
         }
         let _ = sender.try_send(Envelope {
             body: Some(Body::Accepts(a7n_proto::v1::Accepts {
-                accepts: self.allow_drive(peer),
+                accepts: self.allow_drive(link.peer_id),
             })),
         });
-        self.clipboard_link_up(peer);
-        self.files_link_up(peer);
-        let transfers = self.transfer_tx.clone();
-        let inbound = self.inbound.clone();
-        let events = self.events.clone();
+    }
+
+    fn spawn_link_driver(&mut self, link: Link, outbound: mpsc::Receiver<Envelope>) {
+        let peer = link.peer_id;
+        let id = link.connection.stable_id();
+        let transfers = self.mailboxes.transfer_tx.clone();
+        let inbound = self.mailboxes.inbound.clone();
+        let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
             let connection = link.connection.clone();
             let _ = link_driver::drive(link, inbound, outbound, transfers).await;
             connection.close(crate::link::CLOSE_NORMAL, b"");
             let _ = events.send(Event::Ended(peer, id)).await;
         });
-        Ok(())
     }
 }
 
@@ -307,7 +314,7 @@ mod tests {
             receiver.try_recv(),
             Err(oneshot::error::TryRecvError::Empty)
         ));
-        let failed = daemon.event_rx.recv().await.unwrap();
+        let failed = daemon.mailboxes.event_rx.recv().await.unwrap();
         assert!(matches!(&failed, Event::Link(Err(_), Some(_))));
         daemon.event(failed);
         let result = receiver.await.unwrap();

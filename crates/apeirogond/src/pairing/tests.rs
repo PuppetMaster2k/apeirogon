@@ -20,7 +20,7 @@ async fn pair_join_expired_code_stores_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let mut daemon = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
     let code = daemon.open_pairing().unwrap();
-    daemon.host = Some(HostPairing::new(
+    daemon.pairing.host = Some(HostPairing::new(
         code.clone(),
         None,
         daemon.identity.pin,

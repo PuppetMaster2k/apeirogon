@@ -40,6 +40,31 @@ async fn serve_connection(mut connection: IpcConnection, commands: mpsc::Sender<
 async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Response {
     match request {
         Request::Shutdown => execute(commands, Command::Shutdown, |()| Response::Done).await,
+        Request::Status => execute(commands, Command::Status, Response::Status).await,
+        clipboard @ (Request::ClipboardStatus
+        | Request::ClipboardAccept { .. }
+        | Request::ClipboardReject) => dispatch_clipboard(clipboard, commands).await,
+        files @ (Request::SendFiles { .. }
+        | Request::FilesAccept { .. }
+        | Request::FilesReject { .. }
+        | Request::CancelTransfer { .. }) => dispatch_files(files, commands).await,
+
+        control @ (Request::Switch { .. }
+        | Request::Wake { .. }
+        | Request::SetPaused { .. }
+        | Request::Connect { .. }) => dispatch_control(control, commands).await,
+        settings @ (Request::ReloadConfig
+        | Request::GetLayout
+        | Request::SetLayout { .. }
+        | Request::RequestPermission { .. }) => dispatch_settings(settings, commands).await,
+        pairing @ (Request::PairHost | Request::PairJoin { .. } | Request::Unpair { .. }) => {
+            dispatch_pairing(pairing, commands).await
+        }
+    }
+}
+
+async fn dispatch_control(request: Request, commands: &mpsc::Sender<Command>) -> Response {
+    match request {
         Request::Switch { machine } => {
             execute(
                 commands,
@@ -64,6 +89,20 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
             )
             .await
         }
+        Request::Connect { addr } => {
+            execute(
+                commands,
+                |reply| Command::Connect { addr, reply },
+                |()| Response::Done,
+            )
+            .await
+        }
+        _ => unreachable!("only control requests are dispatched here"),
+    }
+}
+
+async fn dispatch_settings(request: Request, commands: &mpsc::Sender<Command>) -> Response {
+    match request {
         Request::ReloadConfig => {
             execute(commands, Command::ReloadConfig, |()| Response::Done).await
         }
@@ -76,10 +115,22 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
             )
             .await
         }
-        Request::Status => execute(commands, Command::Status, Response::Status).await,
-        clipboard @ (Request::ClipboardStatus
-        | Request::ClipboardAccept { .. }
-        | Request::ClipboardReject) => dispatch_clipboard(clipboard, commands).await,
+        Request::RequestPermission { permission } => {
+            let permission = permission.into();
+            execute(
+                commands,
+                |reply| Command::RequestPermission { permission, reply },
+                |()| Response::Done,
+            )
+            .await
+        }
+
+        _ => unreachable!("only settings requests are dispatched here"),
+    }
+}
+
+async fn dispatch_pairing(request: Request, commands: &mpsc::Sender<Command>) -> Response {
+    match request {
         Request::PairHost => {
             execute(commands, Command::PairHost, |code| Response::PairCode {
                 code,
@@ -106,27 +157,8 @@ async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Respons
             )
             .await
         }
-        files @ (Request::SendFiles { .. }
-        | Request::FilesAccept { .. }
-        | Request::FilesReject { .. }
-        | Request::CancelTransfer { .. }) => dispatch_files(files, commands).await,
-        Request::RequestPermission { permission } => {
-            let permission = permission.into();
-            execute(
-                commands,
-                |reply| Command::RequestPermission { permission, reply },
-                |()| Response::Done,
-            )
-            .await
-        }
-        Request::Connect { addr } => {
-            execute(
-                commands,
-                |reply| Command::Connect { addr, reply },
-                |()| Response::Done,
-            )
-            .await
-        }
+
+        _ => unreachable!("only pairing requests are dispatched here"),
     }
 }
 

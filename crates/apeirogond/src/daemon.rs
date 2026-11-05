@@ -2,13 +2,12 @@
 
 //! One task owns identity, trust, desk membership, pairing and the live registry.
 
-use std::collections::{HashMap, HashSet};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use a7n_core::pairing::{AttemptLimiter, HostPairing, Paired, PairingCode};
+use a7n_core::pairing::{HostPairing, Paired, PairingCode};
 use a7n_ipc::config::Config;
 use a7n_proto::v1::{Envelope, PairDone, PeerInfo, envelope::Body};
 use a7n_proto::{MachineId, limits};
@@ -18,7 +17,9 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
 
 use self::transfer::TransferError;
-use crate::command::{Command, Reply};
+#[cfg(test)]
+use crate::command::Command;
+use crate::command::Reply;
 use crate::desk_store::DeskStore;
 use crate::endpoint;
 use crate::identity::{self, Identity};
@@ -42,6 +43,7 @@ mod pairing;
 #[cfg(test)]
 #[path = "pairing/tests.rs"]
 mod pairing_tests;
+mod run;
 mod settings;
 mod sync;
 #[cfg(test)]
@@ -53,8 +55,6 @@ mod wol;
 
 /// Bounded mailboxes; a stalled consumer cannot grow memory without limit.
 const MAILBOX_CAPACITY: usize = 64;
-/// Bound the number of source-address rate-limit buckets.
-const PAIRING_SOURCES: usize = 256;
 
 pub(crate) use error::DaemonError;
 pub(crate) use input::Retried as InputRetried;
@@ -107,6 +107,31 @@ enum Event {
     },
 }
 
+struct Mailboxes {
+    events: mpsc::Sender<Event>,
+    event_rx: mpsc::Receiver<Event>,
+    inbound: mpsc::Sender<Inbound>,
+    inbound_rx: mpsc::Receiver<Inbound>,
+    transfer_tx: mpsc::Sender<TransferStream>,
+    transfer_rx: mpsc::Receiver<TransferStream>,
+}
+
+impl Mailboxes {
+    fn new() -> Self {
+        let (events, event_rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let (inbound, inbound_rx) = mpsc::channel(MAILBOX_CAPACITY);
+        let (transfer_tx, transfer_rx) = mpsc::channel(MAILBOX_CAPACITY);
+        Self {
+            events,
+            event_rx,
+            inbound,
+            inbound_rx,
+            transfer_tx,
+            transfer_rx,
+        }
+    }
+}
+
 pub(crate) struct Daemon {
     identity: Identity,
     pins: PinStore,
@@ -118,18 +143,10 @@ pub(crate) struct Daemon {
     trust: TrustedPins,
     links: Links,
     pending_connects: Vec<connections::PendingConnect>,
-    nearby: HashMap<MachineId, Vec<SocketAddr>>,
-    discovery_dials: HashSet<MachineId>,
-    host: Option<HostPairing>,
-    host_busy: bool,
-    limiter: AttemptLimiter<IpAddr>,
+    nearby: nearby::State,
+    pairing: pairing::State,
     tasks: JoinSet<()>,
-    events: mpsc::Sender<Event>,
-    event_rx: mpsc::Receiver<Event>,
-    inbound: mpsc::Sender<Inbound>,
-    inbound_rx: mpsc::Receiver<Inbound>,
-    transfer_tx: mpsc::Sender<TransferStream>,
-    transfer_rx: mpsc::Receiver<TransferStream>,
+    mailboxes: Mailboxes,
     input: input::Input,
     clipboard: clipboard::State,
     files: files::State,
@@ -170,9 +187,6 @@ impl Daemon {
             listen_port: u32::from(endpoint.local_addr()?.port()),
             ..PeerInfo::default()
         };
-        let (events, event_rx) = mpsc::channel(MAILBOX_CAPACITY);
-        let (inbound, inbound_rx) = mpsc::channel(MAILBOX_CAPACITY);
-        let (transfer_tx, transfer_rx) = mpsc::channel(MAILBOX_CAPACITY);
         let input = input::Input::new(identity.machine_id);
         Ok(Self {
             identity,
@@ -185,18 +199,10 @@ impl Daemon {
             trust,
             links: Links::default(),
             pending_connects: Vec::new(),
-            nearby: HashMap::new(),
-            discovery_dials: HashSet::new(),
-            host: None,
-            host_busy: false,
-            limiter: AttemptLimiter::new(PAIRING_SOURCES),
+            nearby: nearby::State::default(),
+            pairing: pairing::State::default(),
             tasks: JoinSet::new(),
-            events,
-            event_rx,
-            inbound,
-            inbound_rx,
-            transfer_tx,
-            transfer_rx,
+            mailboxes: Mailboxes::new(),
             input,
             clipboard: clipboard::State::default(),
             files: files::State::default(),
@@ -208,108 +214,13 @@ impl Daemon {
         })
     }
 
-    pub(crate) async fn run(
-        mut self,
-        commands: mpsc::Receiver<Command>,
-        discoveries: mpsc::Receiver<crate::discovery::Event>,
-    ) -> Result<(), DaemonError> {
-        let result = self.run_loop(commands, discoveries).await;
-        self.shutdown_input().await;
-        if let Some(reply) = self.shutdown_reply.take() {
-            let _ = reply.send(Ok(()));
-        }
-        result
-    }
-
-    async fn run_loop(
-        &mut self,
-        mut commands: mpsc::Receiver<Command>,
-        mut discoveries: mpsc::Receiver<crate::discovery::Event>,
-    ) -> Result<(), DaemonError> {
-        self.detect_settings_edit()?;
-        if let Ok(receive_dir) = self.config.files.receive_dir() {
-            self.tasks
-                .spawn_blocking(move || files::cleanup(&receive_dir, SystemTime::now()));
-        }
-        if self.clipboard.handle.is_none() {
-            crate::log::event!("kind=clipboard_unavailable");
-        }
-        let (accepted, mut accepted_rx) = mpsc::channel(MAILBOX_CAPACITY);
-        self.tasks
-            .spawn(endpoint::accept_loop(self.endpoint.clone(), accepted));
-        let mut retry = tokio::time::interval(nearby::RETRY_INTERVAL);
-        retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut sync = tokio::time::interval(sync::SYNC_MIN_INTERVAL);
-        sync.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut keepalive = tokio::time::interval(a7n_platform::input::KEEPALIVE_INTERVAL);
-        keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            let deadline = self.input.focus.next_deadline();
-            let files_deadline = self.files_deadline();
-            let clipboard_deadline = self.clipboard.held.as_ref().map(|held| held.deadline);
-            let wake_deadline = self.wol.pending.as_ref().map(|pending| pending.deadline);
-            tokio::select! {
-                command = commands.recv() => {
-                    let Some(command) = command else { return Ok(()); };
-                    if let Command::Shutdown(reply) = command {
-                        self.shutdown_reply = Some(reply);
-                        return Ok(());
-                    }
-                    self.command(command).await?;
-                }
-                Some((connection, permit, deadline)) = accepted_rx.recv() => {
-                    self.accept(connection, permit, deadline)?;
-                }
-                Some(event) = self.event_rx.recv() => self.event(event),
-                Some(event) = discoveries.recv() => self.discovery(event),
-                _ = retry.tick() => self.retry_nearby(),
-                _ = sync.tick() => self.flush_sync(Instant::now()).await,
-                _ = keepalive.tick() => self.input.keepalive(),
-                () = input::deadline(wake_deadline) => {},
-                () = input::deadline(deadline) => self.poll_focus().await,
-                () = input::deadline(clipboard_deadline) => self.clipboard.expire_held_clipboard(Instant::now()),
-                () = input::deadline(files_deadline) => self.expire_files(Instant::now()),
-                Some(stream) = self.transfer_rx.recv() => self.clipboard_stream(stream),
-                event = clipboard::next(&mut self.clipboard.handle) => match event {
-                    clipboard::Event::Changed(change) => self.clipboard_changed(change),
-                    clipboard::Event::Paste(request) => self.clipboard_paste(request),
-                },
-                retried = input::retried(&mut self.input.retried) => self.finish_input_retry(retried),
-                event = input::captured(&mut self.input.capture) => self.captured(event).await,
-                event = input::feedback(&mut self.input.injector) => self.pointer_feedback(event).await,
-                Some((peer, id, envelope)) = self.inbound_rx.recv() => {
-                    if self.is_current(peer, id) && self.receive_from(peer, envelope).await.is_err() {
-                        self.peer_message_failed(peer);
-                    }
-                }
-                Some(_) = self.tasks.join_next(), if !self.tasks.is_empty() => {
-                    // Aborted clipboard tasks release slots without a completion event.
-                    let peers: Vec<_> = self.links.by_peer.keys().copied().collect();
-                    for peer in peers { self.start_waiting_files(peer); }
-                }
-            }
-            self.finish_wake(Instant::now()).await;
-            self.flush_link_losses().await;
-            if self.input.failed && !a7n_platform::permissions::missing().is_empty() {
-                self.retry_input_after_permission_loss().await;
-            }
-            if self.input.failed {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::BrokenPipe,
-                    "input backend closed",
-                )
-                .into());
-            }
-        }
-    }
-
     fn open_pairing(&mut self) -> Result<PairingCode, DaemonError> {
-        if self.host_busy {
+        if self.pairing.host_busy {
             return Err(DaemonError::PairingBusy);
         }
         let code = PairingCode::generate(&mut OsRng);
         let now = Instant::now();
-        self.host = Some(HostPairing::new(code.clone(), None, self.identity.pin, now));
+        self.pairing.host = Some(HostPairing::new(code.clone(), None, self.identity.pin, now));
         self.trust
             .write()
             .map_err(|_| DaemonError::TrustPoisoned)?
@@ -320,7 +231,7 @@ impl Daemon {
     fn connect(&mut self, addr: SocketAddr, reply: Reply<()>) {
         let endpoint = self.endpoint.clone();
         let info = self.info.clone();
-        let events = self.events.clone();
+        let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
             let result = endpoint::dial(&endpoint, addr, &info).await.map(Box::new);
             let _ = events.send(Event::Link(result, Some(reply))).await;

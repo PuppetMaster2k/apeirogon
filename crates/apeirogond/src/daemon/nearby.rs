@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::time::Duration;
 
 use a7n_proto::MachineId;
@@ -12,6 +14,12 @@ use crate::{endpoint, link::LinkError};
 const NEARBY_ADDRS_MAX: usize = 8;
 
 pub(super) const RETRY_INTERVAL: Duration = Duration::from_secs(10);
+
+#[derive(Default)]
+pub(super) struct State {
+    pub nearby: HashMap<MachineId, Vec<SocketAddr>>,
+    pub discovery_dials: HashSet<MachineId>,
+}
 
 #[cfg(test)]
 mod tests;
@@ -28,11 +36,14 @@ impl Daemon {
                     return;
                 }
                 let paired = self.pins.get(&announcement.id).is_some();
-                if self.nearby.len() >= MAX_NEARBY && !self.nearby.contains_key(&announcement.id) {
+                if self.nearby.nearby.len() >= MAX_NEARBY
+                    && !self.nearby.nearby.contains_key(&announcement.id)
+                {
                     if !paired {
                         return;
                     }
                     let Some(evicted) = self
+                        .nearby
                         .nearby
                         .keys()
                         .copied()
@@ -40,10 +51,15 @@ impl Daemon {
                     else {
                         return;
                     };
-                    self.nearby.remove(&evicted);
+                    self.nearby.nearby.remove(&evicted);
                 }
                 if paired {
-                    let old = self.nearby.get(&announcement.id).into_iter().flatten();
+                    let old = self
+                        .nearby
+                        .nearby
+                        .get(&announcement.id)
+                        .into_iter()
+                        .flatten();
                     let mut addrs = Vec::new();
                     for addr in announcement.addrs.iter().chain(old) {
                         if !addrs.contains(addr) {
@@ -55,12 +71,14 @@ impl Daemon {
                     }
                     announcement.addrs = addrs;
                 }
-                self.nearby.insert(announcement.id, announcement.addrs);
+                self.nearby
+                    .nearby
+                    .insert(announcement.id, announcement.addrs);
                 self.dial_nearby(announcement.id);
             }
             DiscoveryEvent::Lost(id) => {
                 if self.pins.get(&id).is_none() {
-                    self.nearby.remove(&id);
+                    self.nearby.nearby.remove(&id);
                 }
             }
         }
@@ -68,6 +86,7 @@ impl Daemon {
 
     pub(super) fn nearby_status(&self) -> Vec<a7n_ipc::NearbyMachine> {
         let mut nearby: Vec<_> = self
+            .nearby
             .nearby
             .iter()
             .filter(|(id, _)| self.pins.get(id).is_none())
@@ -82,26 +101,26 @@ impl Daemon {
     }
 
     pub(super) fn retry_nearby(&mut self) {
-        for id in self.nearby.keys().copied().collect::<Vec<_>>() {
+        for id in self.nearby.nearby.keys().copied().collect::<Vec<_>>() {
             self.dial_nearby(id);
         }
     }
 
     fn dial_nearby(&mut self, id: MachineId) {
         if self.pins.get(&id).is_none()
-            || self.discovery_dials.contains(&id)
-            || self.discovery_dials.len() >= MAX_NEARBY
+            || self.nearby.discovery_dials.contains(&id)
+            || self.nearby.discovery_dials.len() >= MAX_NEARBY
             || self.is_linked(id)
         {
             return;
         }
-        let Some(addrs) = self.nearby.get(&id).cloned() else {
+        let Some(addrs) = self.nearby.nearby.get(&id).cloned() else {
             return;
         };
-        self.discovery_dials.insert(id);
+        self.nearby.discovery_dials.insert(id);
         let endpoint = self.endpoint.clone();
         let info = self.info.clone();
-        let events = self.events.clone();
+        let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
             for addr in addrs {
                 let result = endpoint::dial(&endpoint, addr, &info).await;

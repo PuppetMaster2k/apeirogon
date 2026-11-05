@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 
-use a7n_core::pairing::{Paired, PairingCode, RequesterPairing};
+use a7n_core::pairing::{AttemptLimiter, HostPairing, Paired, PairingCode, RequesterPairing};
 use a7n_proto::v1::PairDone;
 use quinn::Connection;
 use rand_core::OsRng;
@@ -14,6 +14,25 @@ use crate::command::Reply;
 use crate::pairing::{self, PairingError};
 use crate::pin_store::Entry;
 use crate::tls;
+
+/// Bound the number of source-address rate-limit buckets.
+const PAIRING_SOURCES: usize = 256;
+
+pub(super) struct State {
+    pub host: Option<HostPairing>,
+    pub host_busy: bool,
+    pub limiter: AttemptLimiter<IpAddr>,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            host: None,
+            host_busy: false,
+            limiter: AttemptLimiter::new(PAIRING_SOURCES),
+        }
+    }
+}
 
 impl Daemon {
     pub(super) fn host_pairing(
@@ -29,12 +48,13 @@ impl Daemon {
             .map_err(|_| DaemonError::TrustPoisoned)?
             .pairing_open();
         let allowed = open
-            && self.host.is_some()
-            && !self.host_busy
+            && self.pairing.host.is_some()
+            && !self.pairing.host_busy
             && self
+                .pairing
                 .limiter
                 .allow(connection.remote_address().ip(), Instant::now());
-        let Some(host) = allowed.then(|| self.host.take()).flatten() else {
+        let Some(host) = allowed.then(|| self.pairing.host.take()).flatten() else {
             connection.close(crate::link::CLOSE_NORMAL, b"");
             return Ok(());
         };
@@ -42,9 +62,9 @@ impl Daemon {
             .write()
             .map_err(|_| DaemonError::TrustPoisoned)?
             .pairing_until = None;
-        self.host_busy = true;
+        self.pairing.host_busy = true;
         let info = self.info.clone();
-        let events = self.events.clone();
+        let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
             let admission_events = events.clone();
             let result = pairing::respond(
@@ -110,7 +130,7 @@ impl Daemon {
         endpoint.set_default_client_config(config);
         let requester =
             RequesterPairing::new(code, None, self.identity.pin, self.info.clone(), &mut OsRng);
-        let events = self.events.clone();
+        let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
             let result = async {
                 let connection = pairing::dial(&endpoint, addr).await?;
@@ -125,6 +145,33 @@ impl Daemon {
                 })
                 .await;
         });
+    }
+
+    pub(super) fn joined(
+        &mut self,
+        result: Result<Entry, PairingError>,
+        addr: SocketAddr,
+        reply: Reply<Entry>,
+    ) {
+        let result = result.map_err(DaemonError::from).and_then(|entry| {
+            self.store_peer(entry.clone())?;
+            Ok(entry)
+        });
+        match result {
+            Ok(entry) => {
+                let (connected, receiver) = oneshot::channel();
+                self.connect(addr, connected);
+                self.tasks.spawn(async move {
+                    if !matches!(receiver.await, Ok(Ok(()))) {
+                        crate::log::event!("kind=post_pair_connect_failed");
+                    }
+                    let _ = reply.send(Ok(entry));
+                });
+            }
+            Err(error) => {
+                let _ = reply.send(Err(error));
+            }
+        }
     }
 
     pub(super) fn store_peer(&mut self, entry: Entry) -> Result<(), DaemonError> {
