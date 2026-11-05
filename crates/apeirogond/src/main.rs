@@ -7,6 +7,7 @@ mod daemon;
 mod desk_store;
 mod discovery;
 mod endpoint;
+mod frame;
 mod handshake;
 mod identity;
 mod input_retry;

@@ -17,6 +17,7 @@ use rand_core::OsRng;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
 
+use self::transfer::TransferError;
 use crate::command::{Command, Reply};
 use crate::desk_store::DeskStore;
 use crate::endpoint;
@@ -47,6 +48,7 @@ mod sync;
 pub(crate) mod test_peer;
 #[cfg(test)]
 mod tests;
+mod transfer;
 mod wol;
 
 /// Bounded mailboxes; a stalled consumer cannot grow memory without limit.
@@ -68,7 +70,7 @@ enum Event {
     FilesBuilt {
         peer: MachineId,
         link: usize,
-        result: Result<files::Offer, &'static str>,
+        result: Result<files::Offer, TransferError>,
         reply: Reply<(u64, usize)>,
     },
     FilesReady {
@@ -82,7 +84,7 @@ enum Event {
     ClipboardFilesBuilt {
         generation: a7n_core::clipboard::Generation,
         wire: a7n_proto::v1::ClipboardAnnounce,
-        result: Result<files::Offer, &'static str>,
+        result: Result<files::Offer, TransferError>,
     },
     ClipboardOpened(TransferStream, u64, Vec<u8>),
     ClipboardFetched {

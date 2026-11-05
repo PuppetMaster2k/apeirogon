@@ -10,6 +10,7 @@ use a7n_proto::MachineId;
 use a7n_proto::v1::{Capability, ClipboardAnnounce};
 
 use super::{Daemon, Event, Offer, offer};
+use crate::daemon::transfer::TransferError;
 
 impl Daemon {
     /// Whether `peer` may be shown (and may fetch) the files of a local copy.
@@ -47,7 +48,7 @@ impl Daemon {
                 offer::build(generation.origin, generation.generation, paths)
             })
             .await
-            .unwrap_or(Err("file offer worker failed"));
+            .unwrap_or(Err(TransferError::OfferWorker));
             let _ = events
                 .send(Event::ClipboardFilesBuilt {
                     generation,
@@ -62,7 +63,7 @@ impl Daemon {
         &mut self,
         generation: Generation,
         mut wire: ClipboardAnnounce,
-        result: Result<Offer, &'static str>,
+        result: Result<Offer, TransferError>,
     ) {
         // A newer copy, local or remote, replaced this one while it was hashed.
         if self.clipboard.current != Some(generation) {

@@ -4,9 +4,8 @@
 
 use a7n_proto::v1::envelope::Body;
 use a7n_proto::v1::{Capability, Envelope, HandshakeError, Hello, PeerInfo, Welcome};
-use a7n_proto::{FrameKind, PROTOCOL_VERSION, decode_frame, encode_frame, limits};
+use a7n_proto::{FrameKind, PROTOCOL_VERSION, encode_frame, limits};
 use quinn::{Connection, RecvStream, SendStream};
-use tokio::time::timeout;
 
 use crate::link::{Link, LinkError, Role, peer_machine_id};
 
@@ -68,22 +67,15 @@ pub(crate) async fn read_frame(
     buf: &mut Vec<u8>,
     kind: FrameKind,
 ) -> Result<Envelope, LinkError> {
-    loop {
-        if let Some((envelope, used)) = decode_frame::<Envelope>(buf, kind)? {
-            buf.drain(..used);
-            return Ok(envelope);
-        }
-        let read = recv.read_chunk(usize::MAX, true);
-        let chunk = if buf.is_empty() {
-            read.await?
-        } else {
-            timeout(limits::FRAME_READ_TIMEOUT, read)
-                .await
-                .map_err(|_| LinkError::Timeout)??
-        };
-        let chunk = chunk.ok_or(LinkError::StreamClosed)?;
-        buf.extend_from_slice(&chunk.bytes);
-    }
+    crate::frame::read(
+        recv,
+        buf,
+        kind,
+        crate::frame::ChunkBound::Fixed(usize::MAX),
+        Some(limits::FRAME_READ_TIMEOUT),
+    )
+    .await?
+    .ok_or(LinkError::StreamClosed)
 }
 
 fn into_link(

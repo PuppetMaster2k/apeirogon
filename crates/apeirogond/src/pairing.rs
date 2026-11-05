@@ -9,7 +9,7 @@ use a7n_core::pairing::{HostPairing, Paired, RequesterPairing};
 use a7n_proto::v1::{
     PairAnswer, PairConfirm, PairDone, PairError, PairingMessage, PeerInfo, pairing_message::Body,
 };
-use a7n_proto::{FrameKind, Pin, decode_frame, encode_frame, limits};
+use a7n_proto::{FrameKind, Pin, encode_frame, limits};
 use quinn::{Connection, RecvStream, SendStream};
 use rand_core::{CryptoRng, RngCore};
 use tokio::time::timeout;
@@ -77,20 +77,16 @@ pub(super) async fn read_message(
     buf: &mut Vec<u8>,
 ) -> Result<Body, PairingError> {
     timeout(limits::HANDSHAKE_TIMEOUT, async {
-        loop {
-            if let Some((message, used)) =
-                decode_frame::<PairingMessage>(buf, FrameKind::Pairing).map_err(LinkError::from)?
-            {
-                buf.drain(..used);
-                return message.body.ok_or(PairingError::Refused);
-            }
-            let chunk = recv
-                .read_chunk(limits::CONTROL_FRAME_MAX, true)
-                .await
-                .map_err(LinkError::from)?
-                .ok_or(LinkError::StreamClosed)?;
-            buf.extend_from_slice(&chunk.bytes);
-        }
+        let message: PairingMessage = crate::frame::read(
+            recv,
+            buf,
+            FrameKind::Pairing,
+            crate::frame::ChunkBound::Fixed(limits::CONTROL_FRAME_MAX),
+            None,
+        )
+        .await?
+        .ok_or(LinkError::StreamClosed)?;
+        message.body.ok_or(PairingError::Refused)
     })
     .await
     .map_err(|_| LinkError::Timeout)?

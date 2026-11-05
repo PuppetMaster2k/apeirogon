@@ -13,7 +13,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::timeout;
 
 use super::{Event, Failure, Progress, Result, staging};
-use crate::daemon::clipboard::fetch::{MALFORMED_FRAME, read};
+use crate::daemon::transfer::{TransferError, read};
 
 mod verify;
 pub(super) use verify::apply;
@@ -144,7 +144,7 @@ async fn download(job: &mut Receive) -> Result<Vec<PathBuf>> {
             .await
             .map_err(|_| Failure::LinkLost)?
             .map_err(|reason| {
-                if reason == MALFORMED_FRAME {
+                if reason == TransferError::Frame {
                     Failure::Invalid
                 } else {
                     Failure::LinkLost

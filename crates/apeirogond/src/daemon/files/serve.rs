@@ -6,8 +6,8 @@ use std::sync::{Arc, atomic::Ordering};
 
 use a7n_ipc::TransferDirection;
 use a7n_proto::v1::{
-    AbortReason, FileChunk, FileEnd, TransferAbort, TransferDone, TransferOpen, TransferRequest,
-    transfer_frame::Frame, transfer_request::Source,
+    AbortReason, FileChunk, FileEnd, TransferDone, TransferRequest, transfer_frame::Frame,
+    transfer_request::Source,
 };
 use a7n_proto::{MachineId, limits};
 use quinn::{Connection, SendStream};
@@ -15,7 +15,7 @@ use tokio::sync::watch;
 use tokio::time::timeout;
 
 use super::{Active, Daemon, Event, Failure, Kind, Offer, Progress, Result};
-use crate::daemon::clipboard::fetch::write;
+use crate::daemon::transfer::{self, TransferError, write};
 
 impl Daemon {
     pub(in crate::daemon) fn files_request(
@@ -116,19 +116,12 @@ async fn frame(stream: &mut SendStream, buf: &mut Vec<u8>, value: Frame) -> Resu
 }
 
 async fn open(connection: &Connection, id: u64) -> Result<(SendStream, Vec<u8>)> {
-    let mut stream = timeout(limits::FRAME_READ_TIMEOUT, connection.open_uni())
+    transfer::open(connection, id, Some(limits::FRAME_READ_TIMEOUT))
         .await
-        .map_err(|_| Failure::LinkLost)?
-        .map_err(|_| Failure::LinkLost)?;
-    stream.set_priority(-1).map_err(|_| Failure::Io)?;
-    let mut buf = Vec::new();
-    frame(
-        &mut stream,
-        &mut buf,
-        Frame::Open(TransferOpen { transfer_id: id }),
-    )
-    .await?;
-    Ok((stream, buf))
+        .map_err(|error| match error {
+            TransferError::Priority => Failure::Io,
+            _ => Failure::LinkLost,
+        })
 }
 
 async fn refuse(connection: &Connection, id: u64) -> Result<()> {
@@ -137,16 +130,9 @@ async fn refuse(connection: &Connection, id: u64) -> Result<()> {
 }
 
 async fn abort(stream: &mut SendStream, buf: &mut Vec<u8>, reason: AbortReason) -> Result<()> {
-    frame(
-        stream,
-        buf,
-        Frame::Abort(TransferAbort {
-            reason: reason.into(),
-            detail: String::new(),
-        }),
-    )
-    .await?;
-    stream.finish().map_err(|_| Failure::LinkLost)
+    transfer::abort(stream, buf, reason, Some(limits::FRAME_READ_TIMEOUT))
+        .await
+        .map_err(|_| Failure::LinkLost)
 }
 
 async fn send(

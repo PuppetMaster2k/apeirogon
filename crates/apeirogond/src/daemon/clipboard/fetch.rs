@@ -3,16 +3,16 @@
 use a7n_core::clipboard::{FILES, IMAGE_PNG, limit_for, validate_png};
 use a7n_platform::clipboard::PasteRequest;
 use a7n_proto::v1::{
-    AbortReason, ClipboardItem, ClipboardRef, FileChunk, FileEnd, TransferAbort, TransferDone,
-    TransferFrame, TransferOpen, TransferRequest, envelope::Body, transfer_frame::Frame,
-    transfer_request::Source,
+    AbortReason, ClipboardItem, ClipboardRef, FileChunk, FileEnd, TransferDone, TransferRequest,
+    envelope::Body, transfer_frame::Frame, transfer_request::Source,
 };
-use a7n_proto::{FrameKind, MachineId, decode_frame, encode_frame, limits};
-use quinn::{Connection, RecvStream, SendStream};
+use a7n_proto::{MachineId, limits};
+use quinn::Connection;
 use sha2::{Digest, Sha256};
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 
+use crate::daemon::transfer::{self, TransferError, read, write};
 use crate::daemon::{Daemon, Event, TransferStream};
 
 impl Daemon {
@@ -29,7 +29,7 @@ impl Daemon {
                 && self.clipboard_policy(peer).receives()
                 && self.links.by_peer.contains_key(&peer)
         }) else {
-            reject(request, "unavailable");
+            reject(request, TransferError::Unavailable);
             return;
         };
         if item.mime == FILES {
@@ -37,21 +37,21 @@ impl Daemon {
             return;
         }
         let Some(link) = self.links.by_peer.get(&peer) else {
-            reject(request, "link_lost");
+            reject(request, TransferError::LinkLost);
             return;
         };
         let connection = link.connection.clone();
         let Some(transfers) = self.clipboard.links.get_mut(&peer) else {
-            reject(request, "link_lost");
+            reject(request, TransferError::LinkLost);
             return;
         };
         let Ok(permit) = transfers.slots.clone().try_acquire_owned() else {
-            reject(request, "busy");
+            reject(request, TransferError::Busy);
             return;
         };
         transfers.pending.retain(|_, reply| !reply.is_closed());
         let Some(next) = transfers.next.checked_add(2) else {
-            reject(request, "transfer_id_exhausted");
+            reject(request, TransferError::TransferIdExhausted);
             return;
         };
         transfers.next = next;
@@ -74,14 +74,14 @@ impl Daemon {
         let events = self.events.clone();
         let task = self.tasks.spawn(async move {
             let result = timeout(limits::CLIPBOARD_FETCH_TIMEOUT, async {
-                let (mut stream, mut buf) = receiver.await.map_err(|_| "link_lost")?;
+                let (mut stream, mut buf) = receiver.await.map_err(|_| TransferError::LinkLost)?;
                 receive(&mut stream, &mut buf, &item).await
             })
             .await
-            .unwrap_or(Err("timeout"));
+            .unwrap_or(Err(TransferError::Timeout));
             if let Err(reason) = result {
                 crate::log::event!("kind=clipboard_fetch_failed reason={reason}");
-                if reason == MALFORMED_FRAME {
+                if reason == TransferError::Frame {
                     connection.close(crate::link::CLOSE_NORMAL, b"");
                 }
             }
@@ -117,7 +117,7 @@ impl Daemon {
         if valid {
             let _ = request.reply.send(data);
         } else {
-            reject(request, "stale");
+            reject(request, TransferError::Stale);
         }
     }
 
@@ -145,7 +145,7 @@ impl Daemon {
                         ))
                         .await;
                 }
-                Ok(Err(MALFORMED_FRAME)) => connection.close(crate::link::CLOSE_NORMAL, b""),
+                Ok(Err(TransferError::Frame)) => connection.close(crate::link::CLOSE_NORMAL, b""),
                 _ => crate::log::event!("kind=clipboard_fetch_failed reason=open"),
             }
             drop(permit);
@@ -218,35 +218,17 @@ impl Daemon {
     }
 }
 
-pub(in crate::daemon) fn reject(request: PasteRequest, reason: &str) {
+pub(in crate::daemon) fn reject(request: PasteRequest, reason: TransferError) {
     crate::log::event!("kind=clipboard_fetch_failed reason={reason}");
     let _ = request.reply.send(None);
-}
-
-pub(in crate::daemon) async fn write(
-    stream: &mut SendStream,
-    buf: &mut Vec<u8>,
-    frame: Frame,
-) -> Result<(), &'static str> {
-    buf.clear();
-    encode_frame(&TransferFrame { frame: Some(frame) }, buf);
-    stream.write_all(buf).await.map_err(|_| "write")
 }
 
 async fn send(
     connection: &Connection,
     transfer_id: u64,
     data: Result<Vec<u8>, AbortReason>,
-) -> Result<(), &'static str> {
-    let mut stream = connection.open_uni().await.map_err(|_| "open")?;
-    stream.set_priority(-1).map_err(|_| "priority")?;
-    let mut buf = Vec::new();
-    write(
-        &mut stream,
-        &mut buf,
-        Frame::Open(TransferOpen { transfer_id }),
-    )
-    .await?;
+) -> Result<(), TransferError> {
+    let (mut stream, mut buf) = transfer::open(connection, transfer_id, None).await?;
     match data {
         Ok(data) => {
             for (index, chunk) in data.chunks(limits::CHUNK_MAX).enumerate() {
@@ -273,63 +255,27 @@ async fn send(
             write(&mut stream, &mut buf, Frame::Done(TransferDone {})).await?;
         }
         Err(reason) => {
-            write(
-                &mut stream,
-                &mut buf,
-                Frame::Abort(TransferAbort {
-                    reason: reason.into(),
-                    detail: String::new(),
-                }),
-            )
-            .await?;
+            transfer::abort(&mut stream, &mut buf, reason, None).await?;
+            stream.stopped().await.map_err(|_| TransferError::Stopped)?;
+            return Ok(());
         }
     }
-    stream.finish().map_err(|_| "finish")?;
-    stream.stopped().await.map_err(|_| "stopped")?;
+    stream.finish().map_err(|_| TransferError::Finish)?;
+    stream.stopped().await.map_err(|_| TransferError::Stopped)?;
     Ok(())
 }
 
-/// The error of a malformed transfer frame, which closes the link (PROTOCOL.md 11).
-pub(in crate::daemon) const MALFORMED_FRAME: &str = "frame";
-
-pub(in crate::daemon) async fn read(
-    stream: &mut RecvStream,
-    buf: &mut Vec<u8>,
-) -> Result<Option<Frame>, &'static str> {
-    loop {
-        if let Some((frame, used)) =
-            decode_frame::<TransferFrame>(buf, FrameKind::Transfer).map_err(|_| MALFORMED_FRAME)?
-        {
-            buf.drain(..used);
-            return frame.frame.map(Some).ok_or(MALFORMED_FRAME);
-        }
-        // A bounded read prevents a peer from making us buffer arbitrarily beyond a frame.
-        let chunk = stream
-            .read_chunk(
-                limits::TRANSFER_FRAME_MAX.saturating_sub(buf.len()).max(1),
-                true,
-            )
-            .await
-            .map_err(|_| "read")?;
-        match chunk {
-            Some(chunk) => buf.extend_from_slice(&chunk.bytes),
-            None if buf.is_empty() => return Ok(None),
-            None => return Err("truncated"),
-        }
-    }
-}
-
 async fn receive(
-    stream: &mut RecvStream,
+    stream: &mut impl crate::frame::FrameStream,
     buf: &mut Vec<u8>,
     item: &ClipboardItem,
-) -> Result<Vec<u8>, &'static str> {
+) -> Result<Vec<u8>, TransferError> {
     let mut verifier = Verifier::new(item)?;
     loop {
-        let frame = read(stream, buf).await?.ok_or("truncated")?;
+        let frame = read(stream, buf).await?.ok_or(TransferError::Truncated)?;
         if verifier.apply(frame)? {
             if read(stream, buf).await?.is_some() {
-                return Err("trailing_frame");
+                return Err(TransferError::TrailingFrame);
             }
             return Ok(verifier.data);
         }
@@ -343,9 +289,9 @@ struct Verifier<'a> {
 }
 
 impl<'a> Verifier<'a> {
-    fn new(item: &'a ClipboardItem) -> Result<Self, &'static str> {
+    fn new(item: &'a ClipboardItem) -> Result<Self, TransferError> {
         if item.size > limit_for(&item.mime) as u64 {
-            return Err("size");
+            return Err(TransferError::Size);
         }
         Ok(Self {
             item,
@@ -354,7 +300,7 @@ impl<'a> Verifier<'a> {
         })
     }
 
-    fn apply(&mut self, frame: Frame) -> Result<bool, &'static str> {
+    fn apply(&mut self, frame: Frame) -> Result<bool, TransferError> {
         match frame {
             Frame::Chunk(chunk) if !self.ended => {
                 if chunk.file_index != 0
@@ -362,7 +308,7 @@ impl<'a> Verifier<'a> {
                     || chunk.data.len() > limits::CHUNK_MAX
                     || (self.data.len() + chunk.data.len()) as u64 > self.item.size
                 {
-                    return Err("chunk");
+                    return Err(TransferError::Chunk);
                 }
                 self.data.extend_from_slice(&chunk.data);
             }
@@ -372,22 +318,22 @@ impl<'a> Verifier<'a> {
                     || end.sha256 != self.item.sha256
                     || Sha256::digest(&self.data).as_slice() != self.item.sha256
                 {
-                    return Err("integrity");
+                    return Err(TransferError::Integrity);
                 }
                 if self.item.mime == IMAGE_PNG && validate_png(&self.data).is_err() {
-                    return Err("image");
+                    return Err(TransferError::Image);
                 }
                 self.ended = true;
             }
             Frame::Done(_) if self.ended => return Ok(true),
             Frame::Abort(abort) => {
                 return Err(match abort.reason() {
-                    AbortReason::NotFound => "not_found",
-                    AbortReason::Refused => "refused",
-                    _ => "abort",
+                    AbortReason::NotFound => TransferError::NotFound,
+                    AbortReason::Refused => TransferError::Refused,
+                    _ => TransferError::Abort,
                 });
             }
-            _ => return Err("ordering"),
+            _ => return Err(TransferError::Ordering),
         }
         Ok(false)
     }
