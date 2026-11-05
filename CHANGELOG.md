@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.6](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.5...v0.15.6) (2026-11-05)
+
+
+### Bug Fixes
+
+* **gui:** keep pages inside the window and draw the layout smaller ([#163](https://github.com/PuppetMaster2k/apeirogon/issues/163)) ([f226501](https://github.com/PuppetMaster2k/apeirogon/commit/f226501944f20fc8000e1391baa3de6ffdea6b57))
+
 ## [0.15.5](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.4...v0.15.5) (2026-11-05)
 
 
