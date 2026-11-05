@@ -38,11 +38,15 @@ pub(crate) fn nav_item(ui: &mut Ui, icon: &str, label: &str, selected: bool) -> 
         } else {
             font_regular(14.0)
         };
-        painter.text(
-            egui::pos2(rect.left() + 38.0, y),
-            Align2::LEFT_CENTER,
-            label,
+        let text = egui::WidgetText::from(label).into_galley(
+            ui,
+            Some(egui::TextWrapMode::Truncate),
+            (rect.width() - 48.0).max(0.0),
             font,
+        );
+        painter.galley(
+            egui::pos2(rect.left() + 38.0, y - text.size().y / 2.0),
+            text,
             fg,
         );
         if resp.has_focus() {

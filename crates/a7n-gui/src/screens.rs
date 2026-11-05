@@ -127,7 +127,6 @@ impl App {
     pub(super) fn daemon_unavailable(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered(|ui| {
             ui.add_space(theme::size::SECTION_GAP);
-            ui.set_max_width(480.0);
             theme::card(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     theme::icon_tile(ui, icon::POWER);

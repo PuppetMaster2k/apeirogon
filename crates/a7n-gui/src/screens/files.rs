@@ -24,12 +24,17 @@ impl App {
         theme::card(ui, |ui| {
             ui.horizontal(|ui| {
                 theme::icon_tile(ui, icon::MONITOR);
-                ui.label(format!(
-                    "{} wants to send {} files ({})",
-                    peer_name(status, held.peer),
-                    held.files,
-                    format_size(held.total_size),
-                ));
+                ui.add(
+                    egui::Label::new(format!(
+                        "{} wants to send {} files ({})",
+                        peer_name(status, held.peer),
+                        held.files,
+                        format_size(held.total_size),
+                    ))
+                    .wrap(),
+                );
+            });
+            ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if theme::button(ui, ButtonKind::Primary, ButtonSize::Md, None, "Accept")
                         .clicked()
@@ -67,10 +72,15 @@ impl App {
                     TransferDirection::Send => ("Sending", "to"),
                     TransferDirection::Receive => ("Receiving", "from"),
                 };
-                ui.label(format!(
-                    "{verb} {preposition} {}",
-                    peer_name(status, transfer.peer)
-                ));
+                ui.add(
+                    egui::Label::new(format!(
+                        "{verb} {preposition} {}",
+                        peer_name(status, transfer.peer)
+                    ))
+                    .truncate(),
+                );
+            });
+            ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if theme::button(
                         ui,

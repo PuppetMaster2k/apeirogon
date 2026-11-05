@@ -14,6 +14,7 @@ use snap::{GuideKind, Snapped, overlaps};
 
 const CANVAS_HEIGHT: f32 = 350.0;
 const CANVAS_PADDING: f32 = 20.0;
+const CANVAS_LAYOUT_FRACTION: f64 = 0.5;
 const MOVE_STEP: i32 = 100;
 const FINE_MOVE_STEP: i32 = 10;
 const SNAP_DISTANCE_PX: f32 = 12.0;
@@ -208,11 +209,15 @@ fn paint_machine(
         egui::StrokeKind::Inside,
     );
     let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
-    painter.text(
-        rect.center() - egui::vec2(0.0, 10.0),
-        egui::Align2::CENTER_CENTER,
-        name,
+    let name = egui::WidgetText::from(name).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Truncate),
+        rect.width(),
         theme::font_medium(14.0),
+    );
+    painter.galley(
+        rect.center() - egui::vec2(name.size().x / 2.0, 10.0 + name.size().y / 2.0),
+        name,
         palette.text,
     );
     painter.text(
@@ -231,13 +236,21 @@ struct Transform {
 }
 
 impl Transform {
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "scaled layout dimensions are bounded by the canvas size in screen pixels"
+    )]
     fn new(bounds: [f64; 4], area: egui::Rect) -> Self {
-        let scale = (f64::from(area.width()) / (bounds[2] - bounds[0]).max(1.0))
-            .min(f64::from(area.height()) / (bounds[3] - bounds[1]).max(1.0));
+        let width = (bounds[2] - bounds[0]).max(1.0);
+        let height = (bounds[3] - bounds[1]).max(1.0);
+        let scale = ((f64::from(area.width()) / width).min(f64::from(area.height()) / height)
+            * CANVAS_LAYOUT_FRACTION)
+            .max(f64::MIN_POSITIVE);
         Self {
-            origin: area.min,
+            origin: area.center()
+                - egui::vec2((width * scale) as f32, (height * scale) as f32) / 2.0,
             minimum: [bounds[0], bounds[1]],
-            scale: scale.max(f64::MIN_POSITIVE),
+            scale,
         }
     }
 
@@ -335,7 +348,49 @@ mod tests {
         Drag::new(placement).update(&mut moved, &[], egui::vec2(100.0, -50.0), transform.scale);
 
         // Assert
-        assert_eq!(rect, area);
-        assert_eq!((moved.x, moved.y), (-1720, -200));
+        assert_eq!(
+            rect,
+            egui::Rect::from_center_size(area.center(), area.size() * 0.5)
+        );
+        assert_eq!((moved.x, moved.y), (-1520, -300));
+    }
+
+    #[test]
+    fn transform_new_varied_areas_caps_and_centres_layout_bounds() {
+        // Arrange
+        let placements = [
+            Placement {
+                id: "0123456789abcdef0123456789abcdef".parse().unwrap(),
+                x: -1920,
+                y: -100,
+                width: 1920,
+                height: 1080,
+            },
+            Placement {
+                id: "1123456789abcdef0123456789abcdef".parse().unwrap(),
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1080,
+            },
+        ];
+        for size in [
+            egui::vec2(960.0, 540.0),
+            egui::vec2(300.0, 310.0),
+            egui::vec2(960.0, 100.0),
+        ] {
+            let area = egui::Rect::from_min_size(egui::pos2(40.0, 32.0), size);
+
+            // Act
+            let transform = Transform::new(bounds(&placements), area);
+            let drawn = transform
+                .rect(&placements[0])
+                .union(transform.rect(&placements[1]));
+
+            // Assert
+            assert!(f64::from(drawn.width()) <= f64::from(area.width()) * CANVAS_LAYOUT_FRACTION);
+            assert!(f64::from(drawn.height()) <= f64::from(area.height()) * CANVAS_LAYOUT_FRACTION);
+            assert!(drawn.center().distance(area.center()) < 0.001);
+        }
     }
 }

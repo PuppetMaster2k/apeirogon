@@ -2,6 +2,7 @@
 
 use eframe::egui::{Align, Layout, RichText, Ui, vec2};
 
+use super::page_header::STACK_WIDTH;
 use super::{Palette, font_medium, font_mono, size};
 
 /// One setting inside a card: title + help (+ config key) on the left, control on the right.
@@ -21,6 +22,11 @@ pub(crate) fn setting_row(
             ui.label(RichText::new(key).font(font_mono(12.0)).color(p.text3));
         }
     };
+    if ui.available_width() < STACK_WIDTH {
+        ui.vertical(label);
+        ui.vertical(control);
+        return;
+    }
     let label_width = ui.available_width() * 0.48;
     ui.horizontal_top(|ui| {
         ui.allocate_ui_with_layout(vec2(label_width, 0.0), Layout::top_down(Align::Min), |ui| {
