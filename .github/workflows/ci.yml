@@ -17,8 +17,10 @@ jobs:
                   components: rustfmt, clippy
             - uses: Swatinem/rust-cache@v2
             - run: cargo fmt --all --check
-            - run: cargo clippy --workspace --all-targets -- -D warnings
-            - run: cargo test --workspace
+            # --locked fails on a stale Cargo.lock, as the release build does,
+            # so a release PR without its lockfile commit cannot merge.
+            - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+            - run: cargo test --workspace --locked
 
     pr-title:
         if: github.event_name == 'pull_request'
