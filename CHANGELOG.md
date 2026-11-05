@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.7](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.6...v0.15.7) (2026-11-05)
+
+
+### Bug Fixes
+
+* update workspace lockfile to 0.15.6 ([#165](https://github.com/PuppetMaster2k/apeirogon/issues/165)) ([9edde9a](https://github.com/PuppetMaster2k/apeirogon/commit/9edde9a865ce734d67e5791a20cd99e210870d25))
+
 ## [0.15.6](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.5...v0.15.6) (2026-11-05)
 
 
