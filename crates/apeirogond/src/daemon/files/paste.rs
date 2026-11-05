@@ -16,6 +16,7 @@ use super::incoming::Download;
 use super::staging::roots;
 use super::{Active, Daemon, Failure, Kind, Result};
 use crate::daemon::clipboard::fetch::reject;
+use crate::daemon::transfer::TransferError;
 
 /// Downloads at least this large are logged when they start; the GUI and
 /// `a7n status` show their progress through the transfer list.
@@ -76,7 +77,7 @@ impl Daemon {
         let Some(wire) = announced
             .filter(|wire| self.announced_files_index(peer, wire) == Some(request.item_index))
         else {
-            reject(request, "unavailable");
+            reject(request, TransferError::Unavailable);
             return;
         };
         if let Some(pasted) = self.files.pasted.as_ref().filter(|pasted| {
@@ -111,7 +112,7 @@ impl Daemon {
             .and_then(|manifest| ValidManifest::try_from(manifest).ok());
         let receive_dir = self.config.files.receive_dir().ok();
         let (Some(manifest), Some(receive_dir)) = (manifest, receive_dir) else {
-            reject(request, "unavailable");
+            reject(request, TransferError::Unavailable);
             return;
         };
         let total_size = wire.items[request.item_index as usize].size;
@@ -133,8 +134,8 @@ impl Daemon {
                 }
                 self.files.pastes.insert(id, vec![request.reply]);
             }
-            Ok(None) => reject(request, "busy"),
-            Err(_) => reject(request, "link_lost"),
+            Ok(None) => reject(request, TransferError::Busy),
+            Err(_) => reject(request, TransferError::LinkLost),
         }
     }
 

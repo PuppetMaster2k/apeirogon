@@ -3,7 +3,7 @@
 use a7n_proto::v1::{TransferOpen, TransferRequest, envelope::Body};
 
 use super::*;
-use crate::daemon::clipboard::fetch::write;
+use crate::daemon::transfer::write;
 use crate::pin_store::Entry;
 
 async fn connect(a: &mut Daemon, b: &mut Daemon) {
