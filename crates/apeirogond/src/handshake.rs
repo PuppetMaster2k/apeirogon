@@ -10,38 +10,25 @@ use tokio::time::timeout;
 
 use crate::link::{Link, LinkError, Role, peer_machine_id};
 
-/// The two sides run different protocol major versions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct VersionMismatch {
-    pub(crate) local: u32,
-    pub(crate) remote: u32,
-}
-
-/// Major versions must be equal.
-pub(crate) fn check_version(local: u32, remote: u32) -> Result<(), VersionMismatch> {
+/// Major versions must be equal; name the older machine when they differ.
+fn check_version(
+    local: u32,
+    remote: u32,
+    local_name: &str,
+    remote_name: &str,
+) -> Result<(), LinkError> {
     if local == remote {
         return Ok(());
     }
-    Err(VersionMismatch { local, remote })
-}
-
-/// Turns a mismatch into the user-facing error that names the machine with
-/// the older version.
-pub(crate) fn version_error(
-    mismatch: VersionMismatch,
-    local_name: &str,
-    remote_name: &str,
-) -> LinkError {
-    if mismatch.local < mismatch.remote {
-        return LinkError::UpdateRequired {
-            name: local_name.to_owned(),
-            version: mismatch.remote,
-        };
-    }
-    LinkError::UpdateRequired {
-        name: remote_name.to_owned(),
-        version: mismatch.local,
-    }
+    let (name, version) = if local < remote {
+        (local_name, remote)
+    } else {
+        (remote_name, local)
+    };
+    Err(LinkError::UpdateRequired {
+        name: name.to_owned(),
+        version,
+    })
 }
 
 /// Capabilities both sides list. Values this build does not know (from a
@@ -158,9 +145,12 @@ pub(crate) async fn initiate(connection: Connection, local: &PeerInfo) -> Result
         return Err(LinkError::InvalidHello);
     };
     let info = welcome.info.clone().unwrap_or_default();
-    if let Err(mismatch) = check_version(PROTOCOL_VERSION, welcome.protocol_version) {
-        return Err(version_error(mismatch, &local.name, &info.name));
-    }
+    check_version(
+        PROTOCOL_VERSION,
+        welcome.protocol_version,
+        &local.name,
+        &info.name,
+    )?;
     if welcome.error() != HandshakeError::None {
         return Err(LinkError::InvalidHello);
     }
@@ -188,8 +178,12 @@ pub(crate) async fn respond(
         .await;
     };
     let info = hello.info.clone().unwrap_or_default();
-    if let Err(mismatch) = check_version(PROTOCOL_VERSION, hello.protocol_version) {
-        let error = version_error(mismatch, &local.name, &info.name);
+    if let Err(error) = check_version(
+        PROTOCOL_VERSION,
+        hello.protocol_version,
+        &local.name,
+        &info.name,
+    ) {
         return reject(&mut send, local, HandshakeError::UnsupportedVersion, error).await;
     }
     let welcome = Welcome {
@@ -230,10 +224,10 @@ mod tests {
     #[test]
     fn version_error_newer_peer_names_local_machine_to_update() {
         // Arrange
-        let mismatch = check_version(1, 2).unwrap_err();
+        let (local, remote) = (1, 2);
 
         // Act
-        let error = version_error(mismatch, "laptop", "desktop");
+        let error = check_version(local, remote, "laptop", "desktop").unwrap_err();
 
         // Assert
         assert_eq!(error.to_string(), "update laptop to protocol v2");
@@ -242,10 +236,10 @@ mod tests {
     #[test]
     fn version_error_older_peer_names_remote_machine_to_update() {
         // Arrange
-        let mismatch = check_version(2, 1).unwrap_err();
+        let (local, remote) = (2, 1);
 
         // Act
-        let error = version_error(mismatch, "laptop", "desktop");
+        let error = check_version(local, remote, "laptop", "desktop").unwrap_err();
 
         // Assert
         assert_eq!(error.to_string(), "update desktop to protocol v2");
@@ -254,7 +248,7 @@ mod tests {
     #[test]
     fn check_version_equal_major_is_accepted() {
         // Arrange / Act
-        let result = check_version(1, 1);
+        let result = check_version(1, 1, "laptop", "desktop");
 
         // Assert
         assert!(result.is_ok());

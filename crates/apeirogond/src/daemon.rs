@@ -3,7 +3,7 @@
 //! One task owns identity, trust, desk membership, pairing and the live registry.
 
 use std::collections::{HashMap, HashSet};
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -84,7 +84,6 @@ enum Event {
         wire: a7n_proto::v1::ClipboardAnnounce,
         result: Result<files::Offer, &'static str>,
     },
-    TransferSlotFreed(MachineId, usize),
     ClipboardOpened(TransferStream, u64, Vec<u8>),
     ClipboardFetched {
         peer: MachineId,
@@ -151,11 +150,13 @@ impl Daemon {
             pairing_until: None,
         }));
         let config = tls::server_config(&identity, Arc::clone(&trust))?;
-        let mut endpoint = if addr.ip().is_unspecified() {
-            endpoint::bind(addr.port(), config)?
+        // Keep wildcard listeners on IPv4, as on platforms without dual-stack sockets.
+        let addr = if addr.ip().is_unspecified() {
+            SocketAddr::from((Ipv4Addr::UNSPECIFIED, addr.port()))
         } else {
-            endpoint::bind_addr(addr, config)?
+            addr
         };
+        let mut endpoint = endpoint::bind_addr(addr, config)?;
         endpoint.set_default_client_config(tls::client_config(&identity, Arc::clone(&trust))?);
         let info = PeerInfo {
             platform: a7n_platform::platform().into(),
@@ -325,17 +326,26 @@ impl Daemon {
     }
 
     fn unpair(&mut self, machine: MachineId) -> Result<(), DaemonError> {
-        if machine == self.identity.machine_id || self.pins.get(&machine).is_none() {
-            return Err(DaemonError::NotPaired);
-        }
-        self.desk
-            .revoke(&self.identity, &mut self.pins, machine, unix_seconds()?)?;
+        let result = (|| {
+            if machine == self.identity.machine_id || self.pins.get(&machine).is_none() {
+                return Err(DaemonError::NotPaired);
+            }
+            self.desk
+                .revoke(&self.identity, &mut self.pins, machine, unix_seconds()?)?;
+            Ok(())
+        })();
+        // Revocation remains effective in memory even when a pin write fails.
         self.sync_trust()?;
         self.drop_untrusted();
+        result?;
         self.broadcast(&Envelope {
             body: Some(Body::Desk(self.desk.to_desk())),
         });
         Ok(())
+    }
+
+    fn peer_name(&self, peer: MachineId) -> Option<&str> {
+        self.pins.get(&peer).map(|entry| entry.name.as_str())
     }
 
     fn sync_trust(&self) -> Result<(), DaemonError> {

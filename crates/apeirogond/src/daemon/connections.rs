@@ -89,11 +89,6 @@ impl Daemon {
                 wire,
                 result,
             } => self.clipboard_files_built(generation, wire, result),
-            Event::TransferSlotFreed(peer, link) => {
-                if self.is_current(peer, link) {
-                    self.start_waiting_files(peer);
-                }
-            }
             Event::ClipboardOpened(stream, transfer_id, buf) => {
                 self.clipboard_opened(stream, transfer_id, buf);
             }

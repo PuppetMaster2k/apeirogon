@@ -47,6 +47,10 @@ impl Daemon {
         if !self.files_capable(peer) || wire.origin != peer.as_bytes() || !wire.send {
             return;
         }
+        let Some(link) = self.links.by_peer.get(&peer) else {
+            return;
+        };
+        let announced_link = link.connection.stable_id();
         let policy = self.files_policy(peer);
         let ask = policy == ClipboardPolicy::Ask;
         if !policy.receives() {
@@ -75,7 +79,7 @@ impl Daemon {
             if incoming.wire != *wire {
                 return;
             }
-            incoming.announced_link = self.links.by_peer[&peer].connection.stable_id();
+            incoming.announced_link = announced_link;
             if !incoming.active && incoming.deadline.is_none() {
                 self.log_receive_start(peer, wire.generation);
             }
@@ -114,7 +118,7 @@ impl Daemon {
                 receive_dir,
                 deadline: ask.then(|| Instant::now() + ASK_TIMEOUT),
                 active: false,
-                announced_link: self.links.by_peer[&peer].connection.stable_id(),
+                announced_link,
             },
         );
         if !ask {
@@ -229,6 +233,10 @@ impl Daemon {
             receive_dir,
             total_size,
         } = download;
+        let Some(link) = self.links.by_peer.get(&peer) else {
+            return Err(DaemonError::NotConnected);
+        };
+        let connection = link.connection.clone();
         let transfers = self
             .clipboard
             .links
@@ -268,27 +276,22 @@ impl Daemon {
             },
         );
         let events = self.events.clone();
-        let connection = self.links.by_peer[&peer].connection.clone();
         let reserved = self.files.reserved.clone();
         self.tasks.spawn(async move {
-            let runtime = tokio::runtime::Handle::current();
             let worker_events = events.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                runtime.block_on(super::receive::run(super::receive::Receive {
-                    id,
-                    manifest,
-                    stage,
-                    destination: receive_dir,
-                    receiver,
-                    cancelled,
-                    progress,
-                    events: worker_events,
-                    connection,
-                    reserved,
-                }))
-            })
-            .await
-            .unwrap_or(Err(Failure::Io));
+            let result = super::worker::run(super::receive::run(super::receive::Receive {
+                id,
+                manifest,
+                stage,
+                destination: receive_dir,
+                receiver,
+                cancelled,
+                progress,
+                events: worker_events,
+                connection,
+                reserved,
+            }))
+            .await;
             drop(permit);
             let _ = events
                 .send(super::Event::FilesFinished { id, result })

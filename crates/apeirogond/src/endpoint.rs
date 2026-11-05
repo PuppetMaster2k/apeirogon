@@ -3,7 +3,7 @@
 //! Binding the UDP endpoint, dialing and accepting links (PROTOCOL.md 1, 4).
 
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
 
 use a7n_proto::limits;
@@ -15,17 +15,6 @@ use tokio::time::{Instant, timeout, timeout_at};
 use crate::handshake;
 use crate::link::{CLOSE_SUPERSEDED, Link, LinkError, peer_machine_id};
 use crate::tls::TLS_SERVER_NAME;
-
-/// Binds `0.0.0.0:port`, or an ephemeral port if it is taken; read it from
-/// `local_addr()` to advertise.
-// ponytail: IPv4 only, since `[::]` is IPv6-only by default on Windows; bind a
-// dual-stack socket via socket2 if IPv6-only LANs ever matter.
-pub(crate) fn bind(port: u16, server_config: ServerConfig) -> io::Result<Endpoint> {
-    bind_addr(
-        SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)),
-        server_config,
-    )
-}
 
 /// Binds exactly `addr`, falling back to port 0 on that address if taken.
 pub(crate) fn bind_addr(addr: SocketAddr, server_config: ServerConfig) -> io::Result<Endpoint> {

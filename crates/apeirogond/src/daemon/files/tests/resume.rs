@@ -292,11 +292,13 @@ async fn receive_file_offer_shared_slots_queues_until_clipboard_slot_is_released
     b.accept_files(peer, 1).unwrap();
     assert!(b.files.active.is_empty());
     assert_eq!(b.held_files(), []);
-    let link = b.clipboard.links[&peer].id;
+    b.tasks.spawn(async move {
+        drop(permit);
+    });
 
     // Act
-    drop(permit);
-    b.event(Event::TransferSlotFreed(peer, link));
+    b.tasks.join_next().await.unwrap().unwrap();
+    b.start_waiting_files(peer);
 
     // Assert
     assert_eq!(b.file_transfers().len(), 1);

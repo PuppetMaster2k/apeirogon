@@ -23,9 +23,8 @@ impl Daemon {
             return;
         }
         let peer = self
-            .pins
-            .get(&peer)
-            .map_or_else(|| peer.to_string(), |entry| entry.name.clone());
+            .peer_name(peer)
+            .map_or_else(|| peer.to_string(), str::to_owned);
         if let Some(body) = message(&peer, progress.files_total, progress.bytes_total, notice) {
             a7n_platform::notify::notify("Apeirogon files", &body);
         }

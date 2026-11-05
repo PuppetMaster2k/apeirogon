@@ -92,9 +92,7 @@ impl Daemon {
                     origin_name: if generation.origin == self.identity.machine_id {
                         Some(self.info.name.clone())
                     } else {
-                        self.pins
-                            .get(&generation.origin)
-                            .map(|entry| entry.name.clone())
+                        self.peer_name(generation.origin).map(str::to_owned)
                     },
                     generation: generation.generation,
                     items: u32::try_from(announce.items.len()).ok()?,
@@ -222,7 +220,10 @@ impl Daemon {
     }
 
     pub(super) fn clipboard_link_up(&mut self, peer: MachineId) {
-        let id = self.links.by_peer[&peer].connection.stable_id();
+        let Some(link) = self.links.by_peer.get(&peer) else {
+            return;
+        };
+        let id = link.connection.stable_id();
         // Disjoint requester ids make cancellation unambiguous in both directions.
         let next = u64::from(self.identity.machine_id > peer);
         self.clipboard.links.insert(peer, Transfers::new(id, next));

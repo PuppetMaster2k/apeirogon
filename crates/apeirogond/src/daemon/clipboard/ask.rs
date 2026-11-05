@@ -44,9 +44,8 @@ impl Daemon {
             machine: held.peer,
             generation: held.wire.generation,
             name: self
-                .pins
-                .get(&held.peer)
-                .map_or_else(|| held.peer.to_string(), |entry| entry.name.clone()),
+                .peer_name(held.peer)
+                .map_or_else(|| held.peer.to_string(), str::to_owned),
             items: u32::try_from(held.wire.items.len()).ok()?,
             size: held.wire.items.iter().map(|item| item.size).sum(),
             kinds,

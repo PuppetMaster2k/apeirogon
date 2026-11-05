@@ -3,7 +3,6 @@
 //! Persistent store of paired peers (PROTOCOL.md 5 step 6).
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -146,9 +145,12 @@ impl From<&Entry> for EntryRecord {
     fn from(entry: &Entry) -> Self {
         Self {
             machine_id: entry.machine_id.to_string(),
-            pin: hex_encode(entry.pin.as_bytes()),
+            pin: a7n_proto::hex(entry.pin.as_bytes()).to_string(),
             name: entry.name.clone(),
-            spki_der: entry.spki_der.as_deref().map(hex_encode),
+            spki_der: entry
+                .spki_der
+                .as_deref()
+                .map(|bytes| a7n_proto::hex(bytes).to_string()),
             hw_addr: entry.hw_addr,
         }
     }
@@ -166,15 +168,6 @@ impl TryFrom<EntryRecord> for Entry {
             hw_addr: record.hw_addr.and_then(|mac| a7n_core::wol::hw_addr(&mac)),
         })
     }
-}
-
-/// Lowercase hex of `bytes`.
-fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().fold(String::new(), |mut out, byte| {
-        // Writing to a String cannot fail.
-        let _ = write!(out, "{byte:02x}");
-        out
-    })
 }
 
 fn hex_decode(text: &str) -> Result<Vec<u8>, PinStoreError> {

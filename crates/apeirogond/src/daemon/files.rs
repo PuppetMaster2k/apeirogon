@@ -25,6 +25,7 @@ mod receive;
 mod serve;
 mod source;
 mod staging;
+mod worker;
 
 pub(super) use offer::Offer;
 pub(in crate::daemon) use paste::files_top_level;

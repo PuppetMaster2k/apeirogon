@@ -19,6 +19,7 @@ use crate::command::Reply;
 
 pub(in crate::daemon) struct Offer {
     pub wire: ClipboardAnnounce,
+    pub manifest: ValidManifest,
     pub paths: Vec<PathBuf>,
     pub skipped: usize,
 }
@@ -47,10 +48,10 @@ impl Daemon {
                 .next_offer
                 .checked_add(1)
                 .ok_or(DaemonError::InvalidRequest("offer ids exhausted"))?;
-            Ok((
-                self.files.next_offer,
-                self.links.by_peer[&peer].connection.stable_id(),
-            ))
+            let Some(link) = self.links.by_peer.get(&peer) else {
+                return Err(DaemonError::NotConnected);
+            };
+            Ok((self.files.next_offer, link.connection.stable_id()))
         });
         let (offer, link) = match result {
             Ok(value) => value,
@@ -125,7 +126,7 @@ pub(super) fn build(
     if manifest.entries.is_empty() {
         return Err("no files to offer");
     }
-    ValidManifest::try_from(&manifest).map_err(|_| "invalid file manifest")?;
+    let valid = ValidManifest::try_from(&manifest).map_err(|_| "invalid file manifest")?;
     let wire = ClipboardAnnounce {
         origin: origin.as_bytes().to_vec(),
         generation,
@@ -142,6 +143,7 @@ pub(super) fn build(
     }
     Ok(Offer {
         wire,
+        manifest: valid,
         paths: sources,
         skipped,
     })

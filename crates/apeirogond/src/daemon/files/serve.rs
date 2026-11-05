@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::sync::{Arc, atomic::Ordering};
 
-use a7n_core::files::ValidManifest;
 use a7n_ipc::TransferDirection;
 use a7n_proto::v1::{
     AbortReason, FileChunk, FileEnd, TransferAbort, TransferDone, TransferOpen, TransferRequest,
@@ -42,6 +41,10 @@ impl Daemon {
         let Some(offer) = offer else {
             return false;
         };
+        let Some(handle) = self.links.by_peer.get(&peer) else {
+            return true;
+        };
+        let connection = handle.connection.clone();
         let Some(transfers) = self.clipboard.links.get(&peer) else {
             return true;
         };
@@ -60,7 +63,6 @@ impl Daemon {
         let unsupported =
             kind == Kind::Offer && (self.check_file_send(peer).is_err() || request.item_index != 0);
         if unsupported || duplicate {
-            let connection = self.links.by_peer[&peer].connection.clone();
             let wire_id = request.transfer_id;
             self.tasks.spawn(async move {
                 let _ = refuse(&connection, wire_id).await;
@@ -72,10 +74,7 @@ impl Daemon {
             return true;
         };
         self.files.next_transfer = id;
-        let manifest =
-            ValidManifest::try_from(offer.wire.files.as_ref().expect("validated offer manifest"))
-                .expect("validated offer manifest");
-        let progress = Arc::new(Progress::new(&manifest, offer.wire.items[0].size));
+        let progress = Arc::new(Progress::new(&offer.manifest, offer.wire.items[0].size));
         let (cancel, mut cancelled) = watch::channel(Failure::Cancelled);
         self.files.active.insert(
             id,
@@ -90,22 +89,17 @@ impl Daemon {
                 progress: progress.clone(),
             },
         );
-        let connection = self.links.by_peer[&peer].connection.clone();
         let request = request.clone();
         let events = self.events.clone();
         self.tasks.spawn(async move {
-            let runtime = tokio::runtime::Handle::current();
-            let result = tokio::task::spawn_blocking(move || {
-                runtime.block_on(async {
-                    tokio::select! {
-                        biased;
-                        _ = cancelled.changed() => Err(*cancelled.borrow()),
-                        result = send(&connection, &request, &offer, &progress) => result,
-                    }
-                })
+            let result = super::worker::run(async move {
+                tokio::select! {
+                    biased;
+                    _ = cancelled.changed() => Err(*cancelled.borrow()),
+                    result = send(&connection, &request, &offer, &progress) => result,
+                }
             })
-            .await
-            .unwrap_or(Err(Failure::Io));
+            .await;
             drop(permit);
             let result = result.map(|()| Vec::new());
             let _ = events.send(Event::FilesFinished { id, result }).await;
