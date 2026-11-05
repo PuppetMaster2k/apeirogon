@@ -36,6 +36,11 @@ impl Daemon {
             self.paste_files(request);
             return;
         }
+        let Some(link) = self.links.by_peer.get(&peer) else {
+            reject(request, "link_lost");
+            return;
+        };
+        let connection = link.connection.clone();
         let Some(transfers) = self.clipboard.links.get_mut(&peer) else {
             reject(request, "link_lost");
             return;
@@ -53,7 +58,6 @@ impl Daemon {
         let id = transfers.id;
         let (sender, receiver) = oneshot::channel();
         transfers.pending.insert(next, sender);
-        let connection = self.links.by_peer[&peer].connection.clone();
         self.send_input(
             peer,
             Body::TransferRequest(TransferRequest {
@@ -197,8 +201,6 @@ impl Daemon {
         };
         let connection = link.connection.clone();
         let transfer_id = request.transfer_id;
-        let events = self.events.clone();
-        let link_id = transfers.id;
         let task = self.tasks.spawn(async move {
             let _ = timeout(
                 limits::CLIPBOARD_FETCH_TIMEOUT,
@@ -206,7 +208,6 @@ impl Daemon {
             )
             .await;
             drop(permit);
-            let _ = events.send(Event::TransferSlotFreed(peer, link_id)).await;
         });
         if let Some(transfers) = self.clipboard.links.get_mut(&peer) {
             transfers.send_tasks.retain(|_, task| !task.is_finished());

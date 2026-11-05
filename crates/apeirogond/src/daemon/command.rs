@@ -11,9 +11,10 @@ impl Daemon {
             Command::Shutdown(_) => unreachable!("shutdown is handled by the run loop"),
             Command::Switch { machine, reply } => {
                 let result = self.switch_machine(machine).await.map(|()| {
-                    self.wol.pending.as_ref().and_then(|pending| {
-                        self.pins.get(&pending.peer).map(|entry| entry.name.clone())
-                    })
+                    self.wol
+                        .pending
+                        .as_ref()
+                        .and_then(|pending| self.peer_name(pending.peer).map(str::to_owned))
                 });
                 let _ = reply.send(result);
             }
@@ -72,8 +73,9 @@ impl Daemon {
             }
             Command::Unpair { machine, reply } => {
                 let result = self.unpair(machine);
-                self.sync_trust()?;
-                self.drop_untrusted();
+                if matches!(result, Err(DaemonError::TrustPoisoned)) {
+                    return Err(DaemonError::TrustPoisoned);
+                }
                 let _ = reply.send(result);
             }
             Command::Connect { addr, reply } => {

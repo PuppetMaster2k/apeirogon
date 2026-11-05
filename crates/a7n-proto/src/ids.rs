@@ -5,6 +5,23 @@ use std::str::FromStr;
 
 use crate::ProtoError;
 
+/// Formats bytes as lowercase hexadecimal without allocating.
+#[must_use]
+pub fn hex(bytes: &[u8]) -> impl fmt::Display + '_ {
+    Hex(bytes)
+}
+
+struct Hex<'a>(&'a [u8]);
+
+impl fmt::Display for Hex<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in self.0 {
+            write!(formatter, "{byte:02x}")?;
+        }
+        Ok(())
+    }
+}
+
 /// First 16 bytes of the SHA-256 of a device's public key (PROTOCOL.md 3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MachineId([u8; MachineId::LEN]);
@@ -33,10 +50,7 @@ impl TryFrom<&[u8]> for MachineId {
 
 impl fmt::Display for MachineId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for byte in self.0 {
-            write!(formatter, "{byte:02x}")?;
-        }
-        Ok(())
+        hex(self.as_bytes()).fmt(formatter)
     }
 }
 

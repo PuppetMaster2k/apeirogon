@@ -28,4 +28,4 @@ pub const PROTOCOL_VERSION: u32 = 1;
 
 pub use error::ProtoError;
 pub use frame::{FrameKind, decode_datagram, decode_frame, encode_datagram, encode_frame};
-pub use ids::{Generation, MachineId, Pin, Route};
+pub use ids::{Generation, MachineId, Pin, Route, hex};

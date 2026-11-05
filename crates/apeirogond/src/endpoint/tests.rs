@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::net::Ipv4Addr;
 use std::sync::RwLock;
 
 use super::*;

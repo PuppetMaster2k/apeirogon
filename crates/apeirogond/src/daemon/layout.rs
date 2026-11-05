@@ -48,9 +48,7 @@ impl Daemon {
         if id == self.identity.machine_id {
             return self.info.name.clone();
         }
-        self.pins
-            .get(&id)
-            .map_or_else(|| "unknown".into(), |entry| entry.name.clone())
+        self.peer_name(id).unwrap_or("unknown").to_owned()
     }
 
     pub(super) fn set_layout(&mut self, placed: Vec<LayoutPlacement>) -> Result<(), DaemonError> {
