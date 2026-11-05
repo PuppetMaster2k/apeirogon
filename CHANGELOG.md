@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.5](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.4...v0.15.5) (2026-11-05)
+
+
+### Bug Fixes
+
+* **daemon:** rate-limit what a peer can trigger ([#157](https://github.com/PuppetMaster2k/apeirogon/issues/157)) ([720b655](https://github.com/PuppetMaster2k/apeirogon/commit/720b65590bbe852632602c58a3a99c8a729415cc))
+
 ## [0.15.4](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.3...v0.15.4) (2026-11-04)
 
 
