@@ -9,6 +9,8 @@ use super::{Daemon, Event};
 use crate::discovery::{Event as DiscoveryEvent, MAX_NEARBY};
 use crate::{endpoint, link::LinkError};
 
+const NEARBY_ADDRS_MAX: usize = 8;
+
 pub(super) const RETRY_INTERVAL: Duration = Duration::from_secs(10);
 
 #[cfg(test)]
@@ -21,18 +23,45 @@ impl Daemon {
 
     pub(super) fn discovery(&mut self, event: DiscoveryEvent) {
         match event {
-            DiscoveryEvent::Discovered(announcement) => {
+            DiscoveryEvent::Discovered(mut announcement) => {
                 if announcement.id == self.identity.machine_id || announcement.addrs.is_empty() {
                     return;
                 }
+                let paired = self.pins.get(&announcement.id).is_some();
                 if self.nearby.len() >= MAX_NEARBY && !self.nearby.contains_key(&announcement.id) {
-                    return;
+                    if !paired {
+                        return;
+                    }
+                    let Some(evicted) = self
+                        .nearby
+                        .keys()
+                        .copied()
+                        .find(|id| self.pins.get(id).is_none())
+                    else {
+                        return;
+                    };
+                    self.nearby.remove(&evicted);
+                }
+                if paired {
+                    let old = self.nearby.get(&announcement.id).into_iter().flatten();
+                    let mut addrs = Vec::new();
+                    for addr in announcement.addrs.iter().chain(old) {
+                        if !addrs.contains(addr) {
+                            addrs.push(*addr);
+                        }
+                        if addrs.len() == NEARBY_ADDRS_MAX {
+                            break;
+                        }
+                    }
+                    announcement.addrs = addrs;
                 }
                 self.nearby.insert(announcement.id, announcement.addrs);
                 self.dial_nearby(announcement.id);
             }
             DiscoveryEvent::Lost(id) => {
-                self.nearby.remove(&id);
+                if self.pins.get(&id).is_none() {
+                    self.nearby.remove(&id);
+                }
             }
         }
     }

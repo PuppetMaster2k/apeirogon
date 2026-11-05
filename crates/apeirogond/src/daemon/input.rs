@@ -227,6 +227,7 @@ impl Daemon {
     }
 
     pub(super) fn input_link_lost(&mut self, peer: MachineId) {
+        self.sync.drop_peer(peer);
         self.clipboard_link_down(peer);
         self.files_link_down(peer);
         self.input.lost.push(peer);
@@ -327,15 +328,8 @@ impl Daemon {
                 self.files_cancel_from(peer, cancel.transfer_id);
                 return Ok(());
             }
-            Some(Body::Settings(settings)) => {
-                if self.links.by_peer.get(&peer).is_some_and(|handle| {
-                    handle
-                        .capabilities
-                        .contains(&a7n_proto::v1::Capability::SettingsSync)
-                }) {
-                    self.receive_settings(settings).await?;
-                }
-                return Ok(());
+            Some(Body::Layout(_) | Body::Settings(_) | Body::Desk(_)) => {
+                return self.receive_sync_from(peer, envelope, Instant::now()).await;
             }
             Some(Body::Focus(focus)) => {
                 // Without an injector there is no backend that can honour a take.

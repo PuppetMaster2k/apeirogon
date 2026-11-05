@@ -42,6 +42,7 @@ mod pairing;
 #[path = "pairing/tests.rs"]
 mod pairing_tests;
 mod settings;
+mod sync;
 #[cfg(test)]
 pub(crate) mod test_peer;
 #[cfg(test)]
@@ -131,6 +132,7 @@ pub(crate) struct Daemon {
     input: input::Input,
     clipboard: clipboard::State,
     files: files::State,
+    sync: sync::State,
     wol: wol::State,
     config: Config,
     config_path: PathBuf,
@@ -195,6 +197,7 @@ impl Daemon {
             input,
             clipboard: clipboard::State::default(),
             files: files::State::default(),
+            sync: sync::State::default(),
             wol: wol::State::default(),
             config: Config::default(),
             config_path: path.join("config.toml"),
@@ -233,6 +236,8 @@ impl Daemon {
             .spawn(endpoint::accept_loop(self.endpoint.clone(), accepted));
         let mut retry = tokio::time::interval(nearby::RETRY_INTERVAL);
         retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut sync = tokio::time::interval(sync::SYNC_MIN_INTERVAL);
+        sync.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut keepalive = tokio::time::interval(a7n_platform::input::KEEPALIVE_INTERVAL);
         keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
@@ -255,6 +260,7 @@ impl Daemon {
                 Some(event) = self.event_rx.recv() => self.event(event),
                 Some(event) = discoveries.recv() => self.discovery(event),
                 _ = retry.tick() => self.retry_nearby(),
+                _ = sync.tick() => self.flush_sync(Instant::now()).await,
                 _ = keepalive.tick() => self.input.keepalive(),
                 () = input::deadline(wake_deadline) => {},
                 () = input::deadline(deadline) => self.poll_focus().await,
@@ -270,11 +276,7 @@ impl Daemon {
                 event = input::feedback(&mut self.input.injector) => self.pointer_feedback(event).await,
                 Some((peer, id, envelope)) = self.inbound_rx.recv() => {
                     if self.is_current(peer, id) && self.receive_from(peer, envelope).await.is_err() {
-                        if let Some(handle) = self.links.by_peer.remove(&peer) {
-                            handle.connection.close(crate::link::CLOSE_NORMAL, b"");
-                        }
-                        self.input_link_lost(peer);
-                        crate::log::event!("kind=peer_message_failed");
+                        self.peer_message_failed(peer);
                     }
                 }
                 Some(_) = self.tasks.join_next(), if !self.tasks.is_empty() => {
@@ -403,6 +405,14 @@ impl Daemon {
         for peer in lost {
             self.input_link_lost(peer);
         }
+    }
+
+    fn peer_message_failed(&mut self, peer: MachineId) {
+        if let Some(handle) = self.links.by_peer.remove(&peer) {
+            handle.connection.close(crate::link::CLOSE_NORMAL, b"");
+        }
+        self.input_link_lost(peer);
+        crate::log::event!("kind=peer_message_failed");
     }
 
     fn is_current(&self, peer: MachineId, id: usize) -> bool {

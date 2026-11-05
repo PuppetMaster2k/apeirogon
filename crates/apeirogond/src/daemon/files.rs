@@ -40,6 +40,7 @@ const PARTIAL_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 #[derive(Default)]
 pub(super) struct State {
+    offered_notifications: HashMap<MachineId, Instant>,
     next_offer: u64,
     next_transfer: u64,
     offers: HashMap<(MachineId, u64), Arc<Offer>>,
@@ -261,6 +262,7 @@ impl Daemon {
     }
 
     pub(in crate::daemon) fn files_link_down(&mut self, peer: MachineId) {
+        self.files.offered_notifications.remove(&peer);
         self.files.accepts.retain(|(id, _), _| *id != peer);
         for active in self
             .files

@@ -113,3 +113,37 @@ fn advertisement_identity_and_listen_port_uses_only_protocol_txt() {
     );
     assert!(service.is_addr_auto());
 }
+
+#[test]
+fn service_event_full_name_table_forwards_unknown_service_without_growing() {
+    // Arrange
+    let own = MachineId::try_from(&[1; MachineId::LEN][..]).unwrap();
+    let peer = MachineId::try_from(&[2; MachineId::LEN][..]).unwrap();
+    let mut names: HashMap<_, _> = (0..MAX_NEARBY)
+        .map(|index| (format!("service-{index}.{MDNS_SERVICE_TYPE}"), own))
+        .collect();
+    let port = a7n_proto::limits::DEFAULT_UDP_PORT;
+    let address: IpAddr = "192.168.1.2".parse().unwrap();
+    let mut service = advertisement(peer, port).unwrap().as_resolved_service();
+    service.addresses.insert(address.into());
+    let fullname = service.fullname.clone();
+
+    // Act
+    let forwarded = service_event(
+        own,
+        ServiceEvent::ServiceResolved(Box::new(service)),
+        &mut names,
+    );
+    let removed = service_event(
+        own,
+        ServiceEvent::ServiceRemoved(MDNS_SERVICE_TYPE.into(), fullname.clone()),
+        &mut names,
+    );
+
+    // Assert
+    assert!(matches!(forwarded, Some(Event::Discovered(announcement))
+        if announcement == Announcement { id: peer, addrs: vec![SocketAddr::new(address, port)] }));
+    assert_eq!(names.len(), MAX_NEARBY);
+    assert!(!names.contains_key(&fullname));
+    assert!(removed.is_none());
+}
