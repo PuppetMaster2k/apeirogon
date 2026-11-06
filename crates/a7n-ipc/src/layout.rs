@@ -3,12 +3,25 @@
 //! Pure layout draft initialization shared by graphical and terminal editors.
 use crate::{LayoutInfo, LayoutPlacement, Placement};
 
+/// Canvas units per millimeter of physical desktop size.
+pub const UNITS_PER_MM: u32 = 10;
+
+/// Convert physical dimensions to canvas units without overflowing.
+#[must_use]
+pub fn screen_size_units((width, height): (u32, u32)) -> (u32, u32) {
+    (
+        width.saturating_mul(UNITS_PER_MM),
+        height.saturating_mul(UNITS_PER_MM),
+    )
+}
+
 const DEFAULT_MACHINE_SIZE: (u32, u32) = (1920, 1080);
 
 #[derive(Debug)]
 pub struct LayoutDraft {
     pub placements: Vec<Placement>,
     pub names: Vec<String>,
+    pub screen_mm: Vec<Option<(u32, u32)>>,
     pub lost_edit: bool,
 }
 
@@ -37,6 +50,11 @@ impl TryFrom<LayoutInfo> for LayoutDraft {
             .max()
             .unwrap_or(0);
         let top = placements.iter().map(|p| p.y).min().unwrap_or(0);
+        let mut screen_mm: Vec<_> = info
+            .placed
+            .iter()
+            .map(|machine| machine.screen_mm)
+            .collect();
         let mut names: Vec<_> = info
             .placed
             .into_iter()
@@ -44,19 +62,24 @@ impl TryFrom<LayoutInfo> for LayoutDraft {
             .collect();
         for machine in info.unplaced {
             let x = i32::try_from(right).map_err(|_| LayoutDraftError)?;
+            let (width, height) = machine
+                .screen_mm
+                .map_or(DEFAULT_MACHINE_SIZE, screen_size_units);
+            screen_mm.push(machine.screen_mm);
             placements.push(Placement {
                 id: machine.machine,
                 x,
                 y: top,
-                width: DEFAULT_MACHINE_SIZE.0,
-                height: DEFAULT_MACHINE_SIZE.1,
+                width,
+                height,
             });
             names.push(machine.name);
-            right += i64::from(DEFAULT_MACHINE_SIZE.0);
+            right += i64::from(width);
         }
         Ok(Self {
             placements,
             names,
+            screen_mm,
             lost_edit: info.lost_edit,
         })
     }
@@ -85,6 +108,7 @@ mod tests {
 
     fn machine(id: u8, x: i32, y: i32) -> PlacedMachine {
         PlacedMachine {
+            screen_mm: None,
             machine: MachineId::try_from([id; MachineId::LEN].as_slice()).unwrap(),
             name: format!("machine-{id}"),
             x,
@@ -94,6 +118,43 @@ mod tests {
         }
     }
     #[test]
+    fn try_from_known_and_unknown_sizes_uses_physical_units_or_default() {
+        // Arrange
+        let unplaced = [Some((310, 174)), None]
+            .into_iter()
+            .enumerate()
+            .map(|(id, screen_mm)| UnplacedMachine {
+                machine: MachineId::try_from(
+                    [u8::try_from(id).unwrap(); MachineId::LEN].as_slice(),
+                )
+                .unwrap(),
+                name: format!("machine-{id}"),
+                screen_mm,
+            })
+            .collect();
+        let info = LayoutInfo {
+            placed: vec![],
+            unplaced,
+            lost_edit: false,
+        };
+
+        // Act
+        let draft = LayoutDraft::try_from(info).unwrap();
+
+        // Assert
+        assert_eq!(
+            (draft.placements[0].width, draft.placements[0].height),
+            (3100, 1740)
+        );
+        assert_eq!(
+            (draft.placements[1].width, draft.placements[1].height),
+            DEFAULT_MACHINE_SIZE
+        );
+        assert_eq!(draft.placements[1].x, 3100);
+        assert!(validate(&draft.placements).is_ok());
+    }
+
+    #[test]
     fn try_from_unplaced_machines_places_to_right_top_aligned() {
         // Arrange
         let info = LayoutInfo {
@@ -101,6 +162,7 @@ mod tests {
             unplaced: [3, 4]
                 .into_iter()
                 .map(|id| UnplacedMachine {
+                    screen_mm: None,
                     machine: MachineId::try_from([id; MachineId::LEN].as_slice()).unwrap(),
                     name: format!("machine-{id}"),
                 })

@@ -238,19 +238,18 @@ impl DeskStore {
 }
 
 fn store_member(pins: &mut PinStore, member: &a7n_core::desk::Member) {
-    let spki_der = pins
+    let previous = pins
         .get(&member.id())
-        .filter(|entry| entry.pin == member.pin())
-        .and_then(|entry| entry.spki_der.clone());
-    let hw_addr = pins
-        .get(&member.id())
-        .filter(|entry| entry.pin == member.pin())
-        .and_then(|entry| entry.hw_addr);
+        .filter(|entry| entry.pin == member.pin());
+    let spki_der = previous.and_then(|entry| entry.spki_der.clone());
+    let hw_addr = previous.and_then(|entry| entry.hw_addr);
+    let screen_mm = previous.and_then(|entry| entry.screen_mm);
     pins.add(Entry {
         machine_id: member.id(),
         pin: member.pin(),
         name: member.name().to_owned(),
         spki_der,
         hw_addr,
+        screen_mm,
     });
 }

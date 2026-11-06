@@ -79,3 +79,6 @@ pub const MANIFEST_ENTRIES_MAX: usize = 10_000;
 pub const MANIFEST_PATH_MAX: usize = 4096;
 /// Largest manifest path segment in UTF-8 bytes (section 14).
 pub const MANIFEST_SEGMENT_MAX: usize = 255;
+
+/// Largest physical desktop side in millimeters (section 14).
+pub const SCREEN_MM_MAX: u32 = 10_000;

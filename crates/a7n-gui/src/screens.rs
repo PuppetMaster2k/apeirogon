@@ -195,6 +195,19 @@ impl App {
                     ButtonKind::Secondary,
                     ButtonSize::Md,
                     None,
+                    "Use real sizes",
+                )
+                .clicked()
+                    && let Some(canvas) = &mut self.layout
+                    && let Err(error) = canvas.use_real_sizes()
+                {
+                    self.message = error.to_string();
+                }
+                if theme::button(
+                    ui,
+                    ButtonKind::Secondary,
+                    ButtonSize::Md,
+                    None,
                     "Fit to canvas",
                 )
                 .clicked()

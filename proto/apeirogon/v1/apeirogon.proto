@@ -88,6 +88,11 @@ message Envelope {
 
 // ----- Handshake (first messages after TLS) --------------------------------
 
+message ScreenSize {
+  uint32 width = 1;
+  uint32 height = 2;
+}
+
 message PeerInfo {
   string name = 1;                         // 1..48 Unicode code points
   Platform platform = 2;
@@ -95,6 +100,7 @@ message PeerInfo {
   repeated Capability capabilities = 4;
   uint32 listen_port = 5;                  // UDP port; 0 = does not accept links
   bytes hw_addr = 6;                       // 6 bytes (wake-on-LAN), empty if unknown
+  ScreenSize screen_mm = 7;                // virtual desktop physical size, absent if unknown
 }
 
 message Hello {                            // initiator -> responder

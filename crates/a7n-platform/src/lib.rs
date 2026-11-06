@@ -2,6 +2,8 @@
 
 pub mod autostart;
 pub mod clipboard;
+mod display;
+pub use display::physical_size_mm;
 pub mod fs;
 pub mod input;
 pub mod local_socket;

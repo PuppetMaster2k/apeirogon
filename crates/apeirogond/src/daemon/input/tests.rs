@@ -227,6 +227,7 @@ async fn receive_focus_unavailable_or_denied_refuses_not_allowed() {
             name: "owner".into(),
             spki_der: None,
             hw_addr: None,
+            screen_mm: None,
         });
         b.sync_trust().unwrap();
         // Trust the responder for A's outgoing TLS handshake.
@@ -311,6 +312,7 @@ async fn receive_input_full_injector_waits_and_delivers_both_events() {
         name: "owner".into(),
         spki_der: None,
         hw_addr: None,
+        screen_mm: None,
     });
     daemon
         .receive_from(
@@ -468,6 +470,7 @@ async fn captured_offline_edge_waits_for_resistance_before_waking() {
         name: "desktop".into(),
         spki_der: None,
         hw_addr: Some([2; 6]),
+        screen_mm: None,
     });
     daemon.layout.state = daemon
         .layout

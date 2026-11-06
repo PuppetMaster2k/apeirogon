@@ -234,6 +234,7 @@ fn peer_entry(connection: &Connection, pin: Pin, name: String) -> Result<Entry, 
         name,
         spki_der: Some(identity::spki_of(&cert).map_err(LinkError::from)?),
         hw_addr: None,
+        screen_mm: None,
     })
 }
 

@@ -68,7 +68,7 @@ fn pointer_position() -> io::Result<CGPoint> {
     clippy::cast_sign_loss,
     reason = "display coordinates are finite and checked before conversion"
 )]
-fn display_bounds() -> io::Result<Bounds> {
+pub(crate) fn display_bounds() -> io::Result<Bounds> {
     let mut count = 0;
     // SAFETY: A null output buffer with zero capacity queries the required count.
     check(unsafe { CGGetActiveDisplayList(0, std::ptr::null_mut(), &raw mut count) })?;
