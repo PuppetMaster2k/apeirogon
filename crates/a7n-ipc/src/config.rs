@@ -336,12 +336,17 @@ impl Config {
                 | ["files", "receive_dir"]
                 | ["peers", _, "clipboard" | "files" | "modifier_mode"]
                 | ["peers", _, "modifier_remap", _]
-                | ["hotkeys", "double_tap" | "lock" | "jump"] => toml::Value::String(value.into()),
+                | ["hotkeys", "double_tap" | "trigger_mode" | "lock" | "jump"] => {
+                    toml::Value::String(value.into())
+                }
                 ["hotkeys", "home"] => toml::Value::Array(
                     value
                         .split(',')
                         .map(|chord| toml::Value::String(chord.trim().into()))
                         .collect(),
+                ),
+                ["hotkeys", "hold_ms"] => toml::Value::Integer(
+                    value.parse::<u32>().map(i64::from).map_err(|_| invalid())?,
                 ),
                 ["port"] => toml::Value::Integer(value.parse().map_err(|_| {
                     ConfigError::Invalid("port must be between 1 and 65535".into())

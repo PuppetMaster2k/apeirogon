@@ -352,3 +352,39 @@ fn get_receive_dir_unset_returns_effective_download_directory() {
     assert_eq!(value, Some(expected.display().to_string()));
     assert!(config.files.receive_dir.is_none());
 }
+
+#[test]
+fn set_trigger_settings_validates_keys_duration_and_collisions() {
+    // Arrange
+    for (key, value, valid) in [
+        ("hotkeys.double_tap", "scroll_lock", false),
+        ("hotkeys.hold_ms", "299", false),
+        ("hotkeys.hold_ms", "3001", false),
+        ("hotkeys.hold_ms", "-1", false),
+        ("hotkeys.trigger_mode", "repeat", false),
+        ("hotkeys.hold_ms", "300", true),
+        ("hotkeys.hold_ms", "3000", true),
+        ("hotkeys.trigger_mode", "hold", true),
+        ("hotkeys.trigger_mode", "both", true),
+        ("hotkeys.double_tap", "f13", true),
+    ] {
+        let mut config = Config::default();
+
+        // Act
+        let result = config.set(key, value);
+
+        // Assert
+        assert_eq!(result.is_ok(), valid, "{key} = {value}");
+        if !valid {
+            assert!(matches!(result, Err(ConfigError::Invalid(_))));
+        }
+        if value == "scroll_lock" {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("colliding trigger")
+            );
+        }
+    }
+}

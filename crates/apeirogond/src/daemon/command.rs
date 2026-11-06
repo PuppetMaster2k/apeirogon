@@ -29,6 +29,7 @@ impl Daemon {
                 let result = self.reload_config().await;
                 let _ = reply.send(result);
             }
+            Command::RecordTriggerKey(reply) => self.record_trigger_key(reply),
             Command::Status(reply) => {
                 let _ = reply.send(Ok(self.status()));
             }

@@ -8,9 +8,21 @@ const KEYBOARD_PAGE: u32 = 0x0007_0000;
 const MODIFIER_START: u32 = 0xe0;
 const MODIFIER_COUNT: u32 = 8;
 const KEY_COUNT: usize = 256;
+mod keys;
+mod trigger;
+
+use keys::key_usage;
+pub use keys::trigger_name;
+pub use trigger::{DoubleTap, HOLD_DEFAULT, HOLD_MAX, HOLD_MIN, TriggerMode};
+
 const DIGIT_ONE: u32 = KEYBOARD_PAGE | 0x1e;
 const DIGIT_NINE: u32 = KEYBOARD_PAGE | 0x26;
 pub const DOUBLE_TAP_WINDOW: Duration = Duration::from_millis(400);
+
+fn modifier_bit(usage: u32) -> Option<u8> {
+    let offset = usage.checked_sub(KEYBOARD_PAGE | MODIFIER_START)?;
+    (offset < MODIFIER_COUNT).then(|| 1 << offset)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
@@ -71,6 +83,7 @@ impl Chord {
                 mods.add(value, &token)?;
             } else {
                 let usage = key_usage(&token)
+                    .filter(|usage| modifier_bit(*usage).is_none())
                     .ok_or_else(|| HotkeyError(format!("unknown key '{token}'")))?;
                 if key.replace(usage).is_some() {
                     return Err(HotkeyError(format!("multiple keys at '{token}'")));
@@ -92,67 +105,11 @@ impl Chord {
     }
 }
 
-fn key_usage(token: &str) -> Option<u32> {
-    let key = match token.as_bytes() {
-        [letter @ b'a'..=b'z'] => u32::from(letter - b'a') + 0x04,
-        [digit @ b'1'..=b'9'] => u32::from(digit - b'1') + 0x1e,
-        [b'0'] => 0x27,
-        _ => match token {
-            "f1" => 0x3a,
-            "f2" => 0x3b,
-            "f3" => 0x3c,
-            "f4" => 0x3d,
-            "f5" => 0x3e,
-            "f6" => 0x3f,
-            "f7" => 0x40,
-            "f8" => 0x41,
-            "f9" => 0x42,
-            "f10" => 0x43,
-            "f11" => 0x44,
-            "f12" => 0x45,
-            "escape" => 0x29,
-            "scroll_lock" => 0x47,
-            "pause" => 0x48,
-            "insert" => 0x49,
-            "home" => 0x4a,
-            "page_up" => 0x4b,
-            "delete" => 0x4c,
-            "end" => 0x4d,
-            "page_down" => 0x4e,
-            _ => return None,
-        },
-    };
-    Some(KEYBOARD_PAGE | key)
-}
-
-/// Physical modifier sides that may trigger return home.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DoubleTap(u8);
-
-impl DoubleTap {
-    /// # Errors
-    /// Rejects unknown sides or modifiers; `none` disables double tapping.
-    pub fn parse(text: &str) -> Result<Self, HotkeyError> {
-        let name = text.trim().to_ascii_lowercase();
-        if name == "none" {
-            return Ok(Self(0));
-        }
-        let invalid = || HotkeyError(format!("unknown double-tap key '{text}'"));
-        let (side, modifier) = name.split_once('_').ok_or_else(invalid)?;
-        let mods = Mods::token(modifier).ok_or_else(invalid)?;
-        let mask = match side {
-            "left" => mods.0,
-            "right" => mods.0 << 4,
-            "either" => mods.0 | (mods.0 << 4),
-            _ => return Err(invalid()),
-        };
-        Ok(Self(mask))
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Bindings {
     pub double_tap: DoubleTap,
+    pub trigger_mode: TriggerMode,
+    pub hold: Duration,
     pub home: Vec<Chord>,
     pub lock: Chord,
     pub jump_mods: Mods,
@@ -179,6 +136,7 @@ pub struct HotkeyMatcher {
     consumed: [bool; KEY_COUNT],
     first_tap: Option<Instant>,
     tap_released: bool,
+    armed: Option<(u32, Instant)>,
 }
 
 impl HotkeyMatcher {
@@ -191,6 +149,7 @@ impl HotkeyMatcher {
             consumed: [false; KEY_COUNT],
             first_tap: None,
             tap_released: false,
+            armed: None,
         }
     }
 
@@ -206,40 +165,67 @@ impl HotkeyMatcher {
         else {
             if down {
                 self.first_tap = None;
+                self.armed = None;
             }
             return verdict;
         };
-        let key = usage - KEYBOARD_PAGE;
         let was_down = std::mem::replace(&mut self.pressed[index], down);
-        if (MODIFIER_START..MODIFIER_START + MODIFIER_COUNT).contains(&key) {
-            let bit = 1 << (key - MODIFIER_START);
+        let modifier = modifier_bit(usage);
+        if let Some(bit) = modifier {
             if down {
                 self.held_mods |= bit;
             } else {
                 self.held_mods &= !bit;
             }
-            verdict.action = self.tap(bit, down, was_down, now);
-            return verdict;
         }
-        if down {
-            self.first_tap = None;
+        verdict.action = self.trigger(usage, down, was_down, now);
+        if modifier.is_some() {
+            return verdict;
         }
         if self.consumed[index] {
             self.consumed[index] = down;
             verdict.forward = false;
         } else if down && !was_down {
-            verdict.action = self.chord(usage);
+            verdict.action = verdict.action.or_else(|| self.chord(usage));
             verdict.forward = verdict.action.is_none();
             self.consumed[index] = !verdict.forward;
         }
         verdict
     }
 
-    fn tap(&mut self, bit: u8, down: bool, was_down: bool, now: Instant) -> Option<Hotkey> {
-        if self.bindings.double_tap.0 & bit == 0 {
+    #[must_use]
+    pub fn next_deadline(&self) -> Option<Instant> {
+        self.armed.map(|(_, deadline)| deadline)
+    }
+
+    pub fn poll(&mut self, now: Instant) -> Option<Hotkey> {
+        if self.next_deadline().is_none_or(|deadline| now < deadline) {
+            return None;
+        }
+        if let Some((usage, _)) = self.armed.take() {
+            if let Ok(index) = usize::try_from(usage - KEYBOARD_PAGE) {
+                if let Some(consumed) = self.consumed.get_mut(index) {
+                    *consumed = true;
+                }
+            }
+        }
+        self.first_tap = None;
+        Some(Hotkey::Home)
+    }
+
+    fn trigger(&mut self, usage: u32, down: bool, was_down: bool, now: Instant) -> Option<Hotkey> {
+        if !self.bindings.double_tap.matches(usage) {
             if down {
                 self.first_tap = None;
+                self.armed = None;
             }
+            return None;
+        }
+        if !down && self.armed.is_some_and(|(key, _)| key == usage) {
+            self.armed = None;
+        }
+        self.arm_hold(usage, down, was_down, now);
+        if self.bindings.trigger_mode == TriggerMode::Hold {
             return None;
         }
         if !down {
@@ -254,9 +240,27 @@ impl HotkeyMatcher {
                 now.checked_duration_since(first)
                     .is_some_and(|elapsed| elapsed <= DOUBLE_TAP_WINDOW)
             });
+        if matched {
+            self.armed = None;
+        }
         self.first_tap = if matched { None } else { Some(now) };
         self.tap_released = false;
         matched.then_some(Hotkey::Home)
+    }
+
+    fn arm_hold(&mut self, usage: u32, down: bool, was_down: bool, now: Instant) {
+        if !down || was_down || self.bindings.trigger_mode == TriggerMode::DoubleTap {
+            return;
+        }
+        let other_held = self.pressed.iter().enumerate().any(|(index, held)| {
+            *held && u32::try_from(index).is_ok_and(|key| KEYBOARD_PAGE | key != usage)
+        });
+        self.armed = if other_held {
+            None
+        } else {
+            now.checked_add(self.bindings.hold)
+                .map(|deadline| (usage, deadline))
+        };
     }
 
     fn chord(&self, usage: u32) -> Option<Hotkey> {

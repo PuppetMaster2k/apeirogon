@@ -31,6 +31,14 @@ impl Daemon {
         true
     }
 
+    pub(in crate::daemon) async fn poll_hotkey(&mut self) {
+        if !self.input.focus.is_driven() {
+            if let Some(action) = self.input.hotkeys.poll(now()) {
+                self.apply_hotkey(action).await;
+            }
+        }
+    }
+
     async fn apply_hotkey(&mut self, hotkey: Hotkey) {
         let actions = match hotkey {
             Hotkey::Home => {

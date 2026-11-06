@@ -126,7 +126,7 @@ The layout is a 2D canvas on which each machine's whole virtual desktop (all its
 - **Idle takeover**: an owner that has sent nothing for 3 s can be replaced by another peer's `Focus` (someone started typing on a different machine). The old owner learns this through `Handover.taken_over_by`.
 - **Release on end**: whenever ownership ends for any reason (link loss, takeover, let go) the responder MUST synthesise key-up and button-up for everything still held.
 - **Chains**: A drives B; B sends `Handover{next = C}` to A; A takes C directly. There is no relay through B.
-- **Hotkeys** (handled locally by the owner): return home (double-tap Right Alt / Right Option, or a chord), jump to machine N (a direct take), and lock the cursor to the current machine.
+- **Hotkeys** (handled locally by the owner): return home (a trigger key or a chord), jump to machine N (a direct take), and lock the cursor to the current machine. The trigger defaults to Right Alt / Right Option; `hotkeys.double_tap` selects a modifier side, F1–F24, Scroll Lock, Pause, Menu or `none`. `hotkeys.trigger_mode` is `double_tap` (default, within 400 ms), `hold` or `both`; `hotkeys.hold_ms` defaults to 800 ms and accepts 300–3000 ms. A fresh press arms a hold; release or another key cancels it, repeats never restart it, and it fires once. Non-modifier trigger keys are consumed, while modifier triggers keep forwarding.
 - **Capture dead-man switch** (local, not on the wire): the platform capture releases the keyboard and mouse by itself when the daemon's keepalive is missing for 1.5 s.
 
 ## 9. Input
@@ -175,6 +175,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 - Local IPC version 6 adds `Wake`, a `Waking` switch response, and per-peer `can_wake` and `waking` status flags. Hardware addresses stay inside the daemon.
 - Local IPC version 7 exposes `offer_id` on held files and `generation` on held clipboard copies. Accept requests carry these identities (peer and offer id for files, origin machine and generation for clipboard) and are refused if the held item changed. Update the daemon and local clients together.
 - Local IPC version 8 adds optional `screen_mm` dimensions to placed and unplaced machines. Update the daemon and local clients together.
+- Local IPC version 10 adds `RecordTriggerKey`, replying with `TriggerKey { name }` for the next captured local key-down within 10 seconds. The recording key is consumed through release without triggering a hotkey. An unsuitable key returns `invalid_request` with "that key types text; pick a modifier, F-key, Scroll Lock, Pause or Menu"; timeout returns "no key pressed". Inactive Wayland capture cannot observe local keys at home, so recording times out there. Update the daemon and local clients together; the peer wire protocol is unchanged.
 - Local IPC version 9 adds `blocked` to placed machines and set-layout placements, preserving disabled edge thirds through local editors. Update the daemon and local clients together.
 - Flow control: provided by QUIC. At most 4 concurrent transfers per link. Transfer streams SHOULD get lower priority than stream 0.
 

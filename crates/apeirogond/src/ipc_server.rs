@@ -40,6 +40,12 @@ async fn serve_connection(mut connection: IpcConnection, commands: mpsc::Sender<
 async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Response {
     match request {
         Request::Shutdown => execute(commands, Command::Shutdown, |()| Response::Done).await,
+        Request::RecordTriggerKey => {
+            execute(commands, Command::RecordTriggerKey, |name| {
+                Response::TriggerKey { name }
+            })
+            .await
+        }
         Request::Status => execute(commands, Command::Status, Response::Status).await,
         clipboard @ (Request::ClipboardStatus
         | Request::ClipboardAccept { .. }

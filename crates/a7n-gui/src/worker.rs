@@ -26,6 +26,7 @@ pub(super) enum Update {
     Response(Result<Response, String>),
     Config(Result<Box<Config>, String>),
     Notice(String),
+    Recorded(Result<String, String>),
 }
 
 pub(super) struct Worker {
@@ -56,6 +57,13 @@ impl Worker {
                         _ = poll.tick() => Command::Request(Request::Status),
                     };
                     let update = match command {
+                        Command::Request(Request::RecordTriggerKey) => {
+                            Update::Recorded(match request_daemon(&mut client, &Request::RecordTriggerKey).await {
+                                Ok(Response::TriggerKey { name }) => Ok(name),
+                                Ok(Response::Error { message, .. }) | Err(message) => Err(message),
+                                Ok(_) => Err("Unexpected daemon response".into()),
+                            })
+                        }
                         Command::Request(request) => Update::Response(request_daemon(&mut client, &request).await),
                         Command::Config => Update::Config(load_config().map(Box::new)),
                         Command::SaveConfig(values) => {
