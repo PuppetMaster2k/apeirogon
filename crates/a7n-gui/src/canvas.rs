@@ -14,7 +14,7 @@ use snap::{GuideKind, Snapped, overlaps};
 
 const CANVAS_HEIGHT: f32 = 350.0;
 const CANVAS_PADDING: f32 = 20.0;
-const CANVAS_LAYOUT_FRACTION: f64 = 0.5;
+const CANVAS_LAYOUT_FRACTION: f64 = 0.75;
 const MOVE_STEP: i32 = 100;
 const FINE_MOVE_STEP: i32 = 10;
 const SNAP_DISTANCE_PX: f32 = 12.0;
