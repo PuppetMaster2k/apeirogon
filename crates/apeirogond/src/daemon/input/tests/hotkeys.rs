@@ -116,3 +116,42 @@ async fn reload_config_hotkeys_rebuilds_matcher_with_new_binding() {
     // Assert
     assert!(!daemon.input.focus.is_locked());
 }
+
+#[tokio::test]
+async fn captured_recording_returns_trigger_name_and_rejects_text() {
+    // Arrange
+    for (usage, expected) in [
+        (0x0007_0068, Ok("f13")),
+        (0x0007_00e6, Ok("right_alt")),
+        (
+            0x0007_0004,
+            Err("that key types text; pick a modifier, F-key, Scroll Lock, Pause or Menu"),
+        ),
+    ] {
+        let (mut daemon, _dir, _input) = daemon(true);
+        let (reply, recorded) = oneshot::channel();
+        daemon
+            .command(crate::command::Command::RecordTriggerKey(reply))
+            .await
+            .unwrap();
+        let event = Captured::Input(InputEvent {
+            event: Some(input_event::Event::Key(KeyEvent {
+                usage,
+                down: true,
+                character: String::new(),
+            })),
+        });
+
+        // Act
+        daemon.captured(Some(event)).await;
+        let result = recorded.await.unwrap().map_err(|error| error.to_string());
+
+        // Assert
+        assert_eq!(
+            result.as_deref(),
+            expected.map_err(str::to_owned).as_deref()
+        );
+        assert!(daemon.input.hotkeys.next_deadline().is_none());
+        assert_eq!(daemon.input.focus.cursor(), Cursor::Home);
+    }
+}

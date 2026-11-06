@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_core::hotkey::{Bindings, Chord, DoubleTap, Mods};
+use std::time::Duration;
+
+use a7n_core::hotkey::{
+    Bindings, Chord, DoubleTap, HOLD_DEFAULT, HOLD_MAX, HOLD_MIN, Mods, TriggerMode,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{Config, ConfigError};
@@ -9,6 +13,8 @@ use super::{Config, ConfigError};
 #[serde(default, deny_unknown_fields)]
 pub struct HotkeyConfig {
     pub double_tap: String,
+    pub trigger_mode: String,
+    pub hold_ms: u32,
     pub home: Vec<String>,
     pub lock: String,
     pub jump: String,
@@ -18,6 +24,8 @@ impl Default for HotkeyConfig {
     fn default() -> Self {
         Self {
             double_tap: "right_alt".into(),
+            trigger_mode: "double_tap".into(),
+            hold_ms: HOLD_DEFAULT,
             home: vec!["scroll_lock".into(), "ctrl+alt+shift+home".into()],
             lock: "ctrl+alt+shift+l".into(),
             jump: "ctrl+alt+shift".into(),
@@ -37,7 +45,15 @@ impl Config {
 
     pub(super) fn parse_bindings(&self) -> Result<Bindings, ConfigError> {
         let invalid = |key: &str, error| ConfigError::Invalid(format!("hotkeys.{key}: {error}"));
+        if !(HOLD_MIN..=HOLD_MAX).contains(&self.hotkeys.hold_ms) {
+            return Err(ConfigError::Invalid(format!(
+                "hotkeys.hold_ms must be between {HOLD_MIN} and {HOLD_MAX}"
+            )));
+        }
         let bindings = Bindings {
+            trigger_mode: TriggerMode::parse(&self.hotkeys.trigger_mode)
+                .map_err(|error| invalid("trigger_mode", error))?,
+            hold: Duration::from_millis(u64::from(self.hotkeys.hold_ms)),
             double_tap: DoubleTap::parse(&self.hotkeys.double_tap)
                 .map_err(|error| invalid("double_tap", error))?,
             home: self
@@ -60,6 +76,11 @@ impl Config {
             } else {
                 "home"
             };
+            if bindings.double_tap.collides(*chord) {
+                return Err(ConfigError::Invalid(format!(
+                    "hotkeys.{key}: colliding trigger"
+                )));
+            }
             if bindings.home[..index.min(bindings.home.len())].contains(chord)
                 || chord.jump_target(bindings.jump_mods).is_some()
             {

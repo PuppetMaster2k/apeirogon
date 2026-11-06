@@ -30,6 +30,7 @@ struct App {
     daemon_error: Option<String>,
     selected_peer: Option<a7n_ipc::MachineId>,
     editing_hotkeys: [bool; 4],
+    recording_trigger: bool,
     editing_receive_dir: bool,
     address: String,
     code: String,
@@ -65,6 +66,7 @@ impl App {
             daemon_error: None,
             selected_peer: None,
             editing_hotkeys: [false; 4],
+            recording_trigger: false,
             editing_receive_dir: false,
             address: String::new(),
             code: String::new(),
@@ -84,12 +86,25 @@ impl App {
     fn send(&mut self, command: Command) {
         if let Err(error) = self.worker.commands.try_send(command) {
             self.message = format!("Could not queue action: {error}; try again");
+            if matches!(
+                error.into_inner(),
+                Command::Request(Request::RecordTriggerKey)
+            ) {
+                self.recording_trigger = false;
+            }
         }
     }
 
     fn updates(&mut self) {
         while let Ok(update) = self.worker.updates.try_recv() {
             match update {
+                Update::Recorded(result) => {
+                    self.recording_trigger = false;
+                    match result {
+                        Ok(name) => self.edit("hotkeys.double_tap", &name, "right_alt"),
+                        Err(message) => self.message = message,
+                    }
+                }
                 Update::Response(Ok(Response::Status(status))) => {
                     let was_missing = self.missing_permissions().is_some();
                     if was_missing && status.missing_permissions.is_empty() {

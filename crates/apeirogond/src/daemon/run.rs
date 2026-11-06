@@ -82,6 +82,12 @@ impl Daemon {
         keepalive: &mut tokio::time::Interval,
     ) -> Result<ControlFlow<()>, DaemonError> {
         let deadline = self.input.focus.next_deadline();
+        let hotkey_deadline = if self.input.focus.is_driven() {
+            None
+        } else {
+            self.input.hotkeys.next_deadline()
+        };
+        let record_deadline = self.input.recording.next_deadline();
         let files_deadline = self.files_deadline();
         let clipboard_deadline = self.clipboard.held.as_ref().map(|held| held.deadline);
         let wake_deadline = self.wol.pending.as_ref().map(|pending| pending.deadline);
@@ -97,6 +103,8 @@ impl Daemon {
             _ = retry.tick() => self.retry_nearby(),
             _ = sync.tick() => self.flush_sync(Instant::now()).await,
             _ = keepalive.tick() => self.input.keepalive(),
+            () = input::deadline(hotkey_deadline) => self.poll_hotkey().await,
+            () = input::deadline(record_deadline) => self.input.recording.expire(tokio::time::Instant::now().into_std()),
             () = input::deadline(wake_deadline) => {},
             () = input::deadline(deadline) => self.poll_focus().await,
             () = input::deadline(clipboard_deadline) => self.clipboard.expire_held_clipboard(Instant::now()),

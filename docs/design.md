@@ -207,8 +207,15 @@ crates/
   injected button on a driven machine) is held, edge pushes cannot cross and
   discard accumulated resistance; after release a full push is required again.
 - **Safety hotkeys** (all rebindable):
-  - Return to the local machine: double-tap Right Alt / Right Option (within
-    400 ms), or Scroll Lock / `Ctrl+Alt+Shift+Home`
+  - Return to the local machine: double-tap the trigger key (Right Alt / Right
+    Option by default, within 400 ms), or Scroll Lock / `Ctrl+Alt+Shift+Home`.
+    `hotkeys.double_tap` selects the trigger: modifier sides (`left_*`,
+    `right_*`, `either_*`), F1–F24, Scroll Lock, Pause, Menu, or `none`.
+    `hotkeys.trigger_mode` selects `double_tap` (default), `hold`, or `both`.
+    `hotkeys.hold_ms` defaults to 800 ms (300–3000 ms); releasing the trigger
+    or pressing another key cancels a hold. Repeats do not restart it.
+    Non-modifier trigger keys are consumed; modifier triggers keep forwarding.
+    The GUI can record a trigger key from local capture before saving it.
   - Lock cursor to the current machine: `Ctrl+Alt+Shift+L`
   - Jump to machine N: `Ctrl+Alt+Shift+1…9`
   - Peer disconnect auto-releases all held keys and buttons on it.
@@ -305,6 +312,12 @@ do not.
     independent generation namespace and do not change the receiving clipboard.
   - Local IPC version 6 adds `Wake`, a `Waking` switch response, and per-peer
     `can_wake` and `waking` status flags. Hardware addresses stay inside the daemon.
+  - Local IPC version 10 adds `RecordTriggerKey` and `TriggerKey { name }`.
+    Recording waits up to 10 seconds for the next captured local key-down,
+    consumes that key through release, and returns its trigger name or an
+    error. At home this is available on Windows, macOS and X11; inactive
+    Wayland capture cannot observe local keys and recording times out.
+    Update the daemon and local clients together; the peer protocol is unchanged.
   - Local IPC version 9 carries `blocked` edge thirds in placed machines and
     set-layout requests. Update the daemon and local clients together.
   - Local IPC version 8 adds optional `screen_mm` dimensions to placed and unplaced

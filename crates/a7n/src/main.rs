@@ -327,6 +327,7 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
         Response::Waking { name } => writeln!(output, "Waking {name}…")?,
         Response::Done => {}
         Response::FilesOffered { .. } => bail!("unexpected file offer response from daemon"),
+        Response::TriggerKey { .. } => bail!("unexpected trigger key response from daemon"),
         Response::Layout(_) => bail!("unexpected layout response from daemon"),
         Response::Error { message, .. } => bail!("{message}"),
     }

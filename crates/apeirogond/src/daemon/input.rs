@@ -15,8 +15,10 @@ use tokio::sync::oneshot;
 
 use super::{Daemon, DaemonError};
 
+mod actions;
 mod hotkeys;
 mod landing;
+mod recording;
 
 use landing::landing_point;
 
@@ -32,6 +34,7 @@ pub(super) struct Input {
     pub(super) scale: MotionScale,
     pub(super) modifier_remap: BTreeMap<u32, u32>,
     pub(super) hotkeys: HotkeyMatcher,
+    pub(super) recording: recording::Recording,
     resistance: EdgeResistance,
     buttons: HeldButtons,
     pub(super) failed: bool,
@@ -58,6 +61,7 @@ impl Input {
             scale: MotionScale::new(1.0),
             modifier_remap: BTreeMap::new(),
             hotkeys: HotkeyMatcher::new(a7n_ipc::config::Config::default().bindings()),
+            recording: recording::Recording::default(),
             resistance: EdgeResistance::new(0),
             buttons: HeldButtons::default(),
             failed: false,
@@ -241,53 +245,6 @@ impl Daemon {
         }
     }
 
-    pub(super) async fn sync_grab(&mut self) {
-        self.input
-            .grab(
-                self.input.focus.is_driven()
-                    || matches!(self.input.focus.cursor(), Cursor::Driving(_)),
-            )
-            .await;
-    }
-
-    pub(super) async fn input_actions(&mut self, actions: Vec<Action>) {
-        for action in actions {
-            match action {
-                Action::Send { peer, body } => self.send_input(peer, body),
-                Action::Release(events) => {
-                    self.input.buttons.reset();
-                    for event in events {
-                        self.input.inject(Inject::Event(event)).await;
-                    }
-                }
-                Action::Cursor(cursor) => {
-                    self.input.buttons.reset();
-                    if let Cursor::Driving(peer) = cursor {
-                        self.input.counter.reset();
-                        self.snapshot_remap(peer);
-                    }
-                    self.input.resistance = EdgeResistance::new(0);
-                    self.sync_grab().await;
-                }
-                Action::Driven {
-                    landing,
-                    resistance_px,
-                    ..
-                } => {
-                    self.input.buttons.reset();
-                    self.input.tracker.reset();
-                    self.input.scale = MotionScale::new(self.config.input.speed);
-                    self.input.resistance = EdgeResistance::new(resistance_px);
-                    self.sync_grab().await;
-                    if let (Some(landing), Some(injector)) = (landing, &self.input.injector) {
-                        let (x, y) = landing_point(injector.bounds, &landing);
-                        self.input.inject(Inject::Warp { x, y }).await;
-                    }
-                }
-            }
-        }
-    }
-
     pub(super) fn send_input(&mut self, peer: MachineId, body: Body) {
         let Some(handle) = self.links.by_peer.get(&peer) else {
             return;
@@ -397,6 +354,9 @@ impl Daemon {
             self.input.closed();
             return;
         };
+        if self.record_capture(&event) {
+            return;
+        }
         if let Captured::Input(input) = &event {
             self.input.trace_key(input);
         }

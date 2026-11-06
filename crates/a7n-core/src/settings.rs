@@ -10,6 +10,8 @@ pub const SYNCED_KEYS: &[&str] = &[
     "input.speed",
     "input.natural_scrolling",
     "hotkeys.double_tap",
+    "hotkeys.trigger_mode",
+    "hotkeys.hold_ms",
     "hotkeys.home",
     "hotkeys.lock",
     "hotkeys.jump",

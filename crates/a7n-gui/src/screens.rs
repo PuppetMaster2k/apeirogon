@@ -108,7 +108,7 @@ impl App {
             .unwrap_or_else(|| default.to_owned())
     }
 
-    fn edit(&mut self, key: &str, value: &str, default: &str) {
+    pub(super) fn edit(&mut self, key: &str, value: &str, default: &str) {
         let original = self
             .config
             .as_ref()

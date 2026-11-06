@@ -17,6 +17,7 @@ pub(crate) type Reply<T> = oneshot::Sender<Result<T, DaemonError>>;
 #[derive(Debug)]
 pub(crate) enum Command {
     ReloadConfig(Reply<()>),
+    RecordTriggerKey(Reply<String>),
     Shutdown(Reply<()>),
     SetPaused {
         paused: bool,

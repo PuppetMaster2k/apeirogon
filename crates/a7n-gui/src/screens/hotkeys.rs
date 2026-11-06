@@ -12,8 +12,8 @@ impl App {
             for (index, (name, title, help)) in [
                 (
                     "double_tap",
-                    "Double tap",
-                    "Tap twice to return to this machine.",
+                    "Trigger key",
+                    "Double-tap or hold this key to return to this machine. Holding it with another key does nothing.",
                 ),
                 ("home", "Home", "Return keyboard and mouse to this machine."),
                 (
@@ -36,6 +36,17 @@ impl App {
                         egui::vec2(ui.available_width(), theme::size::CONTROL_H),
                         egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true),
                         |ui| {
+                            if index == 0 {
+                                ui.add_enabled_ui(!self.recording_trigger, |ui| {
+                                    if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None,
+                                        if self.recording_trigger { "Press a key…" } else { "Record" })
+                                        .clicked()
+                                    {
+                                        self.recording_trigger = true;
+                                        self.send(crate::Command::Request(a7n_ipc::Request::RecordTriggerKey));
+                                    }
+                                });
+                            }
                             if self.editing_hotkeys[index] {
                                 ui.set_max_width(320.0);
                                 if theme::text_input(
@@ -87,6 +98,59 @@ impl App {
                     );
                 });
             }
+            ui.separator();
+            self.trigger_options(ui);
         });
+    }
+
+    fn trigger_options(&mut self, ui: &mut egui::Ui) {
+        let key = "hotkeys.trigger_mode";
+        let mut mode = self.value(key, "double_tap");
+        theme::setting_row(
+            ui,
+            "Trigger mode",
+            "How the trigger returns input home.",
+            Some(key),
+            |ui| {
+                egui::ComboBox::from_id_salt(key)
+                    .selected_text(match mode.as_str() {
+                        "hold" => "Hold",
+                        "both" => "Both",
+                        _ => "Double tap",
+                    })
+                    .show_ui(ui, |ui| {
+                        for (value, label) in [
+                            ("double_tap", "Double tap"),
+                            ("hold", "Hold"),
+                            ("both", "Both"),
+                        ] {
+                            if ui
+                                .selectable_value(&mut mode, value.into(), label)
+                                .changed()
+                            {
+                                self.edit(key, &mode, "double_tap");
+                            }
+                        }
+                    });
+            },
+        );
+        if mode == "double_tap" {
+            return;
+        }
+        let key = "hotkeys.hold_ms";
+        let mut value = self.value(key, "");
+        theme::setting_row(
+            ui,
+            "Hold duration (ms)",
+            "300–3000 ms; default 800 ms.",
+            Some(key),
+            |ui| {
+                if theme::text_input(ui, "Hold duration in milliseconds", &mut value, "800", true)
+                    .changed()
+                {
+                    self.edit(key, &value, "");
+                }
+            },
+        );
     }
 }

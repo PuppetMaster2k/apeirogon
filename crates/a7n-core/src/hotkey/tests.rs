@@ -4,6 +4,8 @@ use super::*;
 
 fn matcher() -> HotkeyMatcher {
     HotkeyMatcher::new(Bindings {
+        trigger_mode: TriggerMode::DoubleTap,
+        hold: Duration::from_millis(u64::from(HOLD_DEFAULT)),
         double_tap: DoubleTap::parse("right_alt").unwrap(),
         home: vec![
             Chord::parse("scroll_lock").unwrap(),
@@ -225,3 +227,5 @@ fn on_key_double_tap_sides_match_configured_modifier() {
         }
     }
 }
+
+mod hold;

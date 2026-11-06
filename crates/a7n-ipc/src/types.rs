@@ -14,6 +14,7 @@ use crate::config::ClipboardPolicy;
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
     ReloadConfig,
+    RecordTriggerKey,
     Shutdown,
     SetPaused {
         paused: bool,
@@ -79,6 +80,9 @@ pub enum Request {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Response {
     Status(StatusInfo),
+    TriggerKey {
+        name: String,
+    },
     Clipboard(ClipboardInfo),
     Layout(LayoutInfo),
     PairCode {
