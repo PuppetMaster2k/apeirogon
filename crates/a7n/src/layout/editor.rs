@@ -49,6 +49,7 @@ impl Editor {
                             y: p.y,
                             width: p.width,
                             height: p.height,
+                            blocked: p.blocked,
                         })
                         .collect(),
                 );

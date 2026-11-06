@@ -12,6 +12,7 @@ fn rect(byte: u8, x: i32, y: i32) -> Placement {
         y,
         width: 100,
         height: 100,
+        blocked: 0,
     }
 }
 
@@ -283,4 +284,98 @@ fn nth_unsorted_placements_returns_one_based_canvas_order() {
             None
         ]
     );
+}
+
+#[test]
+fn exit_blocked_thirds_only_prevent_source_segment_crossings() {
+    // Arrange
+    for (edge, x, y, index) in [
+        (Edge::Left, -100, 0, 0),
+        (Edge::Top, 0, -100, 1),
+        (Edge::Right, 100, 0, 2),
+        (Edge::Bottom, 0, 100, 3),
+    ] {
+        for third in 0..3 {
+            let source = Placement {
+                blocked: 1 << (index * 3 + third),
+                ..rect(1, 0, 0)
+            };
+            let target = Placement {
+                blocked: u16::MAX,
+                ..rect(2, x, y)
+            };
+            let layout = Layout::empty(id(1))
+                .edit(vec![source, target], id(1))
+                .unwrap();
+            for (segment, along) in [0.1, 0.5, 0.9].into_iter().enumerate() {
+                // Act
+                let exit = layout.exit(id(1), edge, along);
+
+                // Assert
+                assert_eq!(exit.is_none(), segment == third);
+            }
+        }
+    }
+}
+
+#[test]
+fn exit_corner_diagonal_neighbours_land_on_opposite_edge_at_shared_corner() {
+    // Arrange
+    let layout = Layout::empty(id(1))
+        .edit(
+            vec![
+                rect(1, 0, 0),
+                rect(2, -100, -100),
+                rect(3, 100, -100),
+                rect(4, -100, 100),
+                rect(5, 100, 100),
+            ],
+            id(1),
+        )
+        .unwrap();
+    for (corner, edge, target, opposite, offset) in [
+        (Corner::TopLeft, Edge::Left, 2, Edge::Right, 1.0),
+        (Corner::TopLeft, Edge::Top, 2, Edge::Bottom, 1.0),
+        (Corner::TopRight, Edge::Right, 3, Edge::Left, 1.0),
+        (Corner::TopRight, Edge::Top, 3, Edge::Bottom, 0.0),
+        (Corner::BottomLeft, Edge::Left, 4, Edge::Right, 0.0),
+        (Corner::BottomLeft, Edge::Bottom, 4, Edge::Top, 1.0),
+        (Corner::BottomRight, Edge::Right, 5, Edge::Left, 0.0),
+        (Corner::BottomRight, Edge::Bottom, 5, Edge::Top, 0.0),
+    ] {
+        // Act
+        let (target_id, landing) = layout.exit_corner(id(1), edge, corner).unwrap();
+
+        // Assert
+        assert_eq!(
+            (target_id, landing.edge, landing.offset),
+            (id(target), opposite as i32, offset)
+        );
+    }
+}
+
+#[test]
+fn try_from_unknown_and_absent_blocked_bits_masks_to_known_segments() {
+    use a7n_proto::{FrameKind, decode_frame, encode_frame};
+
+    // Arrange
+    for (blocked, expected) in [(u32::MAX, BLOCKED_MASK), (0, 0)] {
+        let mut wire = Layout::empty(id(1))
+            .edit(vec![rect(1, 0, 0)], id(1))
+            .unwrap()
+            .to_proto();
+        wire.machines[0].blocked = blocked;
+        let mut bytes = Vec::new();
+        encode_frame(&wire, &mut bytes);
+        let (decoded, _) = decode_frame::<v1::Layout>(&bytes, FrameKind::Control)
+            .unwrap()
+            .unwrap();
+
+        // Act
+        let layout = Layout::try_from(&decoded).unwrap();
+
+        // Assert
+        assert_eq!(u32::from(layout.placements()[0].blocked), expected);
+        assert_eq!(layout.to_proto().machines[0].blocked, expected);
+    }
 }

@@ -201,7 +201,8 @@ crates/
   resizes and lines up the draft before Save. Edges connect where rectangles
   touch, so offsets and partial overlaps work. One desk-wide layout is synced to all members; concurrent
   edits resolve by last-writer-wins with a version counter (ties by machine
-  id) and a notice to the loser.
+  id) and a notice to the loser. Each leaving edge can disable individual thirds;
+  diagonal pushes within an 8-pixel corner box reach corner-only neighbours after edge exits.
 - **Edge resistance:** while any captured local button (or the remote owner's
   injected button on a driven machine) is held, edge pushes cannot cross and
   discard accumulated resistance; after release a full push is required again.
@@ -304,6 +305,8 @@ do not.
     independent generation namespace and do not change the receiving clipboard.
   - Local IPC version 6 adds `Wake`, a `Waking` switch response, and per-peer
     `can_wake` and `waking` status flags. Hardware addresses stay inside the daemon.
+  - Local IPC version 9 carries `blocked` edge thirds in placed machines and
+    set-layout requests. Update the daemon and local clients together.
   - Local IPC version 8 adds optional `screen_mm` dimensions to placed and unplaced
     machines. Update the daemon and local clients together.
   - Local IPC version 7 exposes `offer_id` on held files and `generation` on held

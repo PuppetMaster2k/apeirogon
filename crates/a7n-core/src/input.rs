@@ -5,6 +5,11 @@
 use a7n_proto::seq::{delta, is_newer};
 use a7n_proto::v1::{Edge, Motion};
 
+use crate::layout::Corner;
+
+/// Maximum distance in pixels from an edge end for a diagonal crossing.
+pub const CORNER_BOX: i64 = 8;
+
 /// Receiver-side speed scaling, retaining subpixel motion between updates.
 #[derive(Debug)]
 pub struct MotionScale {
@@ -137,6 +142,40 @@ pub fn edge_push(
     let along =
         (f64::from(position) - f64::from(start)) / f64::from(length.saturating_sub(1).max(1));
     Some((edge, overshoot, along as f32))
+}
+
+/// Detect an edge push whose other axis points toward a nearby corner.
+#[must_use]
+pub fn corner_push(
+    bounds @ (left, top, width, height): (i32, i32, u32, u32),
+    x: i32,
+    y: i32,
+    dx: i32,
+    dy: i32,
+) -> Option<(Edge, Corner)> {
+    let (edge, _, _) = edge_push(bounds, x, y, dx, dy)?;
+    let right = i64::from(left) + i64::from(width) - 1;
+    let bottom = i64::from(top) + i64::from(height) - 1;
+    let (position, start, end, delta) = match edge {
+        Edge::Left | Edge::Right => (y, top, bottom, dy),
+        Edge::Top | Edge::Bottom => (x, left, right, dx),
+        Edge::Unspecified => return None,
+    };
+    let at_end = if delta < 0 && i64::from(position) - i64::from(start) <= CORNER_BOX {
+        false
+    } else if delta > 0 && end - i64::from(position) <= CORNER_BOX {
+        true
+    } else {
+        return None;
+    };
+    let corner = match (edge, at_end) {
+        (Edge::Left | Edge::Top, false) => Corner::TopLeft,
+        (Edge::Right, false) | (Edge::Top, true) => Corner::TopRight,
+        (Edge::Left, true) | (Edge::Bottom, false) => Corner::BottomLeft,
+        (Edge::Right | Edge::Bottom, true) => Corner::BottomRight,
+        (Edge::Unspecified, _) => return None,
+    };
+    Some((edge, corner))
 }
 
 #[cfg(test)]

@@ -14,6 +14,7 @@ use crate::daemon::test_peer::{Peer, TEST_TIMEOUT};
 use crate::pin_store::Entry;
 
 mod config;
+mod corners;
 mod hotkeys;
 mod pause;
 
@@ -86,6 +87,7 @@ async fn configured_pair(
             y: 0,
             width: 100,
             height: 100,
+            blocked: 0,
         })
         .collect();
     a.layout.state = a
@@ -485,6 +487,7 @@ async fn captured_offline_edge_waits_for_resistance_before_waking() {
                     y: 0,
                     width: 100,
                     height: 100,
+                    blocked: 0,
                 })
                 .collect(),
             daemon.identity.machine_id,

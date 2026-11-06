@@ -24,6 +24,7 @@ impl Daemon {
                 y: p.y,
                 width: p.width,
                 height: p.height,
+                blocked: p.blocked,
             })
             .collect();
         let unplaced = std::iter::once(self.identity.machine_id)
@@ -73,6 +74,7 @@ impl Daemon {
                 y: p.y,
                 width: p.width,
                 height: p.height,
+                blocked: p.blocked,
             })
             .collect();
         let edited = self

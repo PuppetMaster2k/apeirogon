@@ -367,6 +367,7 @@ mod tests {
             y: 100,
             width: 1920,
             height: 1080,
+            blocked: 0,
         })
         .collect();
         let mut canvas = Canvas::try_from(LayoutInfo {
@@ -402,6 +403,7 @@ mod tests {
             y: -100,
             width: 1920,
             height: 1080,
+            blocked: 0,
         };
         let area = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(960.0, 540.0));
         let transform = Transform::new(bounds(&[placement]), area);
@@ -432,6 +434,7 @@ mod tests {
                 y: -100,
                 width: 1920,
                 height: 1080,
+                blocked: 0,
             },
             Placement {
                 id: "1123456789abcdef0123456789abcdef".parse().unwrap(),
@@ -439,6 +442,7 @@ mod tests {
                 y: 0,
                 width: 1920,
                 height: 1080,
+                blocked: 0,
             },
         ];
         for size in [

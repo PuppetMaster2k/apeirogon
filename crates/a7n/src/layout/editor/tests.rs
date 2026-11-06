@@ -13,6 +13,7 @@ fn machine(id: u8, x: i32, y: i32) -> PlacedMachine {
         y,
         width: 1920,
         height: 1080,
+        blocked: 0,
     }
 }
 
@@ -39,7 +40,8 @@ fn handle_move_into_overlap_refuses_save() {
 #[test]
 fn handle_save_valid_layout_emits_placements() {
     // Arrange
-    let placed = machine(1, -100, 200);
+    let mut placed = machine(1, -100, 200);
+    placed.blocked = 0x123;
     let mut editor = Editor::new(LayoutInfo {
         placed: vec![placed.clone()],
         unplaced: Vec::new(),
@@ -62,6 +64,7 @@ fn handle_save_valid_layout_emits_placements() {
             y: placed.y,
             width: placed.width,
             height: placed.height,
+            blocked: placed.blocked,
         }]
     );
 }

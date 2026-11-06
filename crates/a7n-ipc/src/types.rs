@@ -327,6 +327,7 @@ pub struct LayoutPlacement {
     pub y: i32,
     pub width: u32,
     pub height: u32,
+    pub blocked: u16,
 }
 
 /// A placed rectangle with its display name.
@@ -341,6 +342,7 @@ pub struct PlacedMachine {
     pub y: i32,
     pub width: u32,
     pub height: u32,
+    pub blocked: u16,
 }
 
 /// A known machine without a canvas rectangle.

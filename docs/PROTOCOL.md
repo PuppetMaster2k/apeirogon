@@ -112,6 +112,8 @@ The layout is a 2D canvas on which each machine's whole virtual desktop (all its
 - A layout contains at most 64 machines (section 14), with unique 16-byte ids and a 16-byte `by`. Rectangles MUST have nonzero dimensions, fit signed 32-bit canvas coordinates, and have disjoint interiors (touching edges are allowed). Invalid layouts are ignored without closing the link.
 - A local edit sets `version = max(seen) + 1`, `by = own id`. The newest `(version, by)` wins; a machine whose unsent edit loses shows a notice.
 - A layout whose `version` exceeds 2^53 (section 14) is ignored. A stored layout above that limit is loaded with `version = 0`.
+- `MachineRect.blocked` (field 6, `uint32`, absent = 0) disables thirds of the leaving machine's edges. Bit `edge_index * 3 + third` uses Left=0, Top=1, Right=2, Bottom=3; thirds run top to bottom on Left/Right and left to right on Top/Bottom. Decode masks off all but the low 12 bits. The third at fractional position `along` is `min(floor(along * 3), 2)` for `along` in [0, 1]. Only the leaving machine's mask matters.
+- A diagonal push within 8 pixels (`CORNER_BOX`) of an edge end can reach a rectangle touching only at that corner. The outward edge push must also point toward that end on the other axis. A normal edge exit takes precedence; if none exists, try the corner, unless that end third of the pushed edge is blocked. Land on the target's edge opposite the pushed edge, at the shared corner (offset 0 or 1).
 - When the pointer leaves the owner's current machine across a shared edge segment, the owner computes `Landing` (edge and offset) on the target from the layout.
 
 ## 8. Ownership and routing
@@ -173,6 +175,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 - Local IPC version 6 adds `Wake`, a `Waking` switch response, and per-peer `can_wake` and `waking` status flags. Hardware addresses stay inside the daemon.
 - Local IPC version 7 exposes `offer_id` on held files and `generation` on held clipboard copies. Accept requests carry these identities (peer and offer id for files, origin machine and generation for clipboard) and are refused if the held item changed. Update the daemon and local clients together.
 - Local IPC version 8 adds optional `screen_mm` dimensions to placed and unplaced machines. Update the daemon and local clients together.
+- Local IPC version 9 adds `blocked` to placed machines and set-layout placements, preserving disabled edge thirds through local editors. Update the daemon and local clients together.
 - Flow control: provided by QUIC. At most 4 concurrent transfers per link. Transfer streams SHOULD get lower priority than stream 0.
 
 ## 12. Drag and drop (removed)
