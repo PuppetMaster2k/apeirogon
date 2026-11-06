@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_core::hotkey::HotkeyMatcher;
+use a7n_core::hotkey::{HotkeyMatcher, ShakeDetector};
 
 use super::{Action, Cursor, Daemon, EdgeResistance, Inject, MotionScale, landing_point};
 
@@ -25,6 +25,7 @@ impl Daemon {
                     }
                 }
                 Action::Cursor(cursor) => {
+                    self.input.shake = ShakeDetector::new(self.config.hotkeys.shake);
                     self.input.buttons.reset();
                     if let Cursor::Driving(peer) = cursor {
                         self.input.counter.reset();
@@ -40,6 +41,7 @@ impl Daemon {
                 } => {
                     self.input.buttons.reset();
                     self.input.hotkeys = HotkeyMatcher::new(self.config.bindings());
+                    self.input.shake = ShakeDetector::new(self.config.hotkeys.shake);
                     self.input.tracker.reset();
                     self.input.scale = MotionScale::new(self.config.input.speed);
                     self.input.resistance = EdgeResistance::new(resistance_px);

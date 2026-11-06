@@ -345,7 +345,7 @@ impl Config {
                         .map(|chord| toml::Value::String(chord.trim().into()))
                         .collect(),
                 ),
-                ["hotkeys", "hold_ms"] => toml::Value::Integer(
+                ["hotkeys", "hold_ms" | "shake"] => toml::Value::Integer(
                     value.parse::<u32>().map(i64::from).map_err(|_| invalid())?,
                 ),
                 ["port"] => toml::Value::Integer(value.parse().map_err(|_| {

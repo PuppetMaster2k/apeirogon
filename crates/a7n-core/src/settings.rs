@@ -12,6 +12,7 @@ pub const SYNCED_KEYS: &[&str] = &[
     "hotkeys.double_tap",
     "hotkeys.trigger_mode",
     "hotkeys.hold_ms",
+    "hotkeys.shake",
     "hotkeys.home",
     "hotkeys.lock",
     "hotkeys.jump",

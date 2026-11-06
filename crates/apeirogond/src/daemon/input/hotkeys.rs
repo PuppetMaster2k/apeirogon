@@ -6,6 +6,20 @@ use a7n_proto::v1::input_event;
 use super::{Captured, Cursor, Daemon, now};
 
 impl Daemon {
+    pub(super) async fn match_shake(&mut self, event: &Captured) -> bool {
+        let Captured::Pointer { dx, .. } = event else {
+            return false;
+        };
+        if !self.input.shake.on_motion(*dx, now()) {
+            return false;
+        }
+        self.wol.pending = None;
+        crate::log::event!("kind=hotkey action=shake");
+        let actions = self.input.focus.go_home();
+        self.input_actions(actions).await;
+        true
+    }
+
     pub(super) async fn match_hotkey(&mut self, event: &Captured) -> bool {
         if self.input.focus.is_driven() {
             return false;

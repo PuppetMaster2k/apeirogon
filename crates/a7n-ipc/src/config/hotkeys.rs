@@ -3,7 +3,8 @@
 use std::time::Duration;
 
 use a7n_core::hotkey::{
-    Bindings, Chord, DoubleTap, HOLD_DEFAULT, HOLD_MAX, HOLD_MIN, Mods, TriggerMode,
+    Bindings, Chord, DoubleTap, HOLD_DEFAULT, HOLD_MAX, HOLD_MIN, Mods, SHAKE_DEFAULT, SHAKE_MAX,
+    SHAKE_MIN, TriggerMode,
 };
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +16,7 @@ pub struct HotkeyConfig {
     pub double_tap: String,
     pub trigger_mode: String,
     pub hold_ms: u32,
+    pub shake: u8,
     pub home: Vec<String>,
     pub lock: String,
     pub jump: String,
@@ -26,6 +28,7 @@ impl Default for HotkeyConfig {
             double_tap: "right_alt".into(),
             trigger_mode: "double_tap".into(),
             hold_ms: HOLD_DEFAULT,
+            shake: SHAKE_DEFAULT,
             home: vec!["scroll_lock".into(), "ctrl+alt+shift+home".into()],
             lock: "ctrl+alt+shift+l".into(),
             jump: "ctrl+alt+shift".into(),
@@ -48,6 +51,11 @@ impl Config {
         if !(HOLD_MIN..=HOLD_MAX).contains(&self.hotkeys.hold_ms) {
             return Err(ConfigError::Invalid(format!(
                 "hotkeys.hold_ms must be between {HOLD_MIN} and {HOLD_MAX}"
+            )));
+        }
+        if self.hotkeys.shake != 0 && !(SHAKE_MIN..=SHAKE_MAX).contains(&self.hotkeys.shake) {
+            return Err(ConfigError::Invalid(format!(
+                "hotkeys.shake must be 0 or between {SHAKE_MIN} and {SHAKE_MAX}"
             )));
         }
         let bindings = Bindings {

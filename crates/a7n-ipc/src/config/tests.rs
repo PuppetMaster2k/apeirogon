@@ -388,3 +388,25 @@ fn set_trigger_settings_validates_keys_duration_and_collisions() {
         }
     }
 }
+
+#[test]
+fn set_shake_count_accepts_only_off_or_safe_range() {
+    // Arrange
+    for count in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] {
+        let mut config = Config::default();
+        let value = count.to_string();
+
+        // Act
+        let result = config.set("hotkeys.shake", &value);
+
+        // Assert
+        assert_eq!(
+            result.is_ok(),
+            count == 0 || (3..=10).contains(&count),
+            "{count}"
+        );
+        if result.is_ok() {
+            assert_eq!(config.get("hotkeys.shake"), Some(value));
+        }
+    }
+}
