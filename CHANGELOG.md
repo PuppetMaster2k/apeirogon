@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.7...v0.16.0) (2026-11-06)
+
+
+### Features
+
+* show machines at their real screen size on the layout canvas ([#167](https://github.com/PuppetMaster2k/apeirogon/issues/167)) ([7f04f27](https://github.com/PuppetMaster2k/apeirogon/commit/7f04f277293c62b03cf583bcacda74a609edc3bb))
+
 ## [0.15.7](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.6...v0.15.7) (2026-11-05)
 
 
