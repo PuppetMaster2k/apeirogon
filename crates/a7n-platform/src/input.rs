@@ -12,7 +12,7 @@ mod accumulate;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod evdev_keymap;
 #[cfg(target_os = "macos")]
-mod macos;
+pub(crate) mod macos;
 #[cfg(all(test, not(target_os = "macos")))]
 #[path = "input/macos/keymap.rs"]
 mod macos_keymap;
@@ -20,7 +20,7 @@ mod scroll;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod wayland;
 #[cfg(windows)]
-mod windows;
+pub(crate) mod windows;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod x11;
 

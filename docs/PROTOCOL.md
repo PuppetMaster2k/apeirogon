@@ -68,6 +68,13 @@ beside its pin for local wake-on-LAN; missing or invalid values do not erase a
 previous valid address. Hardware addresses are never logged or synced through
 desk membership/settings. No new capability or wire field is required.
 
+`PeerInfo.screen_mm` (field 7, `ScreenSize { uint32 width = 1; uint32 height = 2; }`)
+advertises the whole virtual desktop's physical size in millimeters. Absent,
+zero or sides above `SCREEN_MM_MAX` (section 14) mean unknown, not a link error.
+After authenticating a paired link, receivers persist the last valid size beside
+its pin for offline layout editing; missing or invalid values retain it. This
+additive metadata needs no capability; older peers ignore it.
+
 Limits: handshake timeout 5 s, 4 concurrent unauthenticated connections per listener, first `Hello` max 4096 bytes. If both machines dial each other simultaneously, the link initiated by the larger machine id is kept.
 
 ## 5. Pairing
@@ -100,6 +107,7 @@ A paired machine is trusted to inject input; any member can admit or revoke othe
 
 The layout is a 2D canvas on which each machine's whole virtual desktop (all its monitors) is one rectangle (`MachineRect`). Edges connect only where rectangles touch, so offsets and partial overlaps work. Individual monitors are not placed separately.
 
+- Physical-size defaults use 1 canvas unit = 0.1 mm; crossings still use edges and fractional landing offsets.
 - One `Layout` describes the whole desk and is sent to every member.
 - A layout contains at most 64 machines (section 14), with unique 16-byte ids and a 16-byte `by`. Rectangles MUST have nonzero dimensions, fit signed 32-bit canvas coordinates, and have disjoint interiors (touching edges are allowed). Invalid layouts are ignored without closing the link.
 - A local edit sets `version = max(seen) + 1`, `by = own id`. The newest `(version, by)` wins; a machine whose unsent edit loses shows a notice.
@@ -164,6 +172,7 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 - Local IPC version 5 adds the `no_space` error category. Accepting a held file offer waits for receive preparation and the free-space check; insufficient space reports "not enough free space in the receive directory". Receives require the remaining bytes after verified resume plus a 256 MiB safety margin. A failed space query is logged and does not block receiving.
 - Local IPC version 6 adds `Wake`, a `Waking` switch response, and per-peer `can_wake` and `waking` status flags. Hardware addresses stay inside the daemon.
 - Local IPC version 7 exposes `offer_id` on held files and `generation` on held clipboard copies. Accept requests carry these identities (peer and offer id for files, origin machine and generation for clipboard) and are refused if the held item changed. Update the daemon and local clients together.
+- Local IPC version 8 adds optional `screen_mm` dimensions to placed and unplaced machines. Update the daemon and local clients together.
 - Flow control: provided by QUIC. At most 4 concurrent transfers per link. Transfer streams SHOULD get lower priority than stream 0.
 
 ## 12. Drag and drop
@@ -207,6 +216,7 @@ With `ask`, sending behaves like `both`, while incoming copies are validated and
 | Image dimension max | 16384 pixels |
 | Decoded image max (RGBA) | 256 MiB |
 | Inline clipboard total per announce | 64 KiB |
+| Physical desktop side (`SCREEN_MM_MAX`) | at most 10,000 mm; 0 or >10,000 means unknown |
 | Layout version, settings `set_at`, clipboard generation | at most 2^53 |
 | Machines per layout | 64 |
 | File manifest entries max | 10000 |

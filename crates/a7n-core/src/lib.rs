@@ -3,6 +3,7 @@
 
 pub mod clipboard;
 pub mod desk;
+pub mod display;
 pub mod files;
 pub mod focus;
 pub mod hotkey;

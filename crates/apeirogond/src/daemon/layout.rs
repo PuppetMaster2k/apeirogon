@@ -19,6 +19,7 @@ impl Daemon {
             .map(|p| PlacedMachine {
                 machine: p.id,
                 name: self.layout_name(p.id),
+                screen_mm: self.layout_screen_mm(p.id),
                 x: p.x,
                 y: p.y,
                 width: p.width,
@@ -35,6 +36,7 @@ impl Daemon {
             .map(|machine| UnplacedMachine {
                 machine,
                 name: self.layout_name(machine),
+                screen_mm: self.layout_screen_mm(machine),
             })
             .collect();
         LayoutInfo {
@@ -42,6 +44,17 @@ impl Daemon {
             unplaced,
             lost_edit: self.layout.lost_edit,
         }
+    }
+
+    fn layout_screen_mm(&self, id: MachineId) -> Option<(u32, u32)> {
+        if id == self.identity.machine_id {
+            return self
+                .info
+                .screen_mm
+                .as_ref()
+                .map(|size| (size.width, size.height));
+        }
+        self.pins.get(&id).and_then(|entry| entry.screen_mm)
     }
 
     fn layout_name(&self, id: MachineId) -> String {

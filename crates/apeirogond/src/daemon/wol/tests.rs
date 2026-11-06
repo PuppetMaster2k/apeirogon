@@ -23,6 +23,7 @@ fn offline() -> (Daemon, TempDir, MachineId, mpsc::Receiver<[u8; 6]>) {
         name: "desktop".into(),
         spki_der: None,
         hw_addr: Some([2; 6]),
+        screen_mm: None,
     });
     let (sender, receiver) = mpsc::channel();
     daemon.wol.sender = Box::new(move |mac| {
@@ -158,6 +159,7 @@ async fn finish_wake_link_up_takes_once_with_original_landing() {
             name: "remote".into(),
             spki_der: None,
             hw_addr: Some([2; 6]),
+            screen_mm: None,
         });
         daemon.sync_trust().unwrap();
         remote

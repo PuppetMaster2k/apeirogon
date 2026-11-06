@@ -66,6 +66,7 @@ async fn clipboard_status_local_change_returns_metadata_only() {
         name: "offline peer".into(),
         spki_der: None,
         hw_addr: None,
+        screen_mm: None,
     });
     daemon
         .config

@@ -40,6 +40,7 @@ pub(crate) struct Entry {
     pub(crate) name: String,
     pub(crate) spki_der: Option<Vec<u8>>,
     pub(crate) hw_addr: Option<[u8; 6]>,
+    pub(crate) screen_mm: Option<(u32, u32)>,
 }
 
 /// On-disk form of an [`Entry`]: ids and pins as lowercase hex.
@@ -52,6 +53,8 @@ struct EntryRecord {
     spki_der: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hw_addr: Option<[u8; 6]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    screen_mm: Option<(u32, u32)>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -117,6 +120,19 @@ impl PinStore {
         }
     }
 
+    pub(crate) fn record_screen_mm(
+        &mut self,
+        peer: MachineId,
+        size: Option<&a7n_proto::v1::ScreenSize>,
+    ) {
+        if let Some(size) =
+            size.and_then(|size| a7n_core::display::screen_size_mm((size.width, size.height)))
+            && let Some(entry) = self.entries.get_mut(&peer)
+        {
+            entry.screen_mm = Some(size);
+        }
+    }
+
     pub(crate) fn machine_ids(&self) -> impl Iterator<Item = MachineId> + '_ {
         self.entries.keys().copied()
     }
@@ -152,6 +168,7 @@ impl From<&Entry> for EntryRecord {
                 .as_deref()
                 .map(|bytes| a7n_proto::hex(bytes).to_string()),
             hw_addr: entry.hw_addr,
+            screen_mm: entry.screen_mm,
         }
     }
 }
@@ -166,6 +183,7 @@ impl TryFrom<EntryRecord> for Entry {
             name: record.name,
             spki_der: record.spki_der.as_deref().map(hex_decode).transpose()?,
             hw_addr: record.hw_addr.and_then(|mac| a7n_core::wol::hw_addr(&mac)),
+            screen_mm: record.screen_mm.and_then(a7n_core::display::screen_size_mm),
         })
     }
 }
@@ -191,6 +209,7 @@ mod tests {
             name: format!("peer-{seed}"),
             spki_der: None,
             hw_addr: None,
+            screen_mm: None,
         }
     }
 
@@ -208,6 +227,42 @@ mod tests {
 
         // Assert
         assert_eq!(reloaded.get(&entry(1).machine_id), Some(&entry(1)));
+    }
+
+    #[test]
+    fn record_screen_mm_handshake_size_survives_invalid_updates_and_reload() {
+        // Arrange
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pins.toml");
+        let mut store = PinStore::load(&path).unwrap();
+        let peer = entry(1);
+        store.add(peer.clone());
+        let info = a7n_proto::v1::PeerInfo {
+            screen_mm: Some(a7n_proto::v1::ScreenSize {
+                width: 310,
+                height: 174,
+            }),
+            ..Default::default()
+        };
+
+        // Act
+        store.record_screen_mm(peer.machine_id, info.screen_mm.as_ref());
+        store.record_screen_mm(peer.machine_id, None);
+        store.record_screen_mm(
+            peer.machine_id,
+            Some(&a7n_proto::v1::ScreenSize {
+                width: 0,
+                height: 174,
+            }),
+        );
+        store.save().unwrap();
+        let loaded = PinStore::load(&path).unwrap();
+
+        // Assert
+        assert_eq!(
+            loaded.get(&peer.machine_id).unwrap().screen_mm,
+            Some((310, 174))
+        );
     }
 
     #[test]
@@ -303,6 +358,7 @@ mod tests {
             name: "peer".into(),
             spki_der: None,
             hw_addr: None,
+            screen_mm: None,
         });
 
         // Act

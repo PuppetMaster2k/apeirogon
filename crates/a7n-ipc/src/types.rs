@@ -333,6 +333,7 @@ pub struct LayoutPlacement {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlacedMachine {
+    pub screen_mm: Option<(u32, u32)>,
     #[serde(with = "machine_id")]
     pub machine: MachineId,
     pub name: String,
@@ -346,6 +347,7 @@ pub struct PlacedMachine {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UnplacedMachine {
+    pub screen_mm: Option<(u32, u32)>,
     #[serde(with = "machine_id")]
     pub machine: MachineId,
     pub name: String,

@@ -177,7 +177,11 @@ impl Daemon {
         };
         let mut endpoint = endpoint::bind_addr(addr, config)?;
         endpoint.set_default_client_config(tls::client_config(&identity, Arc::clone(&trust))?);
+        // ponytail: screen size is measured once; restart after monitor changes.
+        let screen_mm = a7n_platform::physical_size_mm()
+            .map(|(width, height)| a7n_proto::v1::ScreenSize { width, height });
         let info = PeerInfo {
+            screen_mm,
             platform: a7n_platform::platform().into(),
             name: identity.machine_id.to_string(),
             capabilities: vec![

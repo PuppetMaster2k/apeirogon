@@ -88,6 +88,7 @@ async fn pair_join_pin_write_failure_preserves_previous_trust() {
         name: "previous".into(),
         spki_der: None,
         hw_addr: None,
+        screen_mm: None,
     });
     daemon.sync_trust().unwrap();
     let trust = Arc::clone(&daemon.trust);

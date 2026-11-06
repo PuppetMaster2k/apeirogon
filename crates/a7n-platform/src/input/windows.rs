@@ -32,9 +32,6 @@ const INJECT_POINTER_CAPACITY: usize = 64;
 const INJECTION_MARKER: usize = 0x4137_4E49;
 
 pub(super) fn start() -> Result<(Capture, Injector), InputError> {
-    // SAFETY: Sets process-wide coordinate policy; no pointers are passed.
-    // Failure is harmless when awareness was already set by a manifest/host.
-    unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
     let bounds = virtual_bounds()?;
     let (events_tx, events_rx) = mpsc::channel(CAPTURE_EVENT_CAPACITY);
     let (control_tx, control_rx) = mpsc::channel(CAPTURE_CONTROL_CAPACITY);
@@ -58,7 +55,11 @@ pub(super) fn start() -> Result<(Capture, Injector), InputError> {
     ))
 }
 
-fn virtual_bounds() -> io::Result<Bounds> {
+pub(crate) fn virtual_bounds() -> io::Result<Bounds> {
+    // SAFETY: Sets process-wide coordinate policy; no pointers are passed.
+    // Failure is harmless when awareness was already set by a manifest/host.
+    unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+
     // SAFETY: These metric queries take no pointers and have no preconditions.
     let (x, y, width, height) = unsafe {
         (

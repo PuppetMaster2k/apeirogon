@@ -191,6 +191,8 @@ impl Daemon {
             .record_certificate(&peer_certificate(&link.connection)?)?;
         self.pins
             .record_hw_addr(link.peer_id, &link.peer_info.hw_addr);
+        self.pins
+            .record_screen_mm(link.peer_id, link.peer_info.screen_mm.as_ref());
         self.pins.save()?;
         let peer = link.peer_id;
         let id = link.connection.stable_id();
@@ -301,6 +303,7 @@ mod tests {
             name: "paired peer".into(),
             spki_der: None,
             hw_addr: None,
+            screen_mm: None,
         };
         let (reply, mut receiver) = oneshot::channel();
 

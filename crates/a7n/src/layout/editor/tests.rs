@@ -6,6 +6,7 @@ use super::*;
 
 fn machine(id: u8, x: i32, y: i32) -> PlacedMachine {
     PlacedMachine {
+        screen_mm: None,
         machine: MachineId::try_from([id; MachineId::LEN].as_slice()).unwrap(),
         name: format!("machine-{id}"),
         x,

@@ -196,8 +196,9 @@ crates/
 - **Gestures:** swipes, pinch and spread forwarded where both sides support
   them.
 - **Layout:** 2D canvas of whole-machine rectangles (each machine's virtual
-  desktop). Edges connect where rectangles touch, so offsets and partial
-  overlaps work. One desk-wide layout is synced to all members; concurrent
+  desktop). Known physical sizes use 0.1 mm canvas units; “Use real sizes”
+  resizes and lines up the draft before Save. Edges connect where rectangles
+  touch, so offsets and partial overlaps work. One desk-wide layout is synced to all members; concurrent
   edits resolve by last-writer-wins with a version counter (ties by machine
   id) and a notice to the loser.
 - **Edge resistance:** while any captured local button (or the remote owner's
@@ -309,6 +310,8 @@ do not.
     independent generation namespace and do not change the receiving clipboard.
   - Local IPC version 6 adds `Wake`, a `Waking` switch response, and per-peer
     `can_wake` and `waking` status flags. Hardware addresses stay inside the daemon.
+  - Local IPC version 8 adds optional `screen_mm` dimensions to placed and unplaced
+    machines. Update the daemon and local clients together.
   - Local IPC version 7 exposes `offer_id` on held files and `generation` on held
     clipboard copies. Accept requests carry these identities (peer and offer id
     for files, origin machine and generation for clipboard) and are refused if

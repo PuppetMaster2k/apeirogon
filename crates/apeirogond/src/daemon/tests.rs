@@ -152,6 +152,7 @@ async fn connect_simultaneous_dials_keeps_live_registry() {
             name: "peer".into(),
             spki_der: None,
             hw_addr: None,
+            screen_mm: None,
         });
         local.pins.save().unwrap();
         local.sync_trust().unwrap();
@@ -226,6 +227,7 @@ async fn status_ipc_round_trip_returns_own_machine() {
         name: "offline peer".into(),
         spki_der: None,
         hw_addr: None,
+        screen_mm: None,
     });
     let peer = Peer::run(daemon, dir);
     let socket_dir = tempfile::tempdir().unwrap();

@@ -25,6 +25,7 @@ async fn discovery_paired_unlinked_peers_falls_back_and_links_both_sides() {
             name: "peer".into(),
             spki_der: None,
             hw_addr: None,
+            screen_mm: None,
         });
         local.sync_trust().unwrap();
     }
@@ -123,6 +124,7 @@ async fn discovery_full_unpaired_table_accepts_paired_and_preserves_lost_address
         name: "paired".into(),
         spki_der: None,
         hw_addr: None,
+        screen_mm: None,
     });
     // Keep the test in-process without starting a dial.
     daemon.nearby.discovery_dials.insert(paired);

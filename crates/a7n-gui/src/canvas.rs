@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_ipc::layout::{LayoutDraft, LayoutDraftError};
+use a7n_ipc::layout::{LayoutDraft, LayoutDraftError, screen_size_units};
 use a7n_ipc::{LayoutInfo, LayoutPlacement, Placement, validate};
 use eframe::egui;
 
@@ -14,7 +14,7 @@ use snap::{GuideKind, Snapped, overlaps};
 
 const CANVAS_HEIGHT: f32 = 350.0;
 const CANVAS_PADDING: f32 = 20.0;
-const CANVAS_LAYOUT_FRACTION: f64 = 0.5;
+const CANVAS_LAYOUT_FRACTION: f64 = 0.75;
 const MOVE_STEP: i32 = 100;
 const FINE_MOVE_STEP: i32 = 10;
 const SNAP_DISTANCE_PX: f32 = 12.0;
@@ -43,6 +43,27 @@ impl TryFrom<LayoutInfo> for Canvas {
 impl Canvas {
     pub(super) fn fit(&mut self) {
         self.bounds = bounds(&self.draft.placements);
+    }
+
+    pub(super) fn use_real_sizes(&mut self) -> Result<(), LayoutDraftError> {
+        let mut placements = self.draft.placements.clone();
+        let mut order: Vec<_> = (0..placements.len()).collect();
+        order.sort_by_key(|&index| placements[index].x);
+        let mut right = 0_i64;
+        for index in order {
+            let placement = &mut placements[index];
+            if let Some(size) = self.draft.screen_mm[index] {
+                (placement.width, placement.height) = screen_size_units(size);
+            }
+            placement.x = i32::try_from(right).map_err(|_| LayoutDraftError)?;
+            placement.y = 0;
+            right += i64::from(placement.width);
+        }
+        validate(&placements).map_err(|_| LayoutDraftError)?;
+        self.draft.placements = placements;
+        self.drag = None;
+        self.fit();
+        Ok(())
     }
 
     pub(super) fn is_valid(&self) -> bool {
@@ -330,6 +351,49 @@ mod tests {
     use super::*;
 
     #[test]
+    fn use_real_sizes_mixed_sizes_lines_up_touching_in_x_order() {
+        // Arrange
+        let placed = [
+            (1, 5000, Some((310, 174))),
+            (2, -2000, None),
+            (3, 0, Some((620, 350))),
+        ]
+        .into_iter()
+        .map(|(id, x, screen_mm)| a7n_ipc::PlacedMachine {
+            machine: a7n_ipc::MachineId::try_from([id; 16].as_slice()).unwrap(),
+            name: format!("machine-{id}"),
+            screen_mm,
+            x,
+            y: 100,
+            width: 1920,
+            height: 1080,
+        })
+        .collect();
+        let mut canvas = Canvas::try_from(LayoutInfo {
+            placed,
+            unplaced: vec![],
+            lost_edit: false,
+        })
+        .unwrap();
+
+        // Act
+        canvas.use_real_sizes().unwrap();
+
+        // Assert
+        let p = &canvas.draft.placements;
+        assert_eq!((p[1].x, p[1].width, p[1].height), (0, 1920, 1080));
+        assert_eq!((p[2].x, p[2].width, p[2].height), (1920, 6200, 3500));
+        assert_eq!((p[0].x, p[0].width, p[0].height), (8120, 3100, 1740));
+        assert!(p.iter().all(|p| p.y == 0));
+        assert!(validate(p).is_ok());
+        assert_eq!(canvas.draft.names, ["machine-1", "machine-2", "machine-3"]);
+    }
+
+    #[test]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "the canvas fraction fits in f32 for screen pixel assertions"
+    )]
     fn transform_negative_coordinates_fit_and_drag_in_layout_units() {
         // Arrange
         let placement = Placement {
@@ -345,14 +409,17 @@ mod tests {
         // Act
         let rect = transform.rect(&placement);
         let mut moved = placement;
-        Drag::new(placement).update(&mut moved, &[], egui::vec2(100.0, -50.0), transform.scale);
+        Drag::new(placement).update(&mut moved, &[], egui::vec2(120.0, -60.0), transform.scale);
 
         // Assert
         assert_eq!(
             rect,
-            egui::Rect::from_center_size(area.center(), area.size() * 0.5)
+            egui::Rect::from_center_size(
+                area.center(),
+                area.size() * CANVAS_LAYOUT_FRACTION as f32
+            )
         );
-        assert_eq!((moved.x, moved.y), (-1520, -300));
+        assert_eq!((moved.x, moved.y), (-1600, -260));
     }
 
     #[test]
