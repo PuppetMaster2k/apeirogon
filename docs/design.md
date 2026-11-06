@@ -25,8 +25,8 @@ crates.io (optionally npm/PyPI) before the repo goes public.
 ## Positioning
 
 - **Wedge:** input sharing alone is a solved problem (Deskflow, Input Leap,
-  lan-mouse), and TwinDesk already pairs two machines with clipboard, files
-  and drag-and-drop. Apeirogon differs on:
+  lan-mouse), and TwinDesk already pairs two machines with clipboard and files.
+  Apeirogon differs on:
   - **A desk, not a pair:** any number of machines in a full mesh, admitted
     once through desk membership.
   - **Native and lean:** one Rust binary per role (daemon, CLI, GUI) instead
@@ -34,8 +34,9 @@ crates.io (optionally npm/PyPI) before the repo goes public.
   - **Secure by default:** mutual TLS with pinned keys, SPAKE2 pairing,
     sensitive clipboard content that can never be synced.
   - **Wayland without root:** portals and libei only.
-- Clipboard and file transfer done properly everywhere (images, files,
-  drag-and-drop) are expected, not the pitch. So is Wayland support.
+- Clipboard and file transfer done properly everywhere (images and files) are
+  expected, not the pitch. So is Wayland support. Files move via the clipboard
+  or `a7n send`.
 - **No wire compatibility** with Synergy/Deskflow/Input Leap.
 - **Open source only.** License **GPL-3.0-or-later**; reusable library crates
   (e.g. `a7n-proto`) may be MIT/Apache-2.0. Contributions under **DCO**
@@ -252,7 +253,7 @@ do not.
   Wayland it usually is not, so markers only). Marked content is never even
   announced.
 
-## Files and drag-and-drop
+## Files
 
 - **Transfer:** a manifest lists every file with size and SHA-256; data is
   sent in chunks of up to 256 KiB. The receiver verifies each hash and deletes
@@ -273,13 +274,6 @@ do not.
   preferences are machine-specific. Set it with `a7n config set notifications.files false`.
   Linux notifications open the GUI on click for up to 60 seconds where the
   desktop supports actions; macOS and Windows have no click action.
-- **Drag-and-drop:** the source sends a drag offer when a file drag crosses an
-  edge; the receiving machine shows a drag with promised files, and the drop
-  (button-up) triggers the transfer. Moving back or pressing Esc cancels;
-  unused offers expire after 60 s. Per platform: macOS file promises, Windows
-  delay-rendered `IDataObject`, X11 XDND. **Wayland: not supported in v1**
-  (a drag needs our own surface and a real click on it); use the clipboard
-  or `a7n send` instead.
 - **Files on Linux paste:** apps expect `text/uri-list` with local paths, so
   the paste triggers the download into the receive directory and the paths
   are handed out afterwards; above a size threshold a progress indicator is
@@ -364,7 +358,7 @@ do not.
 | v1 | Pairing, input sharing, text clipboard (plain + HTML) on all 4 platforms; CLI + TUI |
 | v2 | GUI + tray, packages, image clipboard |
 | v3 | File clipboard, `a7n send`, wake-on-LAN |
-| Later | Drag-and-drop (per platform); login-screen support |
+| Later | Login-screen support |
 
 ## Prior art
 

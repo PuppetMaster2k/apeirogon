@@ -27,7 +27,8 @@ enum Capability {
   CAPABILITY_CLIPBOARD_TEXT = 1;      // text/plain and text/html
   CAPABILITY_CLIPBOARD_IMAGE = 2;
   CAPABILITY_CLIPBOARD_FILES = 3;
-  CAPABILITY_DRAG_DROP = 4;
+  reserved 4;
+  reserved "CAPABILITY_DRAG_DROP";
   CAPABILITY_GESTURES = 5;
   CAPABILITY_MEDIA_KEYS = 6;
   CAPABILITY_TEXT_INPUT = 7;
@@ -76,14 +77,14 @@ message Envelope {
     Accepts accepts = 11;
     ClipboardAnnounce clipboard_announce = 13;
     TransferRequest transfer_request = 14;
-    DragOffer drag_offer = 15;
-    DragEnd drag_end = 16;
     SettingsSync settings = 18;
     TransferCancel transfer_cancel = 19;
     Desk desk = 20;
     Layout layout = 21;
   }
   reserved 12, 17;  // was Arrangement, PairedPeers
+  reserved 15, 16;
+  reserved "drag_offer", "drag_end";
 }
 
 // ----- Handshake (first messages after TLS) --------------------------------
@@ -338,7 +339,7 @@ message ClipboardAnnounce {
   bool send = 5;                     // single-peer offer; generation is an offer id
 }
 
-// ----- Files: manifest, requests, drag and drop -----------------------------
+// ----- Files: manifest and requests -----------------------------------------
 
 enum FileKind {
   FILE_KIND_UNSPECIFIED = 0;
@@ -375,34 +376,15 @@ message TransferRequest {
   uint64 transfer_id = 1;             // chosen by the requester, unique per link
   oneof source {
     ClipboardRef clipboard = 2;
-    uint64 drag_id = 3;
   }
-  uint32 item_index = 4;              // clipboard item to fetch; ignored for drags
+  reserved 3;
+  reserved "drag_id";
+  uint32 item_index = 4;              // clipboard item to fetch
   repeated FileResume resume = 5;
 }
 
 message TransferCancel {
   uint64 transfer_id = 1;
-}
-
-// Sent by the machine whose OS drag session carries files across the edge.
-message DragOffer {
-  uint64 drag_id = 1;
-  FileManifest files = 2;
-  repeated ClipboardItem items = 3;   // other flavours, e.g. text
-}
-
-enum DragOutcome {
-  DRAG_OUTCOME_UNSPECIFIED = 0;
-  DRAG_OUTCOME_CANCELLED = 1;         // e.g. Esc pressed, or the pointer came back
-  DRAG_OUTCOME_EXPIRED = 2;
-}
-
-// A drop needs no message: the button-up that ends the drag arrives as input
-// on the sink, which then sends TransferRequest{drag_id}.
-message DragEnd {
-  uint64 drag_id = 1;
-  DragOutcome outcome = 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -440,7 +422,7 @@ message TransferDone {}
 enum AbortReason {
   ABORT_REASON_UNSPECIFIED = 0;
   ABORT_REASON_CANCELLED = 1;
-  ABORT_REASON_NOT_FOUND = 2;         // clipboard generation or drag no longer current
+  ABORT_REASON_NOT_FOUND = 2;         // clipboard generation or send offer no longer current
   ABORT_REASON_REFUSED = 3;           // policy or user said no
   ABORT_REASON_IO_ERROR = 4;
   ABORT_REASON_INTEGRITY = 5;         // hash mismatch
