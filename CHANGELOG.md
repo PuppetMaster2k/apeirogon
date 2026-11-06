@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.18.0...v0.19.0) (2026-11-06)
+
+
+### Features
+
+* shake the mouse to return home ([#174](https://github.com/PuppetMaster2k/apeirogon/issues/174)) ([8de36df](https://github.com/PuppetMaster2k/apeirogon/commit/8de36df5c34a20f10dddd67b5411d33d83932c14))
+
 ## [0.18.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.17.0...v0.18.0) (2026-11-06)
 
 
