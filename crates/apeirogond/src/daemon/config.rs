@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use a7n_core::hotkey::HotkeyMatcher;
+use a7n_core::hotkey::{HotkeyMatcher, ShakeDetector};
 use a7n_core::input::MotionScale;
 use a7n_core::modifiers::default_modifier_remap;
 use a7n_ipc::config::{Config, ModifierMode};
@@ -21,6 +21,7 @@ impl Daemon {
             .unwrap_or_else(|| self.identity.machine_id.to_string());
         self.input.scale = MotionScale::new(config.input.speed);
         self.input.hotkeys = HotkeyMatcher::new(config.bindings());
+        self.input.shake = ShakeDetector::new(config.hotkeys.shake);
         self.config = config;
         self.config_path = path;
         self
@@ -57,6 +58,7 @@ impl Daemon {
             self.input.scale = MotionScale::new(config.input.speed);
         }
         self.input.hotkeys = HotkeyMatcher::new(config.bindings());
+        self.input.shake = ShakeDetector::new(config.hotkeys.shake);
         self.config = config;
         self.recheck_files_policy();
         for (peer, was_allowed) in before {

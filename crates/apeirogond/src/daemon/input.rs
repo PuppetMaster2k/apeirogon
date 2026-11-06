@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use a7n_core::focus::edge::{EdgeResistance, HeldButtons};
 use a7n_core::focus::{Action, Cursor, Focus, Take};
-use a7n_core::hotkey::HotkeyMatcher;
+use a7n_core::hotkey::{HotkeyMatcher, SHAKE_DEFAULT, ShakeDetector};
 use a7n_core::input::{MotionCounter, MotionScale, MotionTracker, corner_push, edge_push};
 use a7n_platform::input::{Bounds, Capture, CaptureControl, Captured, Inject, Injector};
 use a7n_proto::v1::{Edge, Envelope, InputBatch, envelope::Body, input_event::Event};
@@ -34,6 +34,7 @@ pub(super) struct Input {
     pub(super) scale: MotionScale,
     pub(super) modifier_remap: BTreeMap<u32, u32>,
     pub(super) hotkeys: HotkeyMatcher,
+    pub(super) shake: ShakeDetector,
     pub(super) recording: recording::Recording,
     resistance: EdgeResistance,
     buttons: HeldButtons,
@@ -61,6 +62,7 @@ impl Input {
             scale: MotionScale::new(1.0),
             modifier_remap: BTreeMap::new(),
             hotkeys: HotkeyMatcher::new(a7n_ipc::config::Config::default().bindings()),
+            shake: ShakeDetector::new(SHAKE_DEFAULT),
             recording: recording::Recording::default(),
             resistance: EdgeResistance::new(0),
             buttons: HeldButtons::default(),
@@ -365,6 +367,9 @@ impl Daemon {
             return;
         }
         if let Cursor::Driving(peer) = self.input.focus.cursor() {
+            if self.match_shake(&event).await {
+                return;
+            }
             self.forward_capture(peer, event);
             return;
         }

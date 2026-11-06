@@ -100,7 +100,25 @@ impl App {
             }
             ui.separator();
             self.trigger_options(ui);
+            ui.separator();
+            self.shake_option(ui);
         });
+    }
+
+    fn shake_option(&mut self, ui: &mut egui::Ui) {
+        let key = "hotkeys.shake";
+        let mut value = self.value(key, "");
+        theme::setting_row(
+            ui,
+            "Shake to return",
+            "Shake the mouse left and right this many times to return to this machine. 0 turns it off.",
+            Some(key),
+            |ui| {
+                if theme::text_input(ui, "Number of reversals", &mut value, "4", true).changed() {
+                    self.edit(key, &value, "");
+                }
+            },
+        );
     }
 
     fn trigger_options(&mut self, ui: &mut egui::Ui) {

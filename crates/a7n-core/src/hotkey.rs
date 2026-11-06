@@ -9,10 +9,14 @@ const MODIFIER_START: u32 = 0xe0;
 const MODIFIER_COUNT: u32 = 8;
 const KEY_COUNT: usize = 256;
 mod keys;
+mod shake;
 mod trigger;
 
 use keys::key_usage;
 pub use keys::trigger_name;
+pub use shake::{
+    SHAKE_DEFAULT, SHAKE_MAX, SHAKE_MIN, SHAKE_MIN_TRAVEL, SHAKE_WINDOW, ShakeDetector,
+};
 pub use trigger::{DoubleTap, HOLD_DEFAULT, HOLD_MAX, HOLD_MIN, TriggerMode};
 
 const DIGIT_ONE: u32 = KEYBOARD_PAGE | 0x1e;

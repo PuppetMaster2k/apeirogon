@@ -155,3 +155,58 @@ async fn captured_recording_returns_trigger_name_and_rejects_text() {
         assert_eq!(daemon.input.focus.cursor(), Cursor::Home);
     }
 }
+
+#[tokio::test(start_paused = true)]
+async fn captured_shake_while_driving_returns_home() {
+    // Arrange
+    let (mut daemon, _dir, input) = daemon(true);
+    let mut input = input.unwrap();
+    let peer = MachineId::try_from(&[42; MachineId::LEN][..]).unwrap();
+    daemon.take_peer(peer, None, now());
+    let actions = daemon
+        .input
+        .focus
+        .on_accept(peer, &a7n_proto::v1::Accept { route: 1 });
+    daemon.input_actions(actions).await;
+    input.grab(true).await;
+
+    // Act
+    for dx in [40, -40, 40, -40, 40] {
+        daemon
+            .captured(Some(Captured::Pointer {
+                x: 50,
+                y: 50,
+                dx,
+                dy: 0,
+            }))
+            .await;
+    }
+
+    // Assert
+    assert_eq!(daemon.input.focus.cursor(), Cursor::Home);
+    input.grab(false).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn captured_shake_at_home_does_nothing() {
+    // Arrange
+    let (mut daemon, _dir, input) = daemon(true);
+    let mut input = input.unwrap();
+
+    // Act
+    for dx in [40, -40, 40, -40, 40] {
+        daemon
+            .captured(Some(Captured::Pointer {
+                x: 50,
+                y: 50,
+                dx,
+                dy: 0,
+            }))
+            .await;
+    }
+
+    // Assert
+    assert_eq!(daemon.input.focus.cursor(), Cursor::Home);
+    assert!(input.control.try_recv().is_err());
+    assert!(input.inject.try_recv().is_err());
+}
