@@ -176,23 +176,31 @@ pub fn check_directory(path: &Path) -> io::Result<()> {
     }
 }
 
-/// Open a regular file without following symlinks. `create` uses exclusive creation.
+/// How [`open_file`] opens a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenMode {
+    Read,
+    Write,
+    /// Read-write with exclusive creation; fails if the file exists.
+    CreateNew,
+}
+
+/// Open a regular file without following symlinks.
 ///
 /// # Errors
 /// Rejects unsafe paths, non-regular files and I/O failures.
 #[cfg(unix)]
-pub fn open_file(path: &Path, create: bool, write: bool) -> io::Result<File> {
+pub fn open_file(path: &Path, mode: OpenMode) -> io::Result<File> {
     use rustix::fs::{Mode, OFlags, openat};
     let parent = directory(parent(path), false)?;
     let name = path
         .file_name()
         .ok_or_else(|| io::Error::other("missing file name"))?;
-    let flags = (if write { OFlags::RDWR } else { OFlags::RDONLY })
-        | if create {
-            OFlags::CREATE | OFlags::EXCL
-        } else {
-            OFlags::empty()
-        };
+    let flags = match mode {
+        OpenMode::Read => OFlags::RDONLY,
+        OpenMode::Write => OFlags::RDWR,
+        OpenMode::CreateNew => OFlags::RDWR | OFlags::CREATE | OFlags::EXCL,
+    };
     let file = File::from(openat(
         &parent,
         name,
@@ -210,7 +218,7 @@ pub fn open_file(path: &Path, create: bool, write: bool) -> io::Result<File> {
 /// # Errors
 /// Rejects symlinks, non-regular files and I/O failures.
 #[cfg(windows)]
-pub fn open_file(path: &Path, create: bool, write: bool) -> io::Result<File> {
+pub fn open_file(path: &Path, mode: OpenMode) -> io::Result<File> {
     use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
     use windows_sys::Win32::Storage::FileSystem::{
         FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
@@ -219,8 +227,8 @@ pub fn open_file(path: &Path, create: bool, write: bool) -> io::Result<File> {
     let _ancestors = windows_ancestors(parent(path))?;
     let file = fs::OpenOptions::new()
         .read(true)
-        .write(write)
-        .create_new(create)
+        .write(mode != OpenMode::Read)
+        .create_new(mode == OpenMode::CreateNew)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
         .open(path)?;
     let meta = file.metadata()?;
@@ -349,8 +357,8 @@ mod tests {
         std::os::unix::fs::symlink(actual.join("file"), temp.path().join("leaf")).unwrap();
 
         // Act
-        let through_parent = open_file(&link.join("file"), false, false);
-        let through_leaf = open_file(&temp.path().join("leaf"), false, false);
+        let through_parent = open_file(&link.join("file"), OpenMode::Read);
+        let through_leaf = open_file(&temp.path().join("leaf"), OpenMode::Read);
         let create_below_link = create_directory(&link.join("child"));
 
         // Assert

@@ -68,13 +68,16 @@ fn write_temp(temp_path: &Path, bytes: &[u8]) -> io::Result<()> {
 
 #[cfg(unix)]
 fn create_user_only(path: &Path) -> io::Result<File> {
-    use std::os::unix::fs::OpenOptionsExt;
-    OpenOptions::new()
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let file = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
         .mode(USER_ONLY_MODE)
-        .open(path)
+        .open(path)?;
+    // `mode` only applies on creation; a stale temp file keeps its old mode.
+    file.set_permissions(std::fs::Permissions::from_mode(USER_ONLY_MODE))?;
+    Ok(file)
 }
 
 // ponytail: no explicit ACL; the per-user data directory is already user-only

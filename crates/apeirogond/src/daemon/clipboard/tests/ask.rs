@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::time::Duration;
+
 use super::*;
 use crate::command::Command;
 use crate::daemon::DaemonError;

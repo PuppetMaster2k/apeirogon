@@ -20,6 +20,16 @@ pub use hotkeys::HotkeyConfig;
 const MIN_SPEED: f64 = 0.1;
 const MAX_SPEED: f64 = 10.0;
 
+fn port_error() -> ConfigError {
+    ConfigError::Invalid(format!("port must be between 1 and {}", u16::MAX))
+}
+
+fn speed_error() -> ConfigError {
+    ConfigError::Invalid(format!(
+        "input.speed must be between {MIN_SPEED:.1} and {MAX_SPEED:.1}"
+    ))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
@@ -262,14 +272,10 @@ impl Config {
             )));
         }
         if self.port == 0 {
-            return Err(ConfigError::Invalid(
-                "port must be between 1 and 65535".into(),
-            ));
+            return Err(port_error());
         }
         if !(MIN_SPEED..=MAX_SPEED).contains(&self.input.speed) {
-            return Err(ConfigError::Invalid(
-                "input.speed must be between 0.1 and 10.0".into(),
-            ));
+            return Err(speed_error());
         }
         self.parse_bindings()?;
         if self
@@ -330,44 +336,39 @@ impl Config {
     fn set_unchecked(&mut self, key: &str, value: &str) -> Result<(), ConfigError> {
         let parts: Vec<_> = key.split('.').collect();
         let invalid = || ConfigError::Invalid(format!("{key} has an invalid value"));
-        let value =
-            match parts.as_slice() {
-                ["name"]
-                | ["files", "receive_dir"]
-                | ["peers", _, "clipboard" | "files" | "modifier_mode"]
-                | ["peers", _, "modifier_remap", _]
-                | ["hotkeys", "double_tap" | "trigger_mode" | "lock" | "jump"] => {
-                    toml::Value::String(value.into())
-                }
-                ["hotkeys", "home"] => toml::Value::Array(
-                    value
-                        .split(',')
-                        .map(|chord| toml::Value::String(chord.trim().into()))
-                        .collect(),
-                ),
-                ["hotkeys", "hold_ms" | "shake"] => toml::Value::Integer(
-                    value.parse::<u32>().map(i64::from).map_err(|_| invalid())?,
-                ),
-                ["port"] => toml::Value::Integer(value.parse().map_err(|_| {
-                    ConfigError::Invalid("port must be between 1 and 65535".into())
-                })?),
-                ["input", "speed"] => toml::Value::Float(value.parse().map_err(|_| {
-                    ConfigError::Invalid("input.speed must be between 0.1 and 10.0".into())
-                })?),
-                ["input", "natural_scrolling"]
-                | ["notifications", "files"]
-                | ["peers", _, "allow_drive" | "wake"]
-                | ["sync", "settings"] => {
-                    toml::Value::Boolean(value.parse().map_err(|_| {
-                        ConfigError::Invalid(format!("{key} must be true or false"))
-                    })?)
-                }
-                _ => {
-                    return Err(ConfigError::Invalid(format!(
-                        "{key} is not a supported config key"
-                    )));
-                }
-            };
+        let value = match parts.as_slice() {
+            ["name"]
+            | ["files", "receive_dir"]
+            | ["peers", _, "clipboard" | "files" | "modifier_mode"]
+            | ["peers", _, "modifier_remap", _]
+            | ["hotkeys", "double_tap" | "trigger_mode" | "lock" | "jump"] => {
+                toml::Value::String(value.into())
+            }
+            ["hotkeys", "home"] => toml::Value::Array(
+                value
+                    .split(',')
+                    .map(|chord| toml::Value::String(chord.trim().into()))
+                    .collect(),
+            ),
+            ["hotkeys", "hold_ms" | "shake"] => {
+                toml::Value::Integer(value.parse::<u32>().map(i64::from).map_err(|_| invalid())?)
+            }
+            ["port"] => toml::Value::Integer(value.parse().map_err(|_| port_error())?),
+            ["input", "speed"] => toml::Value::Float(value.parse().map_err(|_| speed_error())?),
+            ["input", "natural_scrolling"]
+            | ["notifications", "files"]
+            | ["peers", _, "allow_drive" | "wake"]
+            | ["sync", "settings"] => toml::Value::Boolean(
+                value
+                    .parse()
+                    .map_err(|_| ConfigError::Invalid(format!("{key} must be true or false")))?,
+            ),
+            _ => {
+                return Err(ConfigError::Invalid(format!(
+                    "{key} is not a supported config key"
+                )));
+            }
+        };
         let mut table = toml::Value::try_from(&*self)?;
         let mut node = &mut table;
         for part in &parts[..parts.len() - 1] {

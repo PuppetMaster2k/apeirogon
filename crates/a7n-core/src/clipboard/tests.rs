@@ -38,7 +38,7 @@ fn accept_generation_and_origin_order_requires_strict_increase() {
 }
 
 #[test]
-fn next_observed_counter_advances_and_saturates() {
+fn next_observed_counter_advances_past_highest() {
     // Arrange
     let mut clock = Clock::default();
     let own = generation(0, 1).origin;
@@ -47,12 +47,9 @@ fn next_observed_counter_advances_and_saturates() {
 
     // Act
     let next = clock.next(own);
-    clock.observe(&generation(u64::MAX, 2));
-    let exhausted = clock.next(own);
 
     // Assert
     assert_eq!(next, generation(43, 1));
-    assert_eq!(exhausted, generation(u64::MAX, 1));
 }
 
 #[test]
@@ -343,4 +340,17 @@ fn accept_generation_above_counter_max_is_rejected() {
 
     // Assert
     assert!(matches!(result, Err(ClipboardError::Generation)));
+}
+
+#[test]
+fn observe_generation_above_counter_max_does_not_advance_clock() {
+    // Arrange
+    let mut clock = Clock::default();
+    clock.observe(&generation(limits::COUNTER_MAX + 1, 2));
+
+    // Act
+    let next = clock.next(generation(0, 1).origin);
+
+    // Assert
+    assert_eq!(next.generation, 1);
 }

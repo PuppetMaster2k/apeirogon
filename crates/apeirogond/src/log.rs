@@ -68,11 +68,6 @@ pub(crate) fn write(args: fmt::Arguments<'_>) {
 fn rotate(path: &Path) -> io::Result<()> {
     if std::fs::metadata(path).is_ok_and(|metadata| metadata.len() > LOG_FILE_MAX) {
         let backup = path.with_extension("log.1");
-        match std::fs::remove_file(&backup) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
-        }
         std::fs::rename(path, backup)?;
     }
     Ok(())

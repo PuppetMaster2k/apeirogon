@@ -2,7 +2,8 @@
 
 use a7n_ipc::{ClipboardKind, HeldClipboard};
 
-use super::{CLIPBOARD_ASK_TIMEOUT, Daemon, Held, Instant, MachineId, State, clipboard};
+use super::super::files::ASK_TIMEOUT;
+use super::{Daemon, Held, Instant, MachineId, State, clipboard};
 use crate::daemon::DaemonError;
 
 impl Held {
@@ -75,7 +76,7 @@ impl Daemon {
         self.clipboard.held = Some(Held {
             peer,
             wire: wire.clone(),
-            deadline: Instant::now() + CLIPBOARD_ASK_TIMEOUT,
+            deadline: Instant::now() + ASK_TIMEOUT,
         });
         crate::log::event!("kind=clipboard_held");
     }

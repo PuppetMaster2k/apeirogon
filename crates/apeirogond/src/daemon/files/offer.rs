@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use a7n_core::clipboard;
 use a7n_core::files::ValidManifest;
+use a7n_platform::transfer_fs::{OpenMode, open_file};
 use a7n_proto::limits;
 use a7n_proto::v1::{
     ClipboardAnnounce, ClipboardItem, FileEntry, FileKind, FileManifest, envelope::Body,
@@ -181,8 +182,7 @@ fn walk(
     let (kind, size, sha256) = if metadata.is_dir() {
         (FileKind::Directory, 0, Vec::new())
     } else if metadata.is_file() {
-        let mut file = a7n_platform::transfer_fs::open_file(path, false, false)
-            .map_err(|_| TransferError::SourceOpen)?;
+        let mut file = open_file(path, OpenMode::Read).map_err(|_| TransferError::SourceOpen)?;
         let mut hash = Sha256::new();
         super::staging::hash_file(&mut file, &mut hash).map_err(|_| TransferError::SourceHash)?;
         let length = file

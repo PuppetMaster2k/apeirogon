@@ -3,7 +3,7 @@
 use std::io::{self, Write};
 
 use a7n_ipc::config::ClipboardPolicy;
-use a7n_ipc::{ClipboardInfo, HeldClipboard};
+use a7n_ipc::{ClipboardInfo, HeldClipboard, format_size};
 
 #[derive(Debug, clap::Subcommand)]
 pub(super) enum Command {
@@ -12,8 +12,6 @@ pub(super) enum Command {
     /// Discard the clipboard copy waiting for confirmation.
     Reject,
 }
-
-const KIBIBYTE: u64 = 1024;
 
 pub(super) fn write_status(output: &mut impl Write, info: &ClipboardInfo) -> io::Result<()> {
     let availability = if info.available {
@@ -27,21 +25,13 @@ pub(super) fn write_status(output: &mut impl Write, info: &ClipboardInfo) -> io:
             .origin_name
             .clone()
             .unwrap_or_else(|| copy.origin.to_string());
-        write!(
+        writeln!(
             output,
-            "current copy: from {origin} (generation {}), {} items, ",
-            copy.generation, copy.items
+            "current copy: from {origin} (generation {}), {} items, {}",
+            copy.generation,
+            copy.items,
+            format_size(copy.size)
         )?;
-        if copy.size < KIBIBYTE {
-            writeln!(output, "{} B", copy.size)?;
-        } else {
-            writeln!(
-                output,
-                "{}.{} KiB",
-                copy.size / KIBIBYTE,
-                (copy.size % KIBIBYTE) * 10 / KIBIBYTE
-            )?;
-        }
     } else {
         writeln!(output, "current copy: none")?;
     }

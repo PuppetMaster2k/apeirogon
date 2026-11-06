@@ -323,3 +323,30 @@ fn allow_source_churn_bounds_memory_without_evicting_live_limits() {
 }
 
 mod validation;
+
+#[test]
+fn valid_peer_name_unsafe_names_are_rejected() {
+    // Arrange
+    let long = "x".repeat(limits::PEER_NAME_MAX + 1);
+    let unsafe_names = ["", "desk\u{1b}[2J", "a\nb", "tab\there", long.as_str()];
+
+    for name in unsafe_names {
+        // Act
+        let valid = valid_peer_name(name);
+
+        // Assert
+        assert!(!valid, "{name:?} should be rejected");
+    }
+}
+
+#[test]
+fn valid_peer_name_plain_name_is_accepted() {
+    // Arrange
+    let name = "Büro-Mac ✓";
+
+    // Act
+    let valid = valid_peer_name(name);
+
+    // Assert
+    assert!(valid);
+}

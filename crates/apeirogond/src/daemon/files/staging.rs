@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use a7n_core::files::{EntryKind, Partial, ValidManifest, resume_plan, unique_name};
-use a7n_platform::transfer_fs::{create_directory, open_file, rename_no_replace};
+use a7n_platform::transfer_fs::{OpenMode, create_directory, open_file, rename_no_replace};
 use a7n_proto::MachineId;
 use a7n_proto::v1::FileResume;
 use rand_core::{OsRng, RngCore};
@@ -48,10 +48,10 @@ pub(super) fn prepare(stage: &Path, manifest: &ValidManifest) -> Result<Staging>
             continue;
         }
         create_directory(path.parent().ok_or(Failure::Invalid)?).map_err(|_| Failure::Io)?;
-        let mut file = match open_file(&path, true, true) {
+        let mut file = match open_file(&path, OpenMode::CreateNew) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                open_file(&path, false, true).map_err(|_| Failure::Io)?
+                open_file(&path, OpenMode::Write).map_err(|_| Failure::Io)?
             }
             Err(_) => return Err(Failure::Io),
         };

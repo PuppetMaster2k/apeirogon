@@ -32,7 +32,8 @@ pub(in crate::daemon) use paste::files_top_level;
 pub(super) use staging::cleanup;
 
 const OFFERS_PER_PEER: usize = 4;
-const ASK_TIMEOUT: Duration = Duration::from_secs(60);
+/// How long a held clipboard copy or file offer waits for the user.
+pub(super) const ASK_TIMEOUT: Duration = Duration::from_secs(60);
 /// Ended sends kept for clients to read; older ones are dropped.
 const FINISHED_SENDS_KEPT: usize = 16;
 /// Hidden directory of the receive directory that holds unfinished downloads.

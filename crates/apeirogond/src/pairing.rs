@@ -5,7 +5,7 @@
 use std::future::Future;
 use std::time::Instant;
 
-use a7n_core::pairing::{HostPairing, Paired, RequesterPairing};
+use a7n_core::pairing::{HostPairing, Paired, RequesterPairing, valid_peer_name};
 use a7n_proto::v1::{
     PairAnswer, PairConfirm, PairDone, PairError, PairingMessage, PeerInfo, pairing_message::Body,
 };
@@ -213,13 +213,6 @@ async fn refuse(send: &mut SendStream, body: Body) {
     }
 }
 
-// The name reaches terminals, notifications and pins.toml, so refuse escapes
-// as well as names outside the wire bound.
-fn valid_peer_name(name: &str) -> bool {
-    (1..=limits::PEER_NAME_MAX).contains(&name.chars().count())
-        && !name.chars().any(char::is_control)
-}
-
 fn peer_entry(connection: &Connection, pin: Pin, name: String) -> Result<Entry, PairingError> {
     if !valid_peer_name(&name) {
         return Err(PairingError::Refused);
@@ -236,36 +229,4 @@ fn peer_entry(connection: &Connection, pin: Pin, name: String) -> Result<Entry, 
         hw_addr: None,
         screen_mm: None,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn valid_peer_name_unsafe_names_are_rejected() {
-        // Arrange
-        let long = "x".repeat(limits::PEER_NAME_MAX + 1);
-        let unsafe_names = ["", "desk\u{1b}[2J", "a\nb", "tab\there", long.as_str()];
-
-        for name in unsafe_names {
-            // Act
-            let valid = valid_peer_name(name);
-
-            // Assert
-            assert!(!valid, "{name:?} should be rejected");
-        }
-    }
-
-    #[test]
-    fn valid_peer_name_plain_name_is_accepted() {
-        // Arrange
-        let name = "Büro-Mac ✓";
-
-        // Act
-        let valid = valid_peer_name(name);
-
-        // Assert
-        assert!(valid);
-    }
 }

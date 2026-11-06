@@ -4,6 +4,8 @@
 
 use a7n_proto::v1::Platform;
 
+/// HID usage page 0x07 (keyboard), shifted into the upper half of a usage.
+pub const KEYBOARD_PAGE: u32 = 0x0007_0000;
 pub const LEFT_CTRL: u32 = 0x0007_00e0;
 pub const LEFT_META: u32 = 0x0007_00e3;
 pub const RIGHT_CTRL: u32 = 0x0007_00e4;
@@ -39,10 +41,10 @@ mod tests {
             Platform::Unspecified,
         ];
         let expected_swap = [
-            (0x0007_00e3, 0x0007_00e0),
-            (0x0007_00e0, 0x0007_00e3),
-            (0x0007_00e7, 0x0007_00e4),
-            (0x0007_00e4, 0x0007_00e7),
+            (LEFT_META, LEFT_CTRL),
+            (LEFT_CTRL, LEFT_META),
+            (RIGHT_META, RIGHT_CTRL),
+            (RIGHT_CTRL, RIGHT_META),
         ];
         let swaps = [
             [false, true, true, false],

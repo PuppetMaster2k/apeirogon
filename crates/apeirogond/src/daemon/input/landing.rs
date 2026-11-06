@@ -3,7 +3,10 @@
 use a7n_platform::input::Bounds;
 use a7n_proto::v1::{Edge, Landing};
 
-#[allow(clippy::cast_possible_truncation)] // Clamp normalized wire offsets to the desktop's i32 coordinates.
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "Clamp normalized wire offsets to the desktop's i32 coordinates."
+)]
 pub(super) fn landing_point(bounds: Bounds, landing: &Landing) -> (i32, i32) {
     let edge = Edge::try_from(landing.edge).unwrap_or(Edge::Unspecified);
     let offset = f64::from(landing.offset.clamp(0.0, 1.0));

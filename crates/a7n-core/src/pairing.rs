@@ -26,6 +26,14 @@ mod tests;
 
 use crypto::{Confirmation, TAG_LENGTH};
 
+/// Peer names reach terminals, notifications and pins.toml, so escapes are
+/// refused as well as names outside the wire bound.
+#[must_use]
+pub fn valid_peer_name(name: &str) -> bool {
+    (1..=limits::PEER_NAME_MAX).contains(&name.chars().count())
+        && !name.chars().any(char::is_control)
+}
+
 /// Peer whose proof has verified. Machine id must come from its TLS certificate.
 #[derive(Debug)]
 pub struct Peer {

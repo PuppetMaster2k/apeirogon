@@ -2,7 +2,7 @@
 
 //! Physical USB keyboard usages and macOS virtual keys (independent of layout).
 
-const KEYBOARD: u32 = 0x0007_0000;
+use a7n_core::modifiers::KEYBOARD_PAGE as KEYBOARD;
 const CONSUMER: u32 = 0x000C_0000;
 static KEYS: &[(u16, u16)] = &[
     (0x04, 0x00),

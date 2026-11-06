@@ -147,7 +147,10 @@ pub(super) fn start() -> Result<Clipboard, InputError> {
                             serve.event(&session, &event, &pastes_tx);
                         }
                         Ok(None) => break,
-                        Err(_) => return,
+                        Err(error) => {
+                            eprintln!("kind=clipboard_x11_stopped reason={error}");
+                            return;
+                        }
                     }
                 }
                 let now = Instant::now();

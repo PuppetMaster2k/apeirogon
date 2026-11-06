@@ -4,6 +4,7 @@ use std::io::{Seek, SeekFrom, Write};
 use std::sync::atomic::Ordering;
 
 use a7n_core::files::{EntryKind, ValidManifest};
+use a7n_platform::transfer_fs::{OpenMode, open_file};
 use a7n_proto::{
     limits,
     v1::{FileChunk, FileEnd, transfer_frame::Frame},
@@ -79,8 +80,7 @@ fn open_partial(
     file_index: u32,
 ) -> Result<()> {
     if open.as_ref().is_none_or(|(index, _)| *index != file_index) {
-        let mut handle = a7n_platform::transfer_fs::open_file(&file.path, false, true)
-            .map_err(|_| Failure::Io)?;
+        let mut handle = open_file(&file.path, OpenMode::Write).map_err(|_| Failure::Io)?;
         if handle.metadata().map_err(|_| Failure::Io)?.len() != file.written {
             return Err(Failure::Io);
         }

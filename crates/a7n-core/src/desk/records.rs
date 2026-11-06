@@ -15,7 +15,7 @@ pub enum DeskError {
     #[error(transparent)]
     Proto(#[from] ProtoError),
     #[error(
-        "peer name must contain 1..={} Unicode code points",
+        "peer name must contain 1..={} Unicode code points and no control characters",
         limits::PEER_NAME_MAX
     )]
     BadName,
@@ -26,9 +26,7 @@ pub enum DeskError {
 }
 
 fn validate_name(name: &str) -> Result<(), DeskError> {
-    if name.is_empty()
-        || name.chars().take(limits::PEER_NAME_MAX + 1).count() > limits::PEER_NAME_MAX
-    {
+    if !crate::pairing::valid_peer_name(name) {
         return Err(DeskError::BadName);
     }
     Ok(())

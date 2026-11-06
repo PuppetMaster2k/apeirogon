@@ -213,7 +213,10 @@ impl Layout {
 
     /// Map an exit to a touching machine's opposite edge and fractional offset.
     #[must_use]
-    #[allow(clippy::cast_possible_truncation)] // Landing uses f32 on the wire; geometry uses f64.
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "Landing uses f32 on the wire; geometry uses f64."
+    )]
     pub fn exit(
         &self,
         from: MachineId,

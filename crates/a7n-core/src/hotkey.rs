@@ -4,7 +4,8 @@
 
 use std::time::{Duration, Instant};
 
-const KEYBOARD_PAGE: u32 = 0x0007_0000;
+use crate::modifiers::KEYBOARD_PAGE;
+
 const MODIFIER_START: u32 = 0xe0;
 const MODIFIER_COUNT: u32 = 8;
 const KEY_COUNT: usize = 256;

@@ -5,6 +5,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::sync::{Arc, atomic::Ordering};
 
 use a7n_ipc::TransferDirection;
+use a7n_platform::transfer_fs::{OpenMode, open_file};
 use a7n_proto::v1::{
     AbortReason, FileChunk, FileEnd, TransferDone, TransferRequest, transfer_frame::Frame,
     transfer_request::Source,
@@ -230,8 +231,7 @@ async fn send_files(
         if !metadata.is_file() || metadata.len() != entry.size {
             return Err(Failure::Io);
         }
-        let mut file =
-            a7n_platform::transfer_fs::open_file(path, false, false).map_err(|_| Failure::Io)?;
+        let mut file = open_file(path, OpenMode::Read).map_err(|_| Failure::Io)?;
         if file.metadata().map_err(|_| Failure::Io)?.len() != entry.size {
             return Err(Failure::Io);
         }

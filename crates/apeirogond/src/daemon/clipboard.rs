@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::future::pending;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use a7n_core::clipboard::{self, Clock, Exclusion, Generation, LocalChange};
 use a7n_ipc::config::ClipboardPolicy;
@@ -19,7 +19,6 @@ use super::files::files_top_level;
 mod ask;
 
 // A local UX limit keeps unattended confirmations from lingering; this is not a wire limit.
-const CLIPBOARD_ASK_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub(super) struct Held {
     peer: MachineId,

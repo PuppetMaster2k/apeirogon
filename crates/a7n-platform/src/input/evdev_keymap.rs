@@ -6,7 +6,7 @@
 //! (keyboard page 0x07, consumer page 0x0C). Shared by the X11 backend (which
 //! adds its keycode offset) and the Wayland backend (libei sends evdev codes).
 
-const KBD: u32 = 0x0007_0000;
+use a7n_core::modifiers::KEYBOARD_PAGE as KBD;
 const CONSUMER: u32 = 0x000C_0000;
 
 /// `(evdev code, HID usage)`. Each side appears at most once.

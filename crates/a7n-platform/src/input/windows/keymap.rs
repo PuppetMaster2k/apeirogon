@@ -7,7 +7,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     VK_VOLUME_MUTE, VK_VOLUME_UP,
 };
 
-const KBD: u32 = 0x0007_0000;
+use a7n_core::modifiers::KEYBOARD_PAGE as KBD;
 const CONSUMER: u32 = 0x000C_0000;
 
 /// Each usage and (scan code, extended) pair appears exactly once.

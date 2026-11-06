@@ -25,12 +25,17 @@ pub struct Clock {
 }
 
 impl Clock {
+    /// Values above `limits::COUNTER_MAX` are invalid on the wire and ignored,
+    /// so a peer cannot pin the clock where every later announce is rejected.
     pub fn observe(&mut self, generation: &Generation) {
+        if generation.generation > limits::COUNTER_MAX {
+            return;
+        }
         self.seen = self.seen.max(generation.generation);
     }
 
     pub fn next(&mut self, own: MachineId) -> Generation {
-        // Peers cannot push `seen` past `limits::COUNTER_MAX`, so this never saturates.
+        // `observe` caps `seen` at `limits::COUNTER_MAX`, so this never saturates.
         self.seen = self.seen.saturating_add(1);
         Generation {
             generation: self.seen,

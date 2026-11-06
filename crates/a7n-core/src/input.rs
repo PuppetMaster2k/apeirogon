@@ -34,7 +34,10 @@ impl MotionScale {
         )
     }
 
-    #[allow(clippy::cast_possible_truncation)] // Pixel deltas truncate toward zero and saturate at i32 bounds.
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "Pixel deltas truncate toward zero and saturate at i32 bounds."
+    )]
     fn axis(delta: i32, speed: f64, remainder: &mut f64) -> i32 {
         let scaled = f64::from(delta) * speed + *remainder;
         *remainder = scaled.fract();
@@ -108,7 +111,10 @@ impl MotionTracker {
 
 /// Detect outward motion on an edge pixel; horizontal motion wins at corners.
 #[must_use]
-#[allow(clippy::cast_possible_truncation)] // Normalized fractions in 0..=1 fit f32.
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "Normalized fractions in 0..=1 fit f32."
+)]
 pub fn edge_push(
     (left, top, width, height): (i32, i32, u32, u32),
     x: i32,
