@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.17.0...v0.18.0) (2026-11-06)
+
+
+### Features
+
+* hold the trigger key to switch ([#172](https://github.com/PuppetMaster2k/apeirogon/issues/172)) ([ab4c3e1](https://github.com/PuppetMaster2k/apeirogon/commit/ab4c3e19c97f50256ff5d5f1d0985b31b03664a5))
+
 ## [0.17.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.16.0...v0.17.0) (2026-11-06)
 
 
