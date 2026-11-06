@@ -175,13 +175,9 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 - Local IPC version 8 adds optional `screen_mm` dimensions to placed and unplaced machines. Update the daemon and local clients together.
 - Flow control: provided by QUIC. At most 4 concurrent transfers per link. Transfer streams SHOULD get lower priority than stream 0.
 
-## 12. Drag and drop
+## 12. Drag and drop (removed)
 
-1. The source OS starts a drag containing files and the pointer reaches an edge with a peer behind it. The source takes focus on the sink as usual (`Focus`) and sends `DragOffer{drag_id, files, items}`.
-2. The sink starts a synthetic OS drag session using promised files (no data yet) and shows the drag.
-3. The owner continues sending input. The drop is the button-up on the sink; the sink resolves the promise by sending `TransferRequest{drag_id}`.
-4. If the pointer returns or the user cancels, the source sends `DragEnd{CANCELLED}`; the sink tears down its drag. An unused offer expires after 60 s (`EXPIRED`).
-5. Platform notes: macOS (NSDraggingSession with file promises), Windows (IDataObject with delay-rendered CFSTR_FILEDESCRIPTOR / FILECONTENTS), Linux X11 (XDND). Wayland is not supported in v1: starting a drag needs a surface of our own and a real button press on it, which a background daemon does not have; users fall back to the clipboard or `a7n send`. This is the riskiest component; the protocol only fixes the exchange.
+This feature is not supported; use the clipboard or `a7n send` to transfer files.
 
 ## 13. Settings sync and policy
 
