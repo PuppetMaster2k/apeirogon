@@ -272,6 +272,7 @@ message MachineRect {
   sint32 y = 3;
   uint32 width = 4;
   uint32 height = 5;
+  uint32 blocked = 6;                 // low 12 bits: Left, Top, Right, Bottom thirds
 }
 
 // The whole desk's layout. Newest (version, by) wins; a local edit sets

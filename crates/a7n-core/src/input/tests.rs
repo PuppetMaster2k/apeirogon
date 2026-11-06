@@ -154,3 +154,34 @@ fn edge_push_empty_or_single_pixel_bounds_handles_degenerate_desktops() {
         assert_eq!(push, expected);
     }
 }
+
+#[test]
+fn corner_push_near_edge_end_requires_diagonal_outward_motion() {
+    // Arrange
+    let bounds = (-10, -20, 101, 101);
+    let cases = [
+        (-10, -12, -1, -1, Some((Edge::Left, Corner::TopLeft))),
+        (-10, -11, -1, -1, None),
+        (90, -12, 1, -1, Some((Edge::Right, Corner::TopRight))),
+        (90, 72, 1, 1, Some((Edge::Right, Corner::BottomRight))),
+        (90, 71, 1, 1, None),
+        (-10, 72, -1, 1, Some((Edge::Left, Corner::BottomLeft))),
+        (-2, -20, -1, -1, Some((Edge::Top, Corner::TopLeft))),
+        (-1, -20, -1, -1, None),
+        (82, -20, 1, -1, Some((Edge::Top, Corner::TopRight))),
+        (82, 80, 1, 1, Some((Edge::Bottom, Corner::BottomRight))),
+        (81, 80, 1, 1, None),
+        (-2, 80, -1, 1, Some((Edge::Bottom, Corner::BottomLeft))),
+        (90, 80, 1, 0, None),
+        (90, 80, 1, -1, None),
+        (90, 80, -1, -1, None),
+        (89, 79, 1, 1, None),
+    ];
+    for (x, y, dx, dy, expected) in cases {
+        // Act
+        let corner = corner_push(bounds, x, y, dx, dy);
+
+        // Assert
+        assert_eq!(corner, expected, "pointer ({x}, {y}), motion ({dx}, {dy})");
+    }
+}

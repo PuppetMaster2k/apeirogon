@@ -15,6 +15,60 @@ pub struct Placement {
     pub y: i32,
     pub width: u32,
     pub height: u32,
+    pub blocked: u16,
+}
+
+const SEGMENTS_PER_EDGE: u16 = 3;
+const BLOCKED_MASK: u32 = (1 << (4 * SEGMENTS_PER_EDGE)) - 1;
+
+/// Map a clamped fractional edge offset to its third.
+#[must_use]
+pub fn third_at(along: f32) -> u8 {
+    let along = along.clamp(0.0, 1.0);
+    if along < 1.0 / f32::from(SEGMENTS_PER_EDGE) {
+        0
+    } else if along < 2.0 / f32::from(SEGMENTS_PER_EDGE) {
+        1
+    } else {
+        2
+    }
+}
+
+impl Placement {
+    #[must_use]
+    pub fn is_blocked(&self, edge: Edge, third: u8) -> bool {
+        self.blocked & Self::segment_mask(edge, third) != 0
+    }
+
+    pub fn toggle_blocked(&mut self, edge: Edge, third: u8) {
+        self.blocked ^= Self::segment_mask(edge, third);
+    }
+
+    fn segment_mask(edge: Edge, third: u8) -> u16 {
+        if u16::from(third) >= SEGMENTS_PER_EDGE {
+            return 0;
+        }
+        let index = match edge {
+            Edge::Left => 0,
+            Edge::Top => 1,
+            Edge::Right => 2,
+            Edge::Bottom => 3,
+            Edge::Unspecified => return 0,
+        };
+        1 << (index * SEGMENTS_PER_EDGE + u16::from(third))
+    }
+
+    fn blocks(&self, edge: Edge, along: f32) -> bool {
+        self.is_blocked(edge, third_at(along))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Corner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -151,6 +205,7 @@ impl Layout {
                     y: p.y,
                     width: p.width,
                     height: p.height,
+                    blocked: u32::from(p.blocked),
                 })
                 .collect(),
         }
@@ -169,6 +224,9 @@ impl Layout {
             return None;
         }
         let source = self.placements.iter().find(|p| p.id == from)?;
+        if source.blocks(edge, along) {
+            return None;
+        }
         let horizontal = matches!(edge, Edge::Top | Edge::Bottom);
         let (start, size) = if horizontal {
             (source.x, source.width)
@@ -199,6 +257,51 @@ impl Layout {
         }
         None
     }
+
+    /// Map a diagonal push to a neighbour touching only at the given corner.
+    /// Call after `exit` so a shared edge takes precedence.
+    #[must_use]
+    pub fn exit_corner(
+        &self,
+        from: MachineId,
+        edge: Edge,
+        corner: Corner,
+    ) -> Option<(MachineId, v1::Landing)> {
+        let source = self.placements.iter().find(|p| p.id == from)?;
+        let at_right = matches!(corner, Corner::TopRight | Corner::BottomRight);
+        let at_bottom = matches!(corner, Corner::BottomLeft | Corner::BottomRight);
+        let at_end = match edge {
+            Edge::Left if !at_right => at_bottom,
+            Edge::Right if at_right => at_bottom,
+            Edge::Top if !at_bottom => at_right,
+            Edge::Bottom if at_bottom => at_right,
+            _ => return None,
+        };
+        if source.blocks(edge, if at_end { 1.0 } else { 0.0 }) {
+            return None;
+        }
+        let target = self.placements.iter().find(|target| {
+            target.id != from
+                && if at_right {
+                    right(source) == i64::from(target.x)
+                } else {
+                    i64::from(source.x) == right(target)
+                }
+                && if at_bottom {
+                    bottom(source) == i64::from(target.y)
+                } else {
+                    i64::from(source.y) == bottom(target)
+                }
+        })?;
+        Some((
+            target.id,
+            v1::Landing {
+                edge: opposite(edge) as i32,
+                offset: if at_end { 0.0 } else { 1.0 },
+                ..v1::Landing::default()
+            },
+        ))
+    }
 }
 
 impl TryFrom<&v1::Layout> for Layout {
@@ -222,6 +325,8 @@ impl TryFrom<&v1::Layout> for Layout {
                     y: p.y,
                     width: p.width,
                     height: p.height,
+                    blocked: u16::try_from(p.blocked & BLOCKED_MASK)
+                        .expect("masked segments fit u16"),
                 })
             })
             .collect::<Result<Vec<_>, LayoutError>>()?;

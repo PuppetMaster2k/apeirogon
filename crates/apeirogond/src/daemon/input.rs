@@ -7,7 +7,7 @@ use std::time::Instant;
 use a7n_core::focus::edge::{EdgeResistance, HeldButtons};
 use a7n_core::focus::{Action, Cursor, Focus, Take};
 use a7n_core::hotkey::HotkeyMatcher;
-use a7n_core::input::{MotionCounter, MotionScale, MotionTracker, edge_push};
+use a7n_core::input::{MotionCounter, MotionScale, MotionTracker, corner_push, edge_push};
 use a7n_platform::input::{Bounds, Capture, CaptureControl, Captured, Inject, Injector};
 use a7n_proto::v1::{Edge, Envelope, InputBatch, envelope::Body, input_event::Event};
 use a7n_proto::{MachineId, Route};
@@ -500,6 +500,18 @@ impl Daemon {
             .layout
             .state
             .exit(self.identity.machine_id, edge, along)
+            .or_else(|| {
+                let (edge, corner) = corner_push(
+                    (bounds.x, bounds.y, bounds.width, bounds.height),
+                    x,
+                    y,
+                    dx,
+                    dy,
+                )?;
+                self.layout
+                    .state
+                    .exit_corner(self.identity.machine_id, edge, corner)
+            })
         else {
             return;
         };

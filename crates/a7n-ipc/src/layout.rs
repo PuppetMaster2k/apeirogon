@@ -42,6 +42,7 @@ impl TryFrom<LayoutInfo> for LayoutDraft {
                 y: machine.y,
                 width: machine.width,
                 height: machine.height,
+                blocked: machine.blocked,
             })
             .collect();
         let mut right = placements
@@ -72,6 +73,7 @@ impl TryFrom<LayoutInfo> for LayoutDraft {
                 y: top,
                 width,
                 height,
+                blocked: 0,
             });
             names.push(machine.name);
             right += i64::from(width);
@@ -96,6 +98,7 @@ impl LayoutDraft {
                 y: p.y,
                 width: p.width,
                 height: p.height,
+                blocked: p.blocked,
             })
             .collect()
     }
@@ -115,6 +118,7 @@ mod tests {
             y,
             width: DEFAULT_MACHINE_SIZE.0,
             height: DEFAULT_MACHINE_SIZE.1,
+            blocked: 0x123,
         }
     }
     #[test]
@@ -174,6 +178,9 @@ mod tests {
         let editor = LayoutDraft::try_from(info).unwrap();
 
         // Assert
+        assert_eq!(editor.placements[0].blocked, 0x123);
+        assert_eq!(editor.placed()[0].blocked, 0x123);
+        assert_eq!(editor.placements[2].blocked, 0);
         assert_eq!(editor.placements[2].x, 1920);
         assert_eq!(editor.placements[3].x, 3840);
         assert_eq!(editor.placements[2].y, -100);

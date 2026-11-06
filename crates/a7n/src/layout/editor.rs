@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_ipc::{LayoutInfo, LayoutPlacement, Placement, validate};
+use a7n_ipc::{Edge, LayoutInfo, LayoutPlacement, Placement, validate};
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 const MOVE_STEP: i32 = 100;
 const FINE_MOVE_STEP: i32 = 10;
+const SEGMENT_COUNT: u8 = 12;
+const EDGES: [Edge; 4] = [Edge::Left, Edge::Top, Edge::Right, Edge::Bottom];
 
 #[derive(Debug)]
 pub(super) struct Editor {
@@ -13,6 +15,7 @@ pub(super) struct Editor {
     pub(super) names: Vec<String>,
     pub(super) selected: usize,
     pub(super) lost_edit: bool,
+    segment: u8,
 }
 
 #[derive(Debug)]
@@ -29,6 +32,7 @@ impl Editor {
             placements: draft.placements,
             names: draft.names,
             selected: 0,
+            segment: 0,
             lost_edit: draft.lost_edit,
         })
     }
@@ -49,6 +53,7 @@ impl Editor {
                             y: p.y,
                             width: p.width,
                             height: p.height,
+                            blocked: p.blocked,
                         })
                         .collect(),
                 );
@@ -63,11 +68,24 @@ impl Editor {
         } else {
             MOVE_STEP
         };
+        let (edge, third) = self.focused_segment();
         let placement = &mut self.placements[self.selected];
         match key.code {
             KeyCode::BackTab => self.select_previous(),
             KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => self.select_previous(),
-            KeyCode::Tab => self.selected = (self.selected + 1) % self.placements.len(),
+            KeyCode::Tab => {
+                self.selected = (self.selected + 1) % self.placements.len();
+                self.segment = 0;
+            }
+            KeyCode::Char('e' | 'E') => {
+                let backwards =
+                    key.code == KeyCode::Char('E') || key.modifiers.contains(KeyModifiers::SHIFT);
+                self.segment =
+                    (self.segment + if backwards { SEGMENT_COUNT - 1 } else { 1 }) % SEGMENT_COUNT;
+            }
+            KeyCode::Char('x') => {
+                placement.toggle_blocked(edge, third);
+            }
             KeyCode::Left => placement.x = placement.x.saturating_sub(step),
             KeyCode::Right => placement.x = placement.x.saturating_add(step),
             KeyCode::Up => placement.y = placement.y.saturating_sub(step),
@@ -77,7 +95,12 @@ impl Editor {
         Action::Continue
     }
 
+    pub(super) fn focused_segment(&self) -> (Edge, u8) {
+        (EDGES[usize::from(self.segment / 3)], self.segment % 3)
+    }
+
     fn select_previous(&mut self) {
+        self.segment = 0;
         self.selected = (self.selected + self.placements.len() - 1) % self.placements.len();
     }
 }

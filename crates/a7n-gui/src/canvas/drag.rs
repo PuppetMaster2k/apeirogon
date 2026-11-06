@@ -71,6 +71,7 @@ mod tests {
             y: 0,
             width: 100,
             height: 100,
+            blocked: 0,
         }
     }
 

@@ -324,6 +324,7 @@ async fn clipboard_link_up_send_policy_or_older_generation_does_not_set_backend(
                 y: 0,
                 width: 100,
                 height: 100,
+                blocked: 0,
             }],
             reply,
         })

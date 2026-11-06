@@ -19,6 +19,7 @@ async fn receive_newer_peer_layout_replaces_and_persists() {
                 y: 0,
                 width: 100,
                 height: 100,
+                blocked: 0,
             }],
             peer,
         )
@@ -115,6 +116,7 @@ fn load_saturated_layout_restarts_version_and_keeps_placements() {
                 y: 0,
                 width: 100,
                 height: 100,
+                blocked: 0,
             }],
             own,
         )

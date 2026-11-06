@@ -18,7 +18,7 @@ mod framing;
 pub mod layout;
 mod types;
 
-pub use a7n_core::layout::{Edge, Placement, SharedEdge, shared_edges, validate};
+pub use a7n_core::layout::{Edge, Placement, SharedEdge, shared_edges, third_at, validate};
 pub use a7n_core::pairing::{InvalidPairingCode, PairingCode};
 pub use a7n_platform::local_socket::{SocketLocation, default_location};
 pub use a7n_proto::MachineId;
@@ -34,6 +34,6 @@ pub use types::{
 };
 
 /// Local API major version, independent of the peer protobuf protocol.
-pub const IPC_VERSION: u32 = 8;
+pub const IPC_VERSION: u32 = 9;
 /// Maximum JSON payload bytes per line, excluding the terminating newline.
 pub const MAX_LINE_LENGTH: usize = 64 * 1024;
