@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.16.0...v0.17.0) (2026-11-06)
+
+
+### Features
+
+* corner crossings and disabled edge thirds ([#170](https://github.com/PuppetMaster2k/apeirogon/issues/170)) ([eed9518](https://github.com/PuppetMaster2k/apeirogon/commit/eed951813782f35c72647db0ece7ab165d0ccb3b))
+
 ## [0.16.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.15.7...v0.16.0) (2026-11-06)
 
 
