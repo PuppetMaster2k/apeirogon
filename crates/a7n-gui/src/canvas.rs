@@ -390,6 +390,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "the canvas fraction fits in f32 for screen pixel assertions"
+    )]
     fn transform_negative_coordinates_fit_and_drag_in_layout_units() {
         // Arrange
         let placement = Placement {
@@ -405,14 +409,17 @@ mod tests {
         // Act
         let rect = transform.rect(&placement);
         let mut moved = placement;
-        Drag::new(placement).update(&mut moved, &[], egui::vec2(100.0, -50.0), transform.scale);
+        Drag::new(placement).update(&mut moved, &[], egui::vec2(120.0, -60.0), transform.scale);
 
         // Assert
         assert_eq!(
             rect,
-            egui::Rect::from_center_size(area.center(), area.size() * 0.5)
+            egui::Rect::from_center_size(
+                area.center(),
+                area.size() * CANVAS_LAYOUT_FRACTION as f32
+            )
         );
-        assert_eq!((moved.x, moved.y), (-1520, -300));
+        assert_eq!((moved.x, moved.y), (-1600, -260));
     }
 
     #[test]
