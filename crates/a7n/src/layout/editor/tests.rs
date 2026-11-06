@@ -88,3 +88,26 @@ fn handle_selection_and_fine_move_wraps_and_uses_ten_units() {
     assert_eq!(editor.placements[1].y, -FINE_MOVE_STEP);
     assert_eq!(editor.selected, 0);
 }
+
+#[test]
+fn handle_pick_and_toggle_segment_save_carries_expected_bit() {
+    // Arrange
+    let mut editor = Editor::new(LayoutInfo {
+        placed: vec![machine(1, 0, 0), machine(2, 1920, 0)],
+        unplaced: Vec::new(),
+        lost_edit: false,
+    })
+    .unwrap();
+
+    // Act
+    editor.handle(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+    editor.handle(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+    let action = editor.handle(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+
+    // Assert
+    let Action::Save(placements) = action else {
+        panic!("valid layout must save")
+    };
+    assert_eq!(placements[0].blocked, 0b10);
+    assert_eq!(placements[1].blocked, 0);
+}

@@ -51,6 +51,21 @@ pub(super) fn draw(frame: &mut Frame, editor: &Editor) {
                     }
                 }
             }
+            context.layer();
+            for placement in &editor.placements {
+                for edge in [Edge::Left, Edge::Top, Edge::Right, Edge::Bottom] {
+                    for third in 0..3 {
+                        if placement.is_blocked(edge, third) {
+                            context.draw(&edge_third(placement, edge, third, Color::Red));
+                        }
+                    }
+                }
+            }
+            if let Some(selected) = selected {
+                context.layer();
+                let (edge, third) = editor.focused_segment();
+                context.draw(&edge_third(selected, edge, third, Color::Yellow));
+            }
         });
     frame.render_widget(canvas, canvas_area);
     let mut notices = Vec::new();
@@ -87,7 +102,7 @@ pub(super) fn draw(frame: &mut Frame, editor: &Editor) {
         Paragraph::new(Line::from(notices)).wrap(ratatui::widgets::Wrap { trim: false }),
         status,
     );
-    frame.render_widget(Paragraph::new("Tab / Shift+Tab: select • Arrows: move 100 • Shift+arrow: move 10\ns / Enter: save and quit • q / Esc: quit without saving"), help);
+    frame.render_widget(Paragraph::new("Tab / Shift+Tab: select • Arrows: move 100 • Shift+arrow: move 10\ne: pick edge third • x: switch it off/on • s / Enter: save and quit • q / Esc: quit without saving"), help);
 }
 
 fn bounds(placements: &[Placement]) -> ([f64; 2], [f64; 2]) {
@@ -131,5 +146,28 @@ fn shared_segment(from: &Placement, to: &Placement, edge: Edge) -> CanvasLine {
         x2,
         y2,
         color: Color::Green,
+    }
+}
+
+fn edge_third(placement: &Placement, edge: Edge, third: u8, color: Color) -> CanvasLine {
+    let left = f64::from(placement.x);
+    let top = -f64::from(placement.y);
+    let width = f64::from(placement.width);
+    let height = f64::from(placement.height);
+    let (x, y, dx, dy) = match edge {
+        Edge::Left => (left, top, 0.0, -height),
+        Edge::Top => (left, top, width, 0.0),
+        Edge::Right => (left + width, top, 0.0, -height),
+        Edge::Bottom => (left, top - height, width, 0.0),
+        Edge::Unspecified => (left, top, 0.0, 0.0),
+    };
+    let start = f64::from(third) / 3.0;
+    let end = f64::from(third + 1) / 3.0;
+    CanvasLine {
+        x1: x + dx * start,
+        y1: y + dy * start,
+        x2: x + dx * end,
+        y2: y + dy * end,
+        color,
     }
 }

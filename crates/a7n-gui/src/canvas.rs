@@ -7,6 +7,7 @@ use eframe::egui;
 use crate::theme;
 
 mod drag;
+mod segments;
 mod snap;
 
 use drag::Drag;
@@ -88,6 +89,7 @@ impl Canvas {
         );
         let transform = Transform::new(self.bounds, area.shrink(CANVAS_PADDING));
         let mut snapped = Snapped::default();
+        let mut hovered = None;
         for index in 0..self.draft.placements.len() {
             let mut placement = self.draft.placements[index];
             let name = &self.draft.names[index];
@@ -104,6 +106,9 @@ impl Canvas {
             if response.clicked() || response.drag_started() {
                 response.request_focus();
                 self.selected = index;
+            }
+            if let Some(segment) = segments::interact(ui, rect, &response, &mut placement) {
+                hovered = Some((index, segment));
             }
             if response.has_focus() {
                 self.selected = index;
@@ -141,6 +146,25 @@ impl Canvas {
             }
             self.draft.placements[index] = placement;
         }
+        self.paint_machines(ui, &transform, hovered);
+        transform.paint_guides(ui, &snapped);
+        theme::small(
+            ui,
+            "Drag machines to place them; they snap to each other's edges. Tab selects a machine; arrow keys move it (Shift for fine movement). Edges connect where rectangles touch.",
+        );
+        theme::small(ui, "Click an edge third to switch it off or on");
+        let validation = validate(&self.draft.placements);
+        if let Err(error) = &validation {
+            theme::error(ui, &error.to_string());
+        }
+    }
+
+    fn paint_machines(
+        &self,
+        ui: &egui::Ui,
+        transform: &Transform,
+        hovered: Option<(usize, (a7n_ipc::Edge, u8))>,
+    ) {
         // Paint the selected machine last so its border stays visible during overlaps.
         for index in (0..self.draft.placements.len())
             .filter(|&index| index != self.selected)
@@ -162,15 +186,14 @@ impl Canvas {
                 self.selected == index,
                 overlapping,
             );
-        }
-        transform.paint_guides(ui, &snapped);
-        theme::small(
-            ui,
-            "Drag machines to place them; they snap to each other's edges. Tab selects a machine; arrow keys move it (Shift for fine movement). Edges connect where rectangles touch.",
-        );
-        let validation = validate(&self.draft.placements);
-        if let Err(error) = &validation {
-            theme::error(ui, &error.to_string());
+            segments::paint(
+                ui,
+                transform.rect(placement),
+                placement,
+                hovered
+                    .filter(|(machine, _)| *machine == index)
+                    .map(|(_, segment)| segment),
+            );
         }
     }
 }

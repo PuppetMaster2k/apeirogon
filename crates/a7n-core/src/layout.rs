@@ -21,23 +21,45 @@ pub struct Placement {
 const SEGMENTS_PER_EDGE: u16 = 3;
 const BLOCKED_MASK: u32 = (1 << (4 * SEGMENTS_PER_EDGE)) - 1;
 
+/// Map a clamped fractional edge offset to its third.
+#[must_use]
+pub fn third_at(along: f32) -> u8 {
+    let along = along.clamp(0.0, 1.0);
+    if along < 1.0 / f32::from(SEGMENTS_PER_EDGE) {
+        0
+    } else if along < 2.0 / f32::from(SEGMENTS_PER_EDGE) {
+        1
+    } else {
+        2
+    }
+}
+
 impl Placement {
-    fn blocks(&self, edge: Edge, along: f32) -> bool {
+    #[must_use]
+    pub fn is_blocked(&self, edge: Edge, third: u8) -> bool {
+        self.blocked & Self::segment_mask(edge, third) != 0
+    }
+
+    pub fn toggle_blocked(&mut self, edge: Edge, third: u8) {
+        self.blocked ^= Self::segment_mask(edge, third);
+    }
+
+    fn segment_mask(edge: Edge, third: u8) -> u16 {
+        if u16::from(third) >= SEGMENTS_PER_EDGE {
+            return 0;
+        }
         let index = match edge {
             Edge::Left => 0,
             Edge::Top => 1,
             Edge::Right => 2,
             Edge::Bottom => 3,
-            Edge::Unspecified => return false,
+            Edge::Unspecified => return 0,
         };
-        let third = if along < 1.0 / f32::from(SEGMENTS_PER_EDGE) {
-            0
-        } else if along < 2.0 / f32::from(SEGMENTS_PER_EDGE) {
-            1
-        } else {
-            2
-        };
-        self.blocked & (1 << (index * SEGMENTS_PER_EDGE + third)) != 0
+        1 << (index * SEGMENTS_PER_EDGE + u16::from(third))
+    }
+
+    fn blocks(&self, edge: Edge, along: f32) -> bool {
+        self.is_blocked(edge, third_at(along))
     }
 }
 

@@ -379,3 +379,53 @@ fn try_from_unknown_and_absent_blocked_bits_masks_to_known_segments() {
         assert_eq!(layout.to_proto().machines[0].blocked, expected);
     }
 }
+
+#[test]
+fn toggle_blocked_each_segment_flips_exactly_one_bit() {
+    // Arrange
+    for (index, edge) in [Edge::Left, Edge::Top, Edge::Right, Edge::Bottom]
+        .into_iter()
+        .enumerate()
+    {
+        for third in 0..3 {
+            for before in [0, u16::MAX] {
+                let mut placement = Placement {
+                    blocked: before,
+                    ..rect(1, 0, 0)
+                };
+
+                // Act
+                placement.toggle_blocked(edge, third);
+
+                // Assert
+                assert_eq!(
+                    placement.blocked,
+                    before ^ (1 << (index * 3 + usize::from(third)))
+                );
+                assert_eq!(placement.is_blocked(edge, third), before == 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn toggle_blocked_invalid_segment_leaves_bits_unchanged() {
+    // Arrange
+    for (edge, third) in [
+        (Edge::Left, 3),
+        (Edge::Bottom, u8::MAX),
+        (Edge::Unspecified, 0),
+    ] {
+        let mut placement = Placement {
+            blocked: u16::MAX,
+            ..rect(1, 0, 0)
+        };
+
+        // Act
+        placement.toggle_blocked(edge, third);
+
+        // Assert
+        assert_eq!(placement.blocked, u16::MAX);
+        assert!(!placement.is_blocked(edge, third));
+    }
+}
