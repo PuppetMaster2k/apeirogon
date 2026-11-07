@@ -264,6 +264,7 @@ async fn status_ipc_round_trip_returns_own_machine() {
                 .into_iter()
                 .map(Into::into)
                 .collect(),
+            firewall: Vec::new(),
             peers: vec![a7n_ipc::PeerInfo {
                 id: offline,
                 name: "offline peer".into(),

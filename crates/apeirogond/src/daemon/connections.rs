@@ -83,6 +83,7 @@ impl Daemon {
                 self.wait_for_connect(peer, reply);
             }
             Event::ExpireConnects => self.finish_connects(),
+            Event::FirewallChecked(result) => self.firewall_checked(result),
             Event::Link(result, reply) => {
                 self.link_received(result, reply);
             }

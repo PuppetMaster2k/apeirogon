@@ -36,6 +36,7 @@ mod config;
 mod connections;
 mod error;
 mod files;
+mod firewall;
 mod input;
 mod layout;
 mod nearby;
@@ -94,6 +95,7 @@ enum Event {
         data: Option<Vec<u8>>,
     },
     ExpireConnects,
+    FirewallChecked(Result<Vec<a7n_ipc::FirewallProblem>, a7n_platform::firewall::CheckError>),
     DiscoveryDialEnded(MachineId),
     Confirmed {
         entry: Entry,
@@ -150,6 +152,7 @@ pub(crate) struct Daemon {
     input: input::Input,
     clipboard: clipboard::State,
     files: files::State,
+    firewall: firewall::State,
     sync: sync::State,
     wol: wol::State,
     config: Config,
@@ -210,6 +213,7 @@ impl Daemon {
             input,
             clipboard: clipboard::State::default(),
             files: files::State::default(),
+            firewall: firewall::State::default(),
             sync: sync::State::default(),
             wol: wol::State::default(),
             config: Config::default(),

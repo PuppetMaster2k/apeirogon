@@ -33,6 +33,7 @@ async fn request_status_returns_same_status_info() {
             addr: "127.0.0.1:42042".parse().unwrap(),
         }],
         missing_permissions: vec![crate::Permission::InputMonitoring],
+        firewall: vec![crate::FirewallProblem::PublicNetwork],
     };
     let expected = status.clone();
     let server = async move {

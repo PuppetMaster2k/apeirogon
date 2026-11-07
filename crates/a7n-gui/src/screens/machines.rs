@@ -6,6 +6,7 @@ use std::time::Instant;
 use a7n_ipc::{DEFAULT_UDP_PORT, MachineId, PairingCode, PeerInfo, Request, StatusInfo};
 use eframe::egui;
 
+use super::firewall::firewall_warnings;
 use crate::{App, Command, theme};
 use theme::{BadgeKind, ButtonKind, ButtonSize, IconButtonKind, icon};
 
@@ -43,6 +44,7 @@ impl App {
             },
         );
         self.page_message(ui);
+        firewall_warnings(ui, &status.firewall);
         self.held_files(ui, &status);
         self.active_transfers(ui, &status);
         theme::overline(ui, "This machine");

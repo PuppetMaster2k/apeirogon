@@ -7,6 +7,7 @@ use a7n_core::pairing::PairingCode;
 use a7n_proto::MachineId;
 use serde::{Deserialize, Serialize};
 
+use crate::FirewallProblem;
 use crate::config::ClipboardPolicy;
 
 /// Commands accepted after the version handshake.
@@ -181,6 +182,8 @@ pub struct StatusInfo {
     pub nearby: Vec<NearbyMachine>,
     /// macOS permissions the daemon still needs; empty elsewhere.
     pub missing_permissions: Vec<Permission>,
+    /// Windows Firewall problems that block links; empty elsewhere.
+    pub firewall: Vec<FirewallProblem>,
 }
 
 /// Coarse file offer metadata; paths and names are never exposed here.

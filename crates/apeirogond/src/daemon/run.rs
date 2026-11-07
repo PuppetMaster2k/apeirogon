@@ -90,6 +90,7 @@ impl Daemon {
         let record_deadline = self.input.recording.next_deadline();
         let files_deadline = self.files_deadline();
         let clipboard_deadline = self.clipboard.held.as_ref().map(|held| held.deadline);
+        let firewall_deadline = self.firewall.next_check;
         let wake_deadline = self.wol.pending.as_ref().map(|pending| pending.deadline);
         tokio::select! {
             command = commands.recv() => {
@@ -106,6 +107,7 @@ impl Daemon {
             () = input::deadline(hotkey_deadline) => self.poll_hotkey().await,
             () = input::deadline(record_deadline) => self.input.recording.expire(tokio::time::Instant::now().into_std()),
             () = input::deadline(wake_deadline) => {},
+            () = input::deadline(firewall_deadline) => self.check_firewall(),
             () = input::deadline(deadline) => self.poll_focus().await,
             () = input::deadline(clipboard_deadline) => self.clipboard.expire_held_clipboard(Instant::now()),
             () = input::deadline(files_deadline) => self.expire_files(Instant::now()),

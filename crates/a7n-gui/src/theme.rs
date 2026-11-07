@@ -29,7 +29,7 @@ pub(crate) use palette::{DARK, LIGHT, Palette};
 pub(crate) use segmented::segmented;
 pub(crate) use setting_row::setting_row;
 pub(crate) use style::install;
-pub(crate) use text::{error, small};
+pub(crate) use text::{error, small, warning};
 pub(crate) use text_input::text_input;
 pub(crate) use toggle::toggle;
 pub(crate) use typography::{

@@ -316,6 +316,14 @@ do not.
     independent generation namespace and do not change the receiving clipboard.
   - Local IPC version 6 adds `Wake`, a `Waking` switch response, and per-peer
     `can_wake` and `waking` status flags. Hardware addresses stay inside the daemon.
+  - Local IPC version 11 adds status field `firewall`. On Windows the daemon
+    checks every 30 s, with normal user rights, whether the active network is
+    Public, whether an enabled inbound allow rule covers `apeirogond.exe` on
+    its UDP port and mDNS (UDP 5353), and whether an inbound block rule
+    matches. `a7n status` and the GUI name the problem and show the fix: the
+    exact `netsh advfirewall` command to run elevated, or "set the network to
+    Private". The daemon never creates rules or asks for elevation. Other
+    platforms report nothing.
   - Local IPC version 10 adds `RecordTriggerKey` and `TriggerKey { name }`.
     Recording waits up to 10 seconds for the next captured local key-down,
     consumes that key through release, and returns its trigger name or an
