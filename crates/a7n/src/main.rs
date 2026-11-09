@@ -291,6 +291,12 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
             for permission in &status.missing_permissions {
                 writeln!(output, "permission missing: {permission}")?;
             }
+            for problem in &status.firewall {
+                writeln!(output, "firewall: {problem}")?;
+                if let Some(fix) = problem.fix() {
+                    writeln!(output, "  fix: {fix}")?;
+                }
+            }
             writeln!(output, "{} {} (this machine)", status.name, status.machine)?;
             for peer in &status.peers {
                 let state = if peer.waking {

@@ -24,3 +24,15 @@ pub(crate) fn error(ui: &mut Ui, text: &str) {
         ui.label(RichText::new(text).small().color(p.danger));
     });
 }
+
+pub(crate) fn warning(ui: &mut Ui, text: &str) {
+    let p = Palette::of(ui.ctx());
+    ui.horizontal_wrapped(|ui| {
+        ui.label(
+            RichText::new(icon::WARNING_CIRCLE)
+                .font(font_icon(size::ICON))
+                .color(p.warning),
+        );
+        ui.label(RichText::new(text).small().color(p.warning));
+    });
+}

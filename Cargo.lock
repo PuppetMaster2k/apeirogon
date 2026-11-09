@@ -87,6 +87,7 @@ dependencies = [
  "wayland-protocols",
  "wayland-protocols-wlr",
  "widestring",
+ "windows 0.61.3",
  "windows-sys 0.61.2",
  "x11rb 0.14.0",
 ]

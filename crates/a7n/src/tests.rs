@@ -99,6 +99,10 @@ fn write_response_status_displays_identity_and_peer_states() {
             .collect(),
         nearby: Vec::new(),
         missing_permissions: vec![a7n_ipc::Permission::Accessibility],
+        firewall: vec![a7n_ipc::FirewallProblem::Blocked {
+            rule: "managed rule".into(),
+            ports: vec![42042],
+        }],
     });
     let mut output = Vec::new();
 
@@ -111,6 +115,7 @@ fn write_response_status_displays_identity_and_peer_states() {
         concat!(
             "input: unavailable (Accessibility permission missing)\n",
             "permission missing: Accessibility\n",
+            "firewall: firewall rule \"managed rule\" blocks apeirogond on UDP ports 42042\n",
             "local 0123456789abcdef0123456789abcdef (this machine)\n",
             "peer 0123456789abcdef0123456789abcdef connected\n",
             "peer 0123456789abcdef0123456789abcdef offline\n",
@@ -187,6 +192,7 @@ fn write_response_status_with_nearby_displays_machine_ids_and_addresses() {
             addr: "127.0.0.1:1234".parse().unwrap(),
         }],
         missing_permissions: Vec::new(),
+        firewall: Vec::new(),
     });
     let mut output = Vec::new();
 
@@ -314,6 +320,7 @@ fn poll_send_offer_states_map_to_progress_outcome_or_waiting() {
         peers: Vec::new(),
         nearby: Vec::new(),
         missing_permissions: Vec::new(),
+        firewall: Vec::new(),
     };
     let cases = [
         (status(vec![], vec![]), files::Poll::Waiting),

@@ -111,6 +111,7 @@ impl Daemon {
                 .into_iter()
                 .map(Into::into)
                 .collect(),
+            firewall: self.firewall.problems.clone(),
         }
     }
 
