@@ -6,6 +6,7 @@ use std::io;
 use std::mem::size_of;
 use std::thread;
 
+use a7n_core::modifiers::{LEFT_CTRL, RIGHT_META};
 use a7n_proto::v1::{InputEvent, KeyEvent, input_event};
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -46,6 +47,10 @@ fn run(
     let mut scroll = ScrollAccumulator::default();
     while let Some(command) = commands.blocking_recv() {
         let (dx, dy) = match command {
+            Inject::Chord(keys) => {
+                chord_input(&keys, send_inputs)?;
+                continue;
+            }
             Inject::Event(event) => {
                 event_input(&event, &mut scroll)?;
                 continue;
@@ -174,11 +179,37 @@ fn mouse_input(flags: u32, data: u32, dx: i32, dy: i32) -> INPUT {
     }
 }
 
+fn chord_input(
+    keys: &[KeyEvent],
+    mut send: impl FnMut(&[INPUT]) -> io::Result<()>,
+) -> io::Result<()> {
+    let inputs: Vec<_> = keys.iter().filter_map(key_input).collect();
+    if let Err(error) = send(&inputs) {
+        // A partial SendInput can leave modifiers down even though injection stops.
+        let releases: Vec<_> = keys
+            .iter()
+            .filter(|key| !key.down && (LEFT_CTRL..=RIGHT_META).contains(&key.usage))
+            .filter_map(key_input)
+            .collect();
+        let _ = send(&releases);
+        return Err(error);
+    }
+    Ok(())
+}
+
 fn send(input: &INPUT) -> io::Result<()> {
+    send_inputs(std::slice::from_ref(input))
+}
+
+fn send_inputs(inputs: &[INPUT]) -> io::Result<()> {
+    if inputs.is_empty() {
+        return Ok(());
+    }
     let size = i32::try_from(size_of::<INPUT>()).map_err(io::Error::other)?;
-    // SAFETY: input points to a fully initialized INPUT with its union member
-    // matching type; count and element size describe exactly that one value.
-    if unsafe { SendInput(1, input, size) } != 1 {
+    let count = u32::try_from(inputs.len()).map_err(io::Error::other)?;
+    // SAFETY: inputs contains initialized INPUTs with matching union members;
+    // count and element size describe the entire live slice.
+    if unsafe { SendInput(count, inputs.as_ptr(), size) } != count {
         return Err(io::Error::last_os_error());
     }
     Ok(())
@@ -187,6 +218,51 @@ fn send(input: &INPUT) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chord_input_failed_send_attempts_modifier_releases_and_returns_original_error() {
+        // Arrange
+        let keys: Vec<_> = a7n_core::gestures::Bindings {
+            swipe_left: Some(a7n_core::hotkey::Chord::parse("ctrl+meta+left").unwrap()),
+            ..a7n_core::gestures::Bindings::default()
+        }
+        .events(a7n_proto::v1::Gesture::SwipeLeft)
+        .collect();
+        let mut batches = Vec::new();
+
+        // Act
+        let result = chord_input(&keys, |inputs| {
+            let keyboard: Vec<_> = inputs
+                .iter()
+                .map(|input| {
+                    // SAFETY: chord_input builds keyboard INPUTs with the ki union member.
+                    let key = unsafe { input.Anonymous.ki };
+                    (key.wScan, key.dwFlags)
+                })
+                .collect();
+            batches.push(keyboard);
+            Err(io::Error::from_raw_os_error(if batches.len() == 1 {
+                5
+            } else {
+                6
+            }))
+        });
+
+        // Assert
+        assert_eq!(result.unwrap_err().raw_os_error(), Some(5));
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].len(), keys.len());
+        assert_eq!(
+            batches[1],
+            [
+                (
+                    0x5b,
+                    KEYEVENTF_SCANCODE | KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP
+                ),
+                (0x1d, KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP),
+            ]
+        );
+    }
 
     #[test]
     fn absolute_axis_negative_origin_and_outside_positions_are_clamped() {

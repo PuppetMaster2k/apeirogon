@@ -183,7 +183,7 @@ impl Daemon {
         // ponytail: screen size is measured once; restart after monitor changes.
         let screen_mm = a7n_platform::physical_size_mm()
             .map(|(width, height)| a7n_proto::v1::ScreenSize { width, height });
-        let info = PeerInfo {
+        let mut info = PeerInfo {
             screen_mm,
             platform: a7n_platform::platform().into(),
             name: identity.machine_id.to_string(),
@@ -194,6 +194,10 @@ impl Daemon {
             listen_port: u32::from(endpoint.local_addr()?.port()),
             ..PeerInfo::default()
         };
+        if a7n_platform::input::GESTURES_SUPPORTED {
+            info.capabilities
+                .push(a7n_proto::v1::Capability::Gestures.into());
+        }
         let input = input::Input::new(identity.machine_id);
         Ok(Self {
             identity,

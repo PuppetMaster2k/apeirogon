@@ -84,3 +84,29 @@ Every item must pass before a release.
 - [ ] Cursor lock: Ctrl+Option+Shift+L prevents edge crossing; pressing it
   again restores crossing. Ctrl+Option+Shift+1…9 jumps to the configured
   machine. Repeat with rebound `hotkeys.lock` and `hotkeys.jump` settings.
+
+## Trackpad swipe shortcuts (#97)
+
+- [ ] Pair the Mac with Windows; enable three-finger, then four-finger system
+  swipes in macOS Trackpad settings. Test the built-in trackpad and an external
+  Magic Trackpad if available, with the daemon running in the background.
+- [ ] At home, swipes still operate macOS normally. While driving Windows,
+  each up/down/left/right swipe performs exactly one Task View/show desktop/
+  previous desktop/next desktop action. macOS must not also open Mission
+  Control or switch Spaces. Check logs for `kind=gesture_swipe` only, never
+  touch coordinates. If no swipe arrives, verify whether public event-tap
+  NSEvents contain touches; record OS version, device and finger setting.
+- [ ] Hold fingers after crossing the threshold, reverse direction, and add or
+  remove a finger: no second shortcut until all fingers lift. Short movements,
+  two-finger scrolling, pinch and spread must not activate a shortcut.
+- [ ] Change each Windows `gestures.swipe_*` binding using config get/set and
+  reload; confirm the new chord fires without restarting. Clear a binding:
+  only that swipe stops. Invalid chords must fail without changing settings.
+- [ ] In the Windows GUI, open Hotkeys → Trackpad gestures; edit, clear, save,
+  discard/reload, and try an invalid chord. macOS GUI must not show the card.
+- [ ] Drive another Mac with the gesture capability: swipes are safely ignored
+  by its injector. Drive Linux or a peer without that capability: no gesture
+  is sent. Ordinary keyboard input and two-finger scrolling still work.
+- [ ] Return home or pause mid-swipe and start driving again: no stale swipe
+  or held shortcut modifiers. Revoke permissions or stop the daemon during
+  a grab and confirm the dead-man release restores local input.

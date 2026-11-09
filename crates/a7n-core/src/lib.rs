@@ -6,6 +6,7 @@ pub mod desk;
 pub mod display;
 pub mod files;
 pub mod focus;
+pub mod gestures;
 pub mod hotkey;
 pub mod input;
 pub mod layout;

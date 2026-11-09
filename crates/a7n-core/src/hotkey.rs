@@ -37,6 +37,13 @@ pub struct HotkeyError(String);
 pub struct Mods(u8);
 
 impl Mods {
+    /// Left-side modifier usages in ctrl, shift, alt, meta order.
+    pub(crate) fn usages(self) -> impl DoubleEndedIterator<Item = u32> {
+        (0..MODIFIER_COUNT / 2)
+            .filter(move |bit| self.0 & (1 << bit) != 0)
+            .map(|bit| KEYBOARD_PAGE | (MODIFIER_START + bit))
+    }
+
     fn token(token: &str) -> Option<Self> {
         match token {
             "ctrl" => Some(Self(1)),

@@ -15,6 +15,7 @@ use crate::pin_store::Entry;
 
 mod config;
 mod corners;
+mod gestures;
 mod hotkeys;
 mod pause;
 

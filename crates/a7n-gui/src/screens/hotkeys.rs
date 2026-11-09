@@ -3,6 +3,8 @@
 use eframe::egui;
 
 use crate::{App, theme};
+
+use super::chord_editor::chord_editor;
 use theme::{ButtonKind, ButtonSize};
 
 impl App {
@@ -29,79 +31,55 @@ impl App {
                 if index > 0 {
                     ui.separator();
                 }
-                let key = format!("hotkeys.{name}");
-                let mut value = self.value(&key, "");
-                theme::setting_row(ui, title, help, Some(&key), |ui| {
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(ui.available_width(), theme::size::CONTROL_H),
-                        egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true),
-                        |ui| {
-                            if index == 0 {
-                                ui.add_enabled_ui(!self.recording_trigger, |ui| {
-                                    if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None,
-                                        if self.recording_trigger { "Press a key…" } else { "Record" })
-                                        .clicked()
-                                    {
-                                        self.recording_trigger = true;
-                                        self.send(crate::Command::Request(a7n_ipc::Request::RecordTriggerKey));
-                                    }
-                                });
-                            }
-                            if self.editing_hotkeys[index] {
-                                ui.set_max_width(320.0);
-                                if theme::text_input(
-                                    ui,
-                                    "Shortcut",
-                                    &mut value,
-                                    if name == "home" {
-                                        "scroll_lock,ctrl+alt+shift+home"
-                                    } else {
-                                        "right_alt"
-                                    },
-                                    true,
-                                )
-                                .changed()
-                                {
-                                    self.edit(&key, &value, "");
-                                }
-                                if theme::button(
-                                    ui,
-                                    ButtonKind::Ghost,
-                                    ButtonSize::Sm,
-                                    None,
-                                    "Done",
-                                )
-                                .clicked()
-                                {
-                                    self.editing_hotkeys[index] = false;
-                                }
-                            } else {
-                                for (chord_index, chord) in value.split(',').enumerate() {
-                                    if chord_index > 0 {
-                                        theme::small(ui, "or");
-                                    }
-                                    theme::chord(ui, chord.trim());
-                                }
-                                if theme::button(
-                                    ui,
-                                    ButtonKind::Ghost,
-                                    ButtonSize::Sm,
-                                    None,
-                                    "Edit",
-                                )
-                                .clicked()
-                                {
-                                    self.editing_hotkeys[index] = true;
-                                }
-                            }
-                        },
-                    );
-                });
+                self.hotkey_row(ui, index, name, title, help);
             }
             ui.separator();
             self.trigger_options(ui);
             ui.separator();
             self.shake_option(ui);
+        });
+    }
+
+    fn hotkey_row(&mut self, ui: &mut egui::Ui, index: usize, name: &str, title: &str, help: &str) {
+        let key = format!("hotkeys.{name}");
+        let mut value = self.value(&key, "");
+        theme::setting_row(ui, title, help, Some(&key), |ui| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), theme::size::CONTROL_H),
+                egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true),
+                |ui| {
+                    if index == 0 {
+                        self.record_trigger(ui);
+                    }
+                    let placeholder = if name == "home" {
+                        "scroll_lock,ctrl+alt+shift+home"
+                    } else {
+                        "right_alt"
+                    };
+                    if chord_editor(
+                        ui,
+                        &mut value,
+                        &mut self.editing_hotkeys[index],
+                        placeholder,
+                    ) {
+                        self.edit(&key, &value, "");
+                    }
+                },
+            );
+        });
+    }
+
+    fn record_trigger(&mut self, ui: &mut egui::Ui) {
+        ui.add_enabled_ui(!self.recording_trigger, |ui| {
+            let label = if self.recording_trigger {
+                "Press a key…"
+            } else {
+                "Record"
+            };
+            if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, label).clicked() {
+                self.recording_trigger = true;
+                self.send(crate::Command::Request(a7n_ipc::Request::RecordTriggerKey));
+            }
         });
     }
 

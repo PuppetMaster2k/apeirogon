@@ -35,6 +35,7 @@ impl Tap {
             CGEventType::KeyUp,
             CGEventType::FlagsChanged,
             CGEventType(MEDIA_EVENT),
+            CGEventType(super::gestures::GESTURE_EVENT_TYPE),
             CGEventType::ScrollWheel,
             CGEventType::OtherMouseDown,
             CGEventType::OtherMouseUp,

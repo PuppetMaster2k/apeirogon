@@ -4,7 +4,7 @@
 
 use std::time::{Duration, Instant};
 
-use a7n_proto::v1::InputEvent;
+use a7n_proto::v1::{InputEvent, KeyEvent};
 use tokio::sync::mpsc;
 
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -16,6 +16,10 @@ pub(crate) mod macos;
 #[cfg(all(test, not(target_os = "macos")))]
 #[path = "input/macos/keymap.rs"]
 mod macos_keymap;
+#[cfg(all(test, not(target_os = "macos")))]
+// Exercise the pure classifier on CI without an AppKit runtime.
+#[path = "input/macos/capture/swipe.rs"]
+mod macos_swipe;
 mod scroll;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod wayland;
@@ -23,6 +27,11 @@ mod wayland;
 pub(crate) mod windows;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod x11;
+
+/// Whether received swipes expand into local keyboard shortcuts.
+pub const GESTURE_CHORDS_SUPPORTED: bool = cfg!(windows);
+/// Whether this backend can send or receive the gesture capability.
+pub const GESTURES_SUPPORTED: bool = cfg!(any(windows, target_os = "macos"));
 
 pub const KEEPALIVE_INTERVAL: Duration = Duration::from_millis(500);
 pub const DEADMAN_TIMEOUT: Duration = Duration::from_millis(1500);
@@ -68,6 +77,7 @@ pub struct Capture {
 
 #[derive(Debug)]
 pub enum Inject {
+    Chord(Vec<KeyEvent>),
     Event(InputEvent),
     Motion { dx: i32, dy: i32 },
     Warp { x: i32, y: i32 },

@@ -57,6 +57,8 @@ fn run(
     };
     while let Some(command) = commands.blocking_recv() {
         let (point, dx, dy) = match command {
+            // Only the Windows receiver expands gestures into chord commands.
+            Inject::Chord(_) => continue,
             Inject::Event(event) => {
                 state.event(&event)?;
                 continue;

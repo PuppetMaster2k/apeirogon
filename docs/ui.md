@@ -291,6 +291,7 @@ theme::setting_row(ui, "Clipboard",
     ]); });
 ```
 
+- On Windows, Hotkeys includes a "Trackpad gestures" card with one chord row per Mac swipe direction. Edit uses the existing shortcut text field; Clear displays Off. Save and validation errors use the same flow as hotkeys. The card is hidden on other platforms.
 - Peer config hints use the leaf key (`allow_drive`, `clipboard`, `files`, `modifier_remap`); hotkeys keep their `hotkeys.*` hints. Setting controls stay right-aligned alongside their labels and help.
 - Use the same human key names in chords, remap keycaps and ComboBox values/options (`R Alt`, `Scroll Lock`, `Home`, `L Ctrl`). Meta is Win on Windows, Cmd on macOS and Super elsewhere; stored values keep the config syntax.
 - Choose modifier mode with an Auto / Off / Custom segmented control. Auto swaps Cmd and Ctrl between a Mac and a PC. Only Custom shows the remap grid and "Reset all".

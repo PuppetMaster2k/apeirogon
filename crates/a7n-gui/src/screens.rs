@@ -5,8 +5,10 @@ use eframe::egui;
 use super::{App, Command, Screen, theme};
 use theme::{BadgeKind, ButtonKind, ButtonSize, IconButtonKind, icon};
 
+mod chord_editor;
 mod files;
 mod firewall;
+mod gestures;
 mod hotkeys;
 mod machines;
 mod peers;
@@ -38,6 +40,10 @@ impl App {
         }
         if self.screen == Screen::Hotkeys {
             self.hotkeys(ui);
+            if a7n_platform::input::GESTURE_CHORDS_SUPPORTED {
+                ui.add_space(theme::size::SECTION_GAP);
+                self.gestures(ui);
+            }
         } else {
             self.peers(ui);
         }

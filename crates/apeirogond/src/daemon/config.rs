@@ -21,6 +21,7 @@ impl Daemon {
             .unwrap_or_else(|| self.identity.machine_id.to_string());
         self.input.scale = MotionScale::new(config.input.speed);
         self.input.hotkeys = HotkeyMatcher::new(config.bindings());
+        self.input.gestures = config.gesture_bindings();
         self.input.shake = ShakeDetector::new(config.hotkeys.shake);
         self.config = config;
         self.config_path = path;
@@ -58,6 +59,7 @@ impl Daemon {
             self.input.scale = MotionScale::new(config.input.speed);
         }
         self.input.hotkeys = HotkeyMatcher::new(config.bindings());
+        self.input.gestures = config.gesture_bindings();
         self.input.shake = ShakeDetector::new(config.hotkeys.shake);
         self.config = config;
         self.recheck_files_policy();
