@@ -293,7 +293,9 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
             }
             for problem in &status.firewall {
                 writeln!(output, "firewall: {problem}")?;
-                writeln!(output, "  fix: {}", problem.fix())?;
+                if let Some(fix) = problem.fix() {
+                    writeln!(output, "  fix: {fix}")?;
+                }
             }
             writeln!(output, "{} {} (this machine)", status.name, status.machine)?;
             for peer in &status.peers {

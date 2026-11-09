@@ -12,6 +12,9 @@ pub(super) fn firewall_warnings(ui: &mut egui::Ui, problems: &[FirewallProblem])
     for problem in problems {
         theme::card(ui, |ui| {
             theme::warning(ui, &format!("Windows Firewall: {problem}"));
+            let Some(fix) = problem.fix() else {
+                return;
+            };
             ui.add_space(theme::size::ROW_GAP / 2.0);
             theme::small(
                 ui,
@@ -19,7 +22,7 @@ pub(super) fn firewall_warnings(ui: &mut egui::Ui, problems: &[FirewallProblem])
             );
             ui.add(
                 egui::Label::new(
-                    egui::RichText::new(problem.fix())
+                    egui::RichText::new(fix)
                         .font(theme::font_mono(FIX_FONT_SIZE))
                         .color(theme::Palette::of(ui.ctx()).text),
                 )

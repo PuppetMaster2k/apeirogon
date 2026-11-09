@@ -47,8 +47,6 @@ impl Display for NetworkProfile {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FirewallProblem {
-    /// The active network is marked Public.
-    PublicNetwork,
     /// No enabled inbound allow rule covers UDP on `ports` for `profiles`.
     MissingAllow {
         program: PathBuf,
@@ -62,7 +60,6 @@ pub enum FirewallProblem {
 impl From<Problem> for FirewallProblem {
     fn from(problem: Problem) -> Self {
         match problem {
-            Problem::PublicNetwork => Self::PublicNetwork,
             Problem::MissingAllow {
                 program,
                 ports,
@@ -78,27 +75,22 @@ impl From<Problem> for FirewallProblem {
 }
 
 impl FirewallProblem {
-    /// What the user does about it: a setting to change or a command to run elevated.
+    /// An elevated command to add our own allow rule, when its path is paste-safe.
+    /// `Blocked` has no command because the rule belongs to someone else.
     #[must_use]
-    pub fn fix(&self) -> String {
+    pub fn fix(&self) -> Option<String> {
         match self {
-            Self::PublicNetwork => {
-                "Set this network to Private in Windows Settings > Network & internet.".into()
-            }
             Self::MissingAllow {
                 program,
                 ports,
                 profiles,
-            } => format!(
+            } if !program.to_string_lossy().contains(['$', '`', '%', '"']) => Some(format!(
                 "netsh advfirewall firewall add rule name=\"Apeirogon\" dir=in action=allow program=\"{}\" protocol=UDP localport={} profile={}",
                 program.display(),
                 join(ports, ","),
                 join(profiles, ","),
-            ),
-            Self::Blocked { rule, .. } => format!(
-                "netsh advfirewall firewall delete rule name=\"{}\" dir=in",
-                rule.replace('"', "\\\""),
-            ),
+            )),
+            Self::MissingAllow { .. } | Self::Blocked { .. } => None,
         }
     }
 }
@@ -106,7 +98,6 @@ impl FirewallProblem {
 impl Display for FirewallProblem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PublicNetwork => f.write_str("this network is Public, which hides this machine"),
             Self::MissingAllow {
                 ports, profiles, ..
             } => write!(
@@ -117,7 +108,7 @@ impl Display for FirewallProblem {
             ),
             Self::Blocked { rule, ports } => write!(
                 f,
-                "firewall rule \"{rule}\" blocks UDP ports {}",
+                "firewall rule \"{rule}\" blocks apeirogond on UDP ports {}",
                 join(ports, ", "),
             ),
         }
@@ -134,36 +125,67 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fix_each_problem_returns_exact_remedy() {
+    fn fix_missing_allow_returns_add_command() {
+        // Arrange
+        let problem = FirewallProblem::MissingAllow {
+            program: PathBuf::from(r"C:\Apps\apeirogond.exe"),
+            ports: vec![42042, 5353],
+            profiles: vec![NetworkProfile::Public],
+        };
+
+        // Act
+        let fix = problem.fix();
+
+        // Assert
+        assert_eq!(
+            fix.as_deref(),
+            Some(
+                r#"netsh advfirewall firewall add rule name="Apeirogon" dir=in action=allow program="C:\Apps\apeirogond.exe" protocol=UDP localport=42042,5353 profile=public"#
+            )
+        );
+    }
+
+    #[test]
+    fn fix_program_path_returns_only_paste_safe_commands() {
         // Arrange
         let cases = [
-            (
-                FirewallProblem::PublicNetwork,
-                "Set this network to Private in Windows Settings > Network & internet.",
-            ),
-            (
-                FirewallProblem::MissingAllow {
-                    program: PathBuf::from(r"C:\Apps\apeirogond.exe"),
-                    ports: vec![42042, 5353],
-                    profiles: vec![NetworkProfile::Domain, NetworkProfile::Private],
-                },
-                r#"netsh advfirewall firewall add rule name="Apeirogon" dir=in action=allow program="C:\Apps\apeirogond.exe" protocol=UDP localport=42042,5353 profile=domain,private"#,
-            ),
-            (
-                FirewallProblem::Blocked {
-                    rule: r#"apeirogond "x""#.into(),
-                    ports: vec![42042],
-                },
-                r#"netsh advfirewall firewall delete rule name="apeirogond \"x\"" dir=in"#,
-            ),
+            (r"C:\Apps\apeirogond.exe", true),
+            (r"C:\Program Files (x86)\apeirogond.exe", true),
+            (r"C:\$Apps\apeirogond.exe", false),
+            (r"C:\`Apps\apeirogond.exe", false),
+            (r"C:\%Apps%\apeirogond.exe", false),
+            (r#"C:\Apps"\apeirogond.exe"#, false),
         ];
+        for (path, expected) in cases {
+            let problem = FirewallProblem::MissingAllow {
+                program: PathBuf::from(path),
+                ports: vec![42042],
+                profiles: vec![NetworkProfile::Public],
+            };
 
-        for (problem, expected) in cases {
             // Act
             let fix = problem.fix();
 
             // Assert
-            assert_eq!(fix, expected);
+            assert_eq!(fix.is_some(), expected, "{path}");
+            if let Some(command) = fix {
+                assert!(command.contains(&format!("program=\"{path}\"")));
+            }
         }
+    }
+
+    #[test]
+    fn fix_blocked_rule_offers_no_command() {
+        // Arrange
+        let problem = FirewallProblem::Blocked {
+            rule: "codex_sandbox_offline_block_inbound".into(),
+            ports: vec![42042],
+        };
+
+        // Act
+        let fix = problem.fix();
+
+        // Assert
+        assert_eq!(fix, None);
     }
 }

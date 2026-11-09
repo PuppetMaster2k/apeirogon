@@ -99,7 +99,10 @@ fn write_response_status_displays_identity_and_peer_states() {
             .collect(),
         nearby: Vec::new(),
         missing_permissions: vec![a7n_ipc::Permission::Accessibility],
-        firewall: vec![a7n_ipc::FirewallProblem::PublicNetwork],
+        firewall: vec![a7n_ipc::FirewallProblem::Blocked {
+            rule: "managed rule".into(),
+            ports: vec![42042],
+        }],
     });
     let mut output = Vec::new();
 
@@ -112,8 +115,7 @@ fn write_response_status_displays_identity_and_peer_states() {
         concat!(
             "input: unavailable (Accessibility permission missing)\n",
             "permission missing: Accessibility\n",
-            "firewall: this network is Public, which hides this machine\n",
-            "  fix: Set this network to Private in Windows Settings > Network & internet.\n",
+            "firewall: firewall rule \"managed rule\" blocks apeirogond on UDP ports 42042\n",
             "local 0123456789abcdef0123456789abcdef (this machine)\n",
             "peer 0123456789abcdef0123456789abcdef connected\n",
             "peer 0123456789abcdef0123456789abcdef offline\n",

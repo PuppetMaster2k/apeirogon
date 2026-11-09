@@ -68,8 +68,6 @@ impl Profiles {
 /// Something that stops peers from reaching this machine.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Problem {
-    /// The active network is marked Public, which hides this machine.
-    PublicNetwork,
     /// No enabled inbound allow rule covers UDP on `ports` for `profiles`.
     MissingAllow {
         program: PathBuf,

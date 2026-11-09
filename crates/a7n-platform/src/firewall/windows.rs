@@ -3,17 +3,23 @@
 //! Reads the firewall through the `INetFwPolicy2` COM API, which any user may
 //! read.
 
-use ::windows::Win32::Foundation::E_UNEXPECTED;
+use ::windows::Win32::Foundation::{E_UNEXPECTED, HANDLE, HLOCAL, LocalFree};
 use ::windows::Win32::NetworkManagement::WindowsFirewall::{
-    INetFwPolicy2, INetFwRule, NET_FW_ACTION_ALLOW, NET_FW_IP_PROTOCOL_ANY, NET_FW_IP_PROTOCOL_TCP,
-    NET_FW_IP_PROTOCOL_UDP, NET_FW_PROFILE_TYPE2, NET_FW_RULE_DIR_IN, NetFwPolicy2,
+    INetFwPolicy2, INetFwRule, INetFwRule3, NET_FW_ACTION_ALLOW, NET_FW_IP_PROTOCOL_ANY,
+    NET_FW_IP_PROTOCOL_TCP, NET_FW_IP_PROTOCOL_UDP, NET_FW_PROFILE_TYPE2, NET_FW_RULE_DIR_IN,
+    NetFwPolicy2,
+};
+use ::windows::Win32::Security::Authorization::ConvertSidToStringSidW;
+use ::windows::Win32::Security::{
+    GetTokenInformation, SECURITY_MAX_SID_SIZE, TOKEN_QUERY, TOKEN_USER, TokenUser,
 };
 use ::windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
 };
 use ::windows::Win32::System::Ole::IEnumVARIANT;
+use ::windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use ::windows::Win32::System::Variant::{VARIANT, VT_DISPATCH, VariantClear};
-use ::windows::core::{Interface, Result as ComResult};
+use ::windows::core::{Interface, Owned, PWSTR, Result as ComResult};
 
 use super::rules::{Action, Direction, Protocol, Rule, evaluate};
 use super::{CheckError, Problem, Profile, Profiles};
@@ -56,8 +62,45 @@ pub(super) fn check(port: u16) -> Result<Vec<Problem>, CheckError> {
     if active == Profiles::default() {
         return Ok(Vec::new());
     }
+    let user_sid = current_user_sid()?;
     let rules = read_rules(&policy)?;
-    Ok(evaluate(&rules, active, &program, &[port, MDNS_PORT]))
+    Ok(evaluate(
+        &rules,
+        active,
+        &program,
+        &[port, MDNS_PORT],
+        &user_sid,
+    ))
+}
+
+fn current_user_sid() -> ComResult<String> {
+    const BUFFER_LEN: usize =
+        (size_of::<TOKEN_USER>() + SECURITY_MAX_SID_SIZE as usize).div_ceil(size_of::<usize>());
+    let mut token = HANDLE::default();
+    let mut buffer = [0usize; BUFFER_LEN];
+    let mut needed = 0;
+    let mut sid = PWSTR::null();
+    // SAFETY: The process pseudo-handle is valid; `token` is an out parameter.
+    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw mut token) }?;
+    // SAFETY: OpenProcessToken returned an owned handle, released on every exit.
+    let token = unsafe { Owned::new(token) };
+    // SAFETY: The buffer is aligned for TOKEN_USER and holds it plus the maximum
+    // SID size. Its pointers are read only after GetTokenInformation succeeds.
+    unsafe {
+        GetTokenInformation(
+            *token,
+            TokenUser,
+            Some(buffer.as_mut_ptr().cast()),
+            u32::try_from(size_of_val(&buffer))
+                .expect("the fixed TOKEN_USER and maximum SID buffer size fits in u32"),
+            &raw mut needed,
+        )?;
+        let user = &*buffer.as_ptr().cast::<TOKEN_USER>();
+        ConvertSidToStringSidW(user.User.Sid, &raw mut sid)?;
+        let text = String::from_utf16_lossy(sid.as_wide());
+        let _ = LocalFree(Some(HLOCAL(sid.0.cast())));
+        Ok(text)
+    }
 }
 
 fn policy() -> ComResult<INetFwPolicy2> {
@@ -131,6 +174,14 @@ fn read_rule(rule: &INetFwRule) -> ComResult<Rule> {
     // SAFETY: `rule` is a live INetFwRule and each getter returns an owned value.
     unsafe {
         let program = rule.ApplicationName()?.to_string();
+        let (local_users, package_id) = match rule.cast::<INetFwRule3>() {
+            Ok(scoped) => (
+                scoped.LocalUserAuthorizedList()?.to_string(),
+                scoped.LocalAppPackageId()?.to_string(),
+            ),
+            // Older rule interfaces lack user and package scopes, so treat them as unscoped.
+            Err(_) => (String::new(), String::new()),
+        };
         Ok(Rule {
             name: rule.Name()?.to_string(),
             enabled: rule.Enabled()?.as_bool(),
@@ -146,6 +197,9 @@ fn read_rule(rule: &INetFwRule) -> ComResult<Rule> {
             },
             protocol: protocol(rule.Protocol()?),
             local_ports: rule.LocalPorts()?.to_string(),
+            remote_addresses: rule.RemoteAddresses()?.to_string(),
+            local_users,
+            package_id,
             program: (!program.is_empty()).then(|| program.into()),
             profiles: Profiles(u32::try_from(rule.Profiles()?).unwrap_or_default()),
         })

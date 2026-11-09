@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{Problem, Profile, Profiles};
+use super::{Problem, Profiles};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Direction {
@@ -38,6 +38,9 @@ pub(super) struct Rule {
     /// None means every program.
     pub program: Option<PathBuf>,
     pub profiles: Profiles,
+    pub local_users: String,
+    pub package_id: String,
+    pub remote_addresses: String,
 }
 
 impl Profiles {
@@ -65,18 +68,16 @@ pub(super) fn evaluate(
     active: Profiles,
     program: &Path,
     ports: &[u16],
+    user_sid: &str,
 ) -> Vec<Problem> {
     if active.is_empty() {
         return Vec::new();
     }
     let relevant: Vec<&Rule> = rules
         .iter()
-        .filter(|rule| rule.reaches(active, program))
+        .filter(|rule| rule.reaches(active, program, user_sid))
         .collect();
     let mut problems = Vec::new();
-    if active.has(Profile::Public) {
-        problems.push(Problem::PublicNetwork);
-    }
     problems.extend(blocking(&relevant, ports));
     problems.extend(missing_allow(&relevant, active, program, ports));
     problems
@@ -84,15 +85,47 @@ pub(super) fn evaluate(
 
 impl Rule {
     /// An enabled inbound UDP rule for this program on one of the active profiles.
-    fn reaches(&self, active: Profiles, program: &Path) -> bool {
+    fn reaches(&self, active: Profiles, program: &Path, user_sid: &str) -> bool {
+        let inbound = self.direction == Direction::Inbound;
+        let udp = matches!(self.protocol, Protocol::Udp | Protocol::Any);
+        let active_profile = self.profiles.intersects(active);
+        let unpackaged = self.package_id.trim().is_empty();
+        let user_matches = self.applies_to_user(user_sid);
+        let program_matches = self
+            .program
+            .as_deref()
+            .is_none_or(|own| same_program(own, program));
         self.enabled
-            && self.direction == Direction::Inbound
-            && matches!(self.protocol, Protocol::Udp | Protocol::Any)
-            && self.profiles.intersects(active)
-            && self
-                .program
-                .as_deref()
-                .is_none_or(|own| same_program(own, program))
+            && inbound
+            && udp
+            && active_profile
+            && unpackaged
+            && user_matches
+            && program_matches
+    }
+
+    fn applies_to_user(&self, user_sid: &str) -> bool {
+        if is_unrestricted(&self.local_users) {
+            return true;
+        }
+        let mut allowed = false;
+        for entry in self.local_users.split('(').skip(1) {
+            let Some((ace, _)) = entry.split_once(')') else {
+                continue;
+            };
+            let mut fields = ace.split(';');
+            let kind = fields.next();
+            let trustee = fields.nth(4);
+            if !trustee.is_some_and(|sid| sid.eq_ignore_ascii_case(user_sid)) {
+                continue;
+            }
+            match kind {
+                Some("D") => return false,
+                Some("A") => allowed = true,
+                _ => {}
+            }
+        }
+        allowed
     }
 
     fn covers(&self, port: u16) -> bool {
@@ -100,10 +133,16 @@ impl Rule {
     }
 }
 
+fn is_unrestricted(spec: &str) -> bool {
+    matches!(spec.trim(), "" | "*")
+}
+
 fn blocking(relevant: &[&Rule], ports: &[u16]) -> Vec<Problem> {
     relevant
         .iter()
         .filter(|rule| rule.action == Action::Block)
+        // A scoped block may leave other peers reachable, so it is not a blanket block.
+        .filter(|rule| is_unrestricted(&rule.remote_addresses))
         .filter_map(|rule| {
             let blocked: Vec<u16> = ports
                 .iter()
@@ -174,7 +213,9 @@ fn covers_port(spec: &str, port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::firewall::Profile;
 
+    const USER_SID: &str = "S-1-5-21-123-456-789-1001";
     const PORT: u16 = 42042;
     const MDNS: u16 = 5353;
     const PRIVATE: Profiles = Profiles(2);
@@ -195,11 +236,14 @@ mod tests {
             local_ports: ports.into(),
             program: Some(program()),
             profiles,
+            local_users: String::new(),
+            package_id: String::new(),
+            remote_addresses: "*".into(),
         }
     }
 
     fn evaluate_private(rules: &[Rule]) -> Vec<Problem> {
-        evaluate(rules, PRIVATE, &program(), &[PORT, MDNS])
+        evaluate(rules, PRIVATE, &program(), &[PORT, MDNS], USER_SID)
     }
 
     #[test]
@@ -339,15 +383,15 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_public_network_is_reported_first() {
+    fn evaluate_public_with_covering_allow_reports_nothing() {
         // Arrange
         let rules = [rule(Action::Allow, "*", ALL_PROFILES)];
 
         // Act
-        let problems = evaluate(&rules, PUBLIC, &program(), &[PORT, MDNS]);
+        let problems = evaluate(&rules, PUBLIC, &program(), &[PORT, MDNS], USER_SID);
 
         // Assert
-        assert_eq!(problems, vec![Problem::PublicNetwork]);
+        assert_eq!(problems, Vec::new());
     }
 
     #[test]
@@ -356,10 +400,150 @@ mod tests {
         let no_active_profile = Profiles::default();
 
         // Act
-        let problems = evaluate(&[], no_active_profile, &program(), &[PORT, MDNS]);
+        let problems = evaluate(&[], no_active_profile, &program(), &[PORT, MDNS], USER_SID);
 
         // Assert
         assert_eq!(problems, Vec::new());
+    }
+
+    #[test]
+    fn evaluate_block_for_other_user_reports_nothing() {
+        // Arrange
+        let allow = rule(Action::Allow, "*", PRIVATE);
+        let mut block = rule(Action::Block, "*", PRIVATE);
+        block.local_users = format!("D:(A;;CC;;;{USER_SID}0)");
+
+        // Act
+        let problems = evaluate_private(&[allow, block]);
+
+        // Assert
+        assert_eq!(problems, Vec::new());
+    }
+
+    #[test]
+    fn evaluate_block_listing_current_user_reports_blocked() {
+        // Arrange
+        let allow = rule(Action::Allow, "*", PRIVATE);
+        let mut block = rule(Action::Block, "*", PRIVATE);
+        block.local_users = format!("D:(A;;CC;;;S-1-5-18)(A;;CC;;;{USER_SID})");
+        block.remote_addresses = String::new();
+
+        // Act
+        let problems = evaluate_private(&[allow, block]);
+
+        // Assert
+        assert!(matches!(problems.as_slice(), [Problem::Blocked { .. }]));
+    }
+
+    #[test]
+    fn evaluate_block_with_specific_remote_addresses_reports_nothing() {
+        // Arrange
+        let addresses = ["LocalSubnet", "192.0.2.1", "10.0.0.0/8"];
+        for address in addresses {
+            let allow = rule(Action::Allow, "*", PRIVATE);
+            let mut block = rule(Action::Block, "*", PRIVATE);
+            block.remote_addresses = address.into();
+
+            // Act
+            let problems = evaluate_private(&[allow, block]);
+
+            // Assert
+            assert!(problems.is_empty(), "{address}");
+        }
+    }
+
+    #[test]
+    fn evaluate_allow_with_local_subnet_counts_as_allow() {
+        // Arrange
+        let mut allow = rule(Action::Allow, "*", PRIVATE);
+        allow.remote_addresses = "LocalSubnet".into();
+        allow.local_users = "*".into();
+
+        // Act
+        let problems = evaluate_private(&[allow]);
+
+        // Assert
+        assert_eq!(problems, Vec::new());
+    }
+
+    #[test]
+    fn evaluate_allow_for_other_user_reports_missing_allow() {
+        // Arrange
+        let mut allow = rule(Action::Allow, "*", PRIVATE);
+        allow.local_users = "D:(A;;CC;;;S-1-5-18)".into();
+
+        // Act
+        let problems = evaluate_private(&[allow]);
+
+        // Assert
+        assert!(matches!(
+            problems.as_slice(),
+            [Problem::MissingAllow { .. }]
+        ));
+    }
+
+    #[test]
+    fn applies_to_user_deny_ace_overrides_allow() {
+        // Arrange
+        let cases = [
+            format!("D:(A;;CC;;;{USER_SID})(D;;CC;;;{USER_SID})"),
+            format!("D:(D;;CC;;;{USER_SID})(A;;CC;;;{USER_SID})"),
+            format!("D:(D;;CC;;;{USER_SID})"),
+        ];
+        for sddl in cases {
+            let mut scoped = rule(Action::Block, "*", PRIVATE);
+            scoped.local_users = sddl;
+
+            // Act
+            let applies = scoped.applies_to_user(USER_SID);
+
+            // Assert
+            assert!(!applies);
+        }
+    }
+
+    #[test]
+    fn applies_to_user_owner_only_does_not_apply() {
+        // Arrange
+        let mut scoped = rule(Action::Block, "*", PRIVATE);
+        scoped.local_users = format!("O:{USER_SID}D:(A;;CC;;;S-1-5-18)");
+
+        // Act
+        let applies = scoped.applies_to_user(USER_SID);
+
+        // Assert
+        assert!(!applies);
+    }
+
+    #[test]
+    fn applies_to_user_allow_trustee_ignores_case() {
+        // Arrange
+        let mut scoped = rule(Action::Allow, "*", PRIVATE);
+        scoped.local_users = format!("D:(A;;CC;;;{})", USER_SID.to_lowercase());
+
+        // Act
+        let applies = scoped.applies_to_user(USER_SID);
+
+        // Assert
+        assert!(applies);
+    }
+
+    #[test]
+    fn evaluate_package_scoped_rules_do_not_apply() {
+        // Arrange
+        for action in [Action::Allow, Action::Block] {
+            let mut scoped = rule(action, "*", PRIVATE);
+            scoped.package_id = "S-1-15-2-123".into();
+
+            // Act
+            let problems = evaluate_private(&[scoped]);
+
+            // Assert
+            assert!(matches!(
+                problems.as_slice(),
+                [Problem::MissingAllow { .. }]
+            ));
+        }
     }
 
     #[test]
