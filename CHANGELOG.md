@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.20.0...v0.21.0) (2026-11-09)
+
+
+### Features
+
+* drive Windows shortcuts with Mac trackpad swipes ([#178](https://github.com/PuppetMaster2k/apeirogon/issues/178)) ([9c336e8](https://github.com/PuppetMaster2k/apeirogon/commit/9c336e87325e3ccf2c23ee2f8def24e310cd3919))
+
 ## [0.20.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.19.0...v0.20.0) (2026-11-09)
 
 
