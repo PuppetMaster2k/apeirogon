@@ -87,6 +87,34 @@ Every item must pass before a release.
 
 ## Trackpad swipe shortcuts (#97)
 
+Build this branch on both machines. Pair the Mac with Windows, grant the Mac
+Accessibility and Input Monitoring permissions, and verify input can drive
+Windows. Keep the default Windows gesture bindings for the guided test.
+From the repository root on the Mac, run:
+
+```sh
+./scripts/test-macos-gestures.sh
+# Or select the CLI built from this branch:
+A7N="$PWD/target/release/a7n" ./scripts/test-macos-gestures.sh
+```
+
+Each Enter starts an eight-second window: switch input to Windows, perform
+only the named action, then return home for the next prompt. Lift all fingers
+between steps. Enable the matching three-/four-finger system settings yourself
+when needed; the script only reads them. Only swipes captured while driving
+a peer with negotiated gesture support produce gesture log entries; swipes
+at home or to unsupported peers are not counted. PASS requires one new entry per swipe, zero for false-trigger checks, and yes to each visual check.
+Zero delivery stops with “macOS does not deliver touches to the event tap”;
+other count mismatches or negative answers produce FAIL. A log-read failure
+or rotation blocks the test rather than claiming no touches arrived.
+
+Attach the generated `gesture-test-<UTC timestamp>.md` to #97 on failure,
+not raw logs. State whether the daemon ran by hand or at login; the report
+includes OS/build, model, gesture settings and results without peer identities
+or touch data. Complete the remaining checklist yourself: Windows binding
+edits, GUI, capability peers, finger-count changes, and dead-man/permission
+recovery are not covered by the guide.
+
 - [ ] Pair the Mac with Windows; enable three-finger, then four-finger system
   swipes in macOS Trackpad settings. Test the built-in trackpad and an external
   Magic Trackpad if available, with the daemon running in the background.

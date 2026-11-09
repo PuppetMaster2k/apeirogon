@@ -233,3 +233,48 @@ async fn forward_capture_swipe_requires_only_negotiated_capability() {
         b.stop().await;
     }
 }
+
+#[tokio::test]
+async fn captured_swipe_while_driving_forwards_to_negotiated_peer() {
+    // Arrange
+    let (receiver, _dir, _input, mut owner, _owner_dir) = receiver(vec![]).await;
+    let peer = receiver.identity.machine_id;
+    let (sender, mut outbound) = mpsc::channel(1);
+    let link = owner.links.by_peer.get_mut(&peer).unwrap();
+    link.capabilities.push(Capability::Gestures);
+    link.sender = sender;
+    owner.take_peer(peer, None, now());
+    owner
+        .input
+        .focus
+        .on_accept(peer, &a7n_proto::v1::Accept { route: 1 });
+    let event = swipe(Gesture::SwipeUp);
+
+    // Act
+    owner.captured(Some(Captured::Input(event.clone()))).await;
+
+    // Assert
+    assert!(matches!(outbound.try_recv().unwrap().body,
+        Some(Body::Input(batch)) if batch.events == [event]));
+    assert!(outbound.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn captured_swipe_at_home_does_not_forward_to_negotiated_peer() {
+    // Arrange
+    let (receiver, _dir, _input, mut owner, _owner_dir) = receiver(vec![]).await;
+    let peer = receiver.identity.machine_id;
+    let (sender, mut outbound) = mpsc::channel(1);
+    let link = owner.links.by_peer.get_mut(&peer).unwrap();
+    link.capabilities.push(Capability::Gestures);
+    link.sender = sender;
+
+    // Act
+    owner
+        .captured(Some(Captured::Input(swipe(Gesture::SwipeUp))))
+        .await;
+
+    // Assert
+    assert_eq!(owner.input.focus.cursor(), Cursor::Home);
+    assert!(outbound.try_recv().is_err());
+}

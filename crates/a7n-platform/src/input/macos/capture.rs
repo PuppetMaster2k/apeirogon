@@ -258,10 +258,9 @@ impl State {
                 }))
             }
             _ if ty.0 == gestures::GESTURE_EVENT_TYPE => autoreleasepool(|_| {
-                self.swipes.event(event).map(|gesture| {
-                    eprintln!("kind=gesture_swipe");
-                    input_event::Event::Gesture(gesture.into())
-                })
+                self.swipes
+                    .event(event)
+                    .map(|gesture| input_event::Event::Gesture(gesture.into()))
             }),
             _ if ty.0 == MEDIA_EVENT => autoreleasepool(|_| media(event)),
             _ => None,

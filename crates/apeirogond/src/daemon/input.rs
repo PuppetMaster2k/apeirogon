@@ -381,6 +381,7 @@ impl Daemon {
             if self.match_shake(&event).await {
                 return;
             }
+            self.log_driving_gesture(peer, &event);
             self.forward_capture(peer, event);
             return;
         }
@@ -421,9 +422,7 @@ impl Daemon {
                 Body::Motion(motion)
             }
             Captured::Input(mut event) => {
-                if matches!(event.event, Some(Event::Gesture(_)))
-                    && !self.peer_accepts_gestures(peer)
-                {
+                if !self.gesture_allowed(peer, &event) {
                     return;
                 }
                 self.transform_input(&mut event);
