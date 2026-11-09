@@ -84,3 +84,57 @@ Every item must pass before a release.
 - [ ] Cursor lock: Ctrl+Option+Shift+L prevents edge crossing; pressing it
   again restores crossing. Ctrl+Option+Shift+1…9 jumps to the configured
   machine. Repeat with rebound `hotkeys.lock` and `hotkeys.jump` settings.
+
+## Trackpad swipe shortcuts (#97)
+
+Build this branch on both machines. Pair the Mac with Windows, grant the Mac
+Accessibility and Input Monitoring permissions, and verify input can drive
+Windows. Keep the default Windows gesture bindings for the guided test.
+From the repository root on the Mac, run:
+
+```sh
+./scripts/test-macos-gestures.sh
+# Or select the CLI built from this branch:
+A7N="$PWD/target/release/a7n" ./scripts/test-macos-gestures.sh
+```
+
+Each Enter starts an eight-second window: switch input to Windows, perform
+only the named action, then return home for the next prompt. Lift all fingers
+between steps. Enable the matching three-/four-finger system settings yourself
+when needed; the script only reads them. Only swipes captured while driving
+a peer with negotiated gesture support produce gesture log entries; swipes
+at home or to unsupported peers are not counted. PASS requires one new entry per swipe, zero for false-trigger checks, and yes to each visual check.
+Zero delivery stops with “macOS does not deliver touches to the event tap”;
+other count mismatches or negative answers produce FAIL. A log-read failure
+or rotation blocks the test rather than claiming no touches arrived.
+
+Attach the generated `gesture-test-<UTC timestamp>.md` to #97 on failure,
+not raw logs. State whether the daemon ran by hand or at login; the report
+includes OS/build, model, gesture settings and results without peer identities
+or touch data. Complete the remaining checklist yourself: Windows binding
+edits, GUI, capability peers, finger-count changes, and dead-man/permission
+recovery are not covered by the guide.
+
+- [ ] Pair the Mac with Windows; enable three-finger, then four-finger system
+  swipes in macOS Trackpad settings. Test the built-in trackpad and an external
+  Magic Trackpad if available, with the daemon running in the background.
+- [ ] At home, swipes still operate macOS normally. While driving Windows,
+  each up/down/left/right swipe performs exactly one Task View/show desktop/
+  previous desktop/next desktop action. macOS must not also open Mission
+  Control or switch Spaces. Check logs for `kind=gesture_swipe` only, never
+  touch coordinates. If no swipe arrives, verify whether public event-tap
+  NSEvents contain touches; record OS version, device and finger setting.
+- [ ] Hold fingers after crossing the threshold, reverse direction, and add or
+  remove a finger: no second shortcut until all fingers lift. Short movements,
+  two-finger scrolling, pinch and spread must not activate a shortcut.
+- [ ] Change each Windows `gestures.swipe_*` binding using config get/set and
+  reload; confirm the new chord fires without restarting. Clear a binding:
+  only that swipe stops. Invalid chords must fail without changing settings.
+- [ ] In the Windows GUI, open Hotkeys → Trackpad gestures; edit, clear, save,
+  discard/reload, and try an invalid chord. macOS GUI must not show the card.
+- [ ] Drive another Mac with the gesture capability: swipes are safely ignored
+  by its injector. Drive Linux or a peer without that capability: no gesture
+  is sent. Ordinary keyboard input and two-finger scrolling still work.
+- [ ] Return home or pause mid-swipe and start driving again: no stale swipe
+  or held shortcut modifiers. Revoke permissions or stop the daemon during
+  a grab and confirm the dead-man release restores local input.

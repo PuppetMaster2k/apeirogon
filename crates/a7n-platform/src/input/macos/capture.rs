@@ -28,7 +28,10 @@ use super::{
 use crate::input::{CaptureControl, Captured, DeadMan, InputError};
 use crate::permissions;
 
+mod gestures;
 mod tap;
+
+use gestures::Swipes;
 
 use tap::Tap;
 
@@ -45,6 +48,7 @@ struct State {
     permission_checked: Instant,
     keys: [bool; KEY_COUNT],
     anchor: CGPoint,
+    swipes: Swipes,
 }
 
 pub(super) fn spawn(
@@ -64,6 +68,7 @@ pub(super) fn spawn(
                 permission_checked: Instant::now(),
                 keys: [false; KEY_COUNT],
                 anchor: CGPoint::new(0.0, 0.0),
+                swipes: Swipes::default(),
             });
             let outcome = run(&state, control, &ready);
             state.borrow_mut().grab(false);
@@ -158,6 +163,7 @@ impl State {
             let _ = CGAssociateMouseAndMouseCursorPosition(true);
             let _ = CGDisplayShowCursor(CGMainDisplayID());
         }
+        self.swipes = Swipes::default();
         self.grabbed = grab;
     }
 
@@ -225,27 +231,7 @@ impl State {
                 });
                 None
             }
-            CGEventType::ScrollWheel => {
-                let continuous = field(CGEventField::ScrollWheelEventIsContinuous) != 0;
-                let (x, y, unit) = if continuous {
-                    (
-                        CGEventField::ScrollWheelEventPointDeltaAxis2,
-                        CGEventField::ScrollWheelEventPointDeltaAxis1,
-                        ScrollUnit::Pixel,
-                    )
-                } else {
-                    (
-                        CGEventField::ScrollWheelEventDeltaAxis2,
-                        CGEventField::ScrollWheelEventDeltaAxis1,
-                        ScrollUnit::Line,
-                    )
-                };
-                Some(input_event::Event::Scroll(ScrollEvent {
-                    dx: scroll_delta(field(x)),
-                    dy: -scroll_delta(field(y)),
-                    unit: unit.into(),
-                }))
-            }
+            CGEventType::ScrollWheel => Some(scroll(event)),
             CGEventType::LeftMouseDown
             | CGEventType::LeftMouseUp
             | CGEventType::RightMouseDown
@@ -271,6 +257,11 @@ impl State {
                     down,
                 }))
             }
+            _ if ty.0 == gestures::GESTURE_EVENT_TYPE => autoreleasepool(|_| {
+                self.swipes
+                    .event(event)
+                    .map(|gesture| input_event::Event::Gesture(gesture.into()))
+            }),
             _ if ty.0 == MEDIA_EVENT => autoreleasepool(|_| media(event)),
             _ => None,
         };
@@ -279,6 +270,29 @@ impl State {
         }
         self.grabbed
     }
+}
+
+fn scroll(event: &CGEvent) -> input_event::Event {
+    let continuous =
+        CGEvent::integer_value_field(Some(event), CGEventField::ScrollWheelEventIsContinuous) != 0;
+    let (x, y, unit) = if continuous {
+        (
+            CGEventField::ScrollWheelEventPointDeltaAxis2,
+            CGEventField::ScrollWheelEventPointDeltaAxis1,
+            ScrollUnit::Pixel,
+        )
+    } else {
+        (
+            CGEventField::ScrollWheelEventDeltaAxis2,
+            CGEventField::ScrollWheelEventDeltaAxis1,
+            ScrollUnit::Line,
+        )
+    };
+    input_event::Event::Scroll(ScrollEvent {
+        dx: scroll_delta(CGEvent::integer_value_field(Some(event), x)),
+        dy: -scroll_delta(CGEvent::integer_value_field(Some(event), y)),
+        unit: unit.into(),
+    })
 }
 
 fn key_event(usage: u32, down: bool) -> input_event::Event {
@@ -360,6 +374,7 @@ mod tests {
             permission_checked: start,
             keys: [false; KEY_COUNT],
             anchor: CGPoint::new(0.0, 0.0),
+            swipes: Swipes::default(),
         };
         let offsets = [
             Duration::ZERO,

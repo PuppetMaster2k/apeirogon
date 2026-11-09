@@ -182,6 +182,8 @@ impl Injecting {
     /// Performs one command and returns the pointer report it earns, if any.
     fn apply(&mut self, command: Inject) -> Option<Captured> {
         match command {
+            // Only the Windows receiver expands gestures into chord commands.
+            Inject::Chord(_) => None,
             Inject::Event(event) => {
                 self.event(&event);
                 None

@@ -13,8 +13,10 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 mod files;
+mod gestures;
 mod hotkeys;
 pub use files::FilesConfig;
+pub use gestures::GestureConfig;
 pub use hotkeys::HotkeyConfig;
 
 const MIN_SPEED: f64 = 0.1;
@@ -28,6 +30,7 @@ pub struct Config {
     pub port: u16,
     pub input: InputConfig,
     pub hotkeys: HotkeyConfig,
+    pub gestures: GestureConfig,
     pub sync: SyncConfig,
     pub peers: BTreeMap<String, PeerConfig>,
     pub clipboard: ClipboardConfig,
@@ -42,6 +45,7 @@ impl Default for Config {
             port: limits::DEFAULT_UDP_PORT,
             input: InputConfig::default(),
             hotkeys: HotkeyConfig::default(),
+            gestures: GestureConfig::default(),
             sync: SyncConfig::default(),
             peers: BTreeMap::new(),
             clipboard: ClipboardConfig::default(),
@@ -272,6 +276,7 @@ impl Config {
             ));
         }
         self.parse_bindings()?;
+        self.gestures.bindings()?;
         if self
             .files
             .receive_dir
@@ -336,6 +341,10 @@ impl Config {
                 | ["files", "receive_dir"]
                 | ["peers", _, "clipboard" | "files" | "modifier_mode"]
                 | ["peers", _, "modifier_remap", _]
+                | [
+                    "gestures",
+                    "swipe_up" | "swipe_down" | "swipe_left" | "swipe_right",
+                ]
                 | ["hotkeys", "double_tap" | "trigger_mode" | "lock" | "jump"] => {
                     toml::Value::String(value.into())
                 }

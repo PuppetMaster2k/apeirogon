@@ -16,6 +16,7 @@ use tokio::sync::oneshot;
 use super::{Daemon, DaemonError};
 
 mod actions;
+mod gestures;
 mod hotkeys;
 mod landing;
 mod recording;
@@ -34,6 +35,7 @@ pub(super) struct Input {
     pub(super) scale: MotionScale,
     pub(super) modifier_remap: BTreeMap<u32, u32>,
     pub(super) hotkeys: HotkeyMatcher,
+    pub(super) gestures: a7n_core::gestures::Bindings,
     pub(super) shake: ShakeDetector,
     pub(super) recording: recording::Recording,
     resistance: EdgeResistance,
@@ -62,6 +64,7 @@ impl Input {
             scale: MotionScale::new(1.0),
             modifier_remap: BTreeMap::new(),
             hotkeys: HotkeyMatcher::new(a7n_ipc::config::Config::default().bindings()),
+            gestures: a7n_ipc::config::Config::default().gesture_bindings(),
             shake: ShakeDetector::new(SHAKE_DEFAULT),
             recording: recording::Recording::default(),
             resistance: EdgeResistance::new(0),
@@ -337,10 +340,18 @@ impl Daemon {
             .tracker
             .resync(batch.motion_seq, batch.motion_x, batch.motion_y);
         self.inject_motion(delta).await;
+        let mut gesture_seen = false;
         for event in &batch.events {
-            if self.input.focus.on_input_event(peer, route, event, now()) {
-                self.input.inject(Inject::Event(event.clone())).await;
+            if !self.input.focus.on_input_event(peer, route, event, now()) {
+                continue;
             }
+            if let Some(Event::Gesture(gesture)) = &event.event {
+                if !std::mem::replace(&mut gesture_seen, true) {
+                    self.inject_gesture(peer, *gesture).await;
+                }
+                continue;
+            }
+            self.input.inject(Inject::Event(event.clone())).await;
         }
     }
 
@@ -370,6 +381,7 @@ impl Daemon {
             if self.match_shake(&event).await {
                 return;
             }
+            self.log_driving_gesture(peer, &event);
             self.forward_capture(peer, event);
             return;
         }
@@ -410,6 +422,9 @@ impl Daemon {
                 Body::Motion(motion)
             }
             Captured::Input(mut event) => {
+                if !self.gesture_allowed(peer, &event) {
+                    return;
+                }
                 self.transform_input(&mut event);
                 let motion = self.input.counter.current();
                 // ponytail: one event per batch; coalesce when capture throughput needs it.

@@ -194,8 +194,19 @@ crates/
   from config.
 - **Scroll:** pixel (trackpad) or line (wheel) units; the sender applies its
   natural-scrolling preference first.
-- **Gestures:** swipes, pinch and spread forwarded where both sides support
-  them.
+- **Gestures:** three- and four-finger Mac trackpad swipes drive local Windows
+  shortcuts when the gesture capability is negotiated. The receiving Windows
+  machine configures `[gestures]`: `swipe_up = "meta+tab"` (Task View),
+  `swipe_down = "meta+d"` (desktop), `swipe_left = "ctrl+meta+left"` and
+  `swipe_right = "ctrl+meta+right"` (virtual desktops). Empty strings turn a
+  swipe off; chords accept ctrl, shift, alt, meta and one key, including tab
+  and arrow names. Use `a7n config get gestures.swipe_up` or
+  `a7n config set gestures.swipe_up meta+tab`, or the Windows GUI's Trackpad
+  gestures card under Hotkeys. These bindings stay local and never sync.
+  A modifier already held during a swipe combines with the shortcut.
+  Pinch and spread have no shortcut mapping. Capture uses public AppKit touch
+  APIs; delivery and suppression of macOS system gestures require hardware
+  verification (see the macOS input checklist).
 - **Layout:** 2D canvas of whole-machine rectangles (each machine's virtual
   desktop). Known physical sizes use 0.1 mm canvas units; “Use real sizes”
   resizes and lines up the draft before Save. Edges connect where rectangles

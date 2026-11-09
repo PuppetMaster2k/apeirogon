@@ -75,6 +75,8 @@ impl InjectThread {
     /// Breaks when the X connection fails or the daemon stopped listening.
     fn handle(&mut self, command: Inject, pointer: &Sender<Captured>) -> ControlFlow<()> {
         let report = match command {
+            // Only the Windows receiver expands gestures into chord commands.
+            Inject::Chord(_) => Ok(None),
             Inject::Event(event) => self.event(&event).map(|()| None),
             Inject::Motion { dx, dy } => self.motion(dx, dy).map(|()| Some((dx, dy))),
             Inject::Warp { x, y } => self.warp(x, y).map(|()| Some((0, 0))),
