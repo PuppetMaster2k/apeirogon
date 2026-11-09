@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.19.0...v0.20.0) (2026-11-09)
+
+
+### Features
+
+* warn when the Windows firewall blocks links ([#176](https://github.com/PuppetMaster2k/apeirogon/issues/176)) ([c636152](https://github.com/PuppetMaster2k/apeirogon/commit/c636152fcffc1c4daf1c3f8ec58307bd5b9769f2))
+
 ## [0.19.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.18.0...v0.19.0) (2026-11-06)
 
 
