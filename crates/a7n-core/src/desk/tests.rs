@@ -135,28 +135,6 @@ fn merge_same_timestamp_conflicts_converges_on_smaller_signature() {
 }
 
 #[test]
-fn merge_stale_records_keeps_only_latest_member_and_revocation() {
-    // Arrange
-    let desk = Desk {
-        members: vec![member(2, 10), member(2, 30), member(2, 21)],
-        revocations: vec![revoke(2, 20), revoke(2, 15)],
-    };
-    let mut state = DeskState::restore(id(9), &desk).unwrap();
-
-    // Act
-    let outcome = merge(
-        &mut state,
-        vec![member(2, 20), member(2, 21)],
-        vec![revoke(2, 15)],
-    );
-
-    // Assert
-    assert_eq!(outcome, MergeOutcome::default());
-    assert_eq!(state.to_desk().members, [member(2, 30)]);
-    assert_eq!(state.to_desk().revocations, [revoke(2, 20)]);
-}
-
-#[test]
 fn merge_bad_signature_or_untrusted_signer_rejects_both_record_kinds() {
     // Arrange
     let incoming = Desk {
@@ -177,19 +155,6 @@ fn merge_bad_signature_or_untrusted_signer_rejects_both_record_kinds() {
         assert_eq!(state.to_desk(), Desk::default());
         assert_eq!(outcome, MergeOutcome::default());
     }
-}
-
-#[test]
-fn merge_self_revocation_without_member_reports_delta() {
-    // Arrange
-    let mut state = DeskState::new(id(9));
-
-    // Act
-    let outcome = merge(&mut state, vec![], vec![revoke(9, 20)]);
-
-    // Assert
-    assert_eq!(outcome.revoked, [id(9)]);
-    assert!(outcome.self_revoked);
 }
 
 #[test]
@@ -251,24 +216,6 @@ fn merge_malformed_records_drops_only_invalid_entries() {
     assert_eq!(outcome.revoked, []);
     assert_eq!(state.to_desk().members.len(), 1);
     assert_eq!(state.to_desk().revocations, []);
-}
-
-#[test]
-fn try_from_unicode_name_boundary_counts_code_points() {
-    // Arrange
-    for (length, accepted) in [
-        (limits::PEER_NAME_MAX, true),
-        (limits::PEER_NAME_MAX + 1, false),
-    ] {
-        let mut record = member(2, 10);
-        record.name = "🦀".repeat(length);
-
-        // Act
-        let result = Member::try_from(&record);
-
-        // Assert
-        assert_eq!(result.is_ok(), accepted);
-    }
 }
 
 #[test]

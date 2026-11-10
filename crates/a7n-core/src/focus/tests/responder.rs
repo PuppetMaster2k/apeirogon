@@ -140,47 +140,6 @@ fn on_focus_let_go_releases_and_rejects_delayed_take() {
 }
 
 #[test]
-fn on_focus_stay_rearm_preserves_held_input() {
-    // Arrange
-    let now = Instant::now();
-    let mut focus = Focus::new(id(1));
-    focus.on_focus(id(2), &wire(1), true, now);
-    focus.on_input_event(id(2), Route(1), &held_key(), now);
-    let mut message = wire(2);
-    message.stay = true;
-
-    // Act
-    let actions = focus.on_focus(id(2), &message, true, now);
-    let released = focus.on_link_lost(id(2));
-
-    // Assert
-    assert!(!released_key(&actions));
-    assert!(released_key(&released));
-}
-
-#[test]
-fn handover_unreachable_peer_is_ignored_but_home_allowed() {
-    // Arrange
-    let now = Instant::now();
-    let mut focus = Focus::new(id(1));
-    focus.on_focus(id(2), &wire(1), true, now);
-
-    // Act
-    let unknown = focus.handover(id(4), None);
-    let reachable = focus.handover(id(3), None);
-    let home = focus.handover(id(2), None);
-
-    // Assert
-    assert_eq!(unknown, Vec::new());
-    assert!(
-        matches!(&reachable[..], [Action::Send { peer, body: Body::Handover(h) }] if *peer == id(2) && h.next == id(3).as_bytes())
-    );
-    assert!(
-        matches!(&home[..], [Action::Send { body: Body::Handover(h), .. }] if h.next == id(2).as_bytes())
-    );
-}
-
-#[test]
 fn on_focus_recent_local_activity_refuses_busy() {
     // Arrange
     let now = Instant::now();

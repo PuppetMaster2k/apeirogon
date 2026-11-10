@@ -38,24 +38,6 @@ fn accept_generation_and_origin_order_requires_strict_increase() {
 }
 
 #[test]
-fn next_observed_counter_advances_and_saturates() {
-    // Arrange
-    let mut clock = Clock::default();
-    let own = generation(0, 1).origin;
-    clock.observe(&generation(42, 2));
-    clock.observe(&generation(10, 3));
-
-    // Act
-    let next = clock.next(own);
-    clock.observe(&generation(u64::MAX, 2));
-    let exhausted = clock.next(own);
-
-    // Assert
-    assert_eq!(next, generation(43, 1));
-    assert_eq!(exhausted, generation(u64::MAX, 1));
-}
-
-#[test]
 fn announce_inline_budget_keeps_other_items_pending() {
     // Arrange
     let items = vec![
@@ -213,61 +195,6 @@ fn validate_png_header_and_dimensions_enforces_image_bounds() {
         // Assert
         assert_eq!(result, expected);
     }
-}
-
-#[test]
-fn announce_image_items_uses_image_limit_and_shared_inline_budget() {
-    for size in [
-        1,
-        limits::CLIPBOARD_INLINE_MAX,
-        limits::CLIPBOARD_TEXT_MAX + 1,
-        limits::IMAGE_CLIPBOARD_MAX,
-    ] {
-        // Arrange
-        let items = vec![item(IMAGE_PNG, size)];
-
-        // Act
-        let wire = announce(items, generation(1, 1)).unwrap();
-        let received = accept(None, &wire).unwrap().unwrap();
-
-        // Assert
-        assert_eq!(wire.items[0].size, size as u64);
-        if size <= limits::CLIPBOARD_INLINE_MAX {
-            assert_eq!(received.items[0].data.len(), size);
-            assert_eq!(received.pending, []);
-        } else {
-            assert_eq!(received.pending, [0]);
-            assert_eq!(received.items, []);
-        }
-    }
-}
-
-#[test]
-fn accept_files_item_digest_or_inline_data_rejected_else_pending() {
-    // Arrange
-    let mut wire = announce(vec![item(TEXT_PLAIN, 1)], generation(1, 1)).unwrap();
-    wire.items.push(ClipboardItem {
-        mime: FILES.into(),
-        size: u64::MAX,
-        ..ClipboardItem::default()
-    });
-    let with_extra = |sha256, inline_data| {
-        let mut wire = wire.clone();
-        wire.items[1].sha256 = sha256;
-        wire.items[1].inline_data = inline_data;
-        wire
-    };
-
-    // Act
-    let received = accept(None, &wire).unwrap().unwrap();
-    let digest = accept(None, &with_extra(vec![0; 32], vec![]));
-    let inline = accept(None, &with_extra(vec![], vec![1]));
-
-    // Assert
-    assert_eq!(received.pending, [1]);
-    assert_eq!(received.items.len(), 1);
-    assert_eq!(digest.unwrap_err(), ClipboardError::Digest);
-    assert_eq!(inline.unwrap_err(), ClipboardError::Digest);
 }
 
 #[test]

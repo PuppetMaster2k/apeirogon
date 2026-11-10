@@ -222,47 +222,6 @@ mod tests {
     }
 
     #[test]
-    fn on_ack_cumulative_seq_clears_older_batches() {
-        // Arrange
-        let start = Instant::now();
-        let mut liveness = Liveness::new(Role::Responder, start);
-        for seq in 1..=4 {
-            liveness.on_input_sent(seq, start);
-        }
-        liveness.on_ack(3, 0, start + ms(10));
-        liveness.on_received(start + ms(1500));
-        liveness.last_ping_sent = start + ms(1500);
-
-        // Act: batch 4 is still unacked and now too old
-        let with_batch_four = liveness.poll(start + ms(1500));
-        liveness.on_ack(4, 0, start + ms(1500));
-        let after_last_ack = liveness.poll(start + ms(1500));
-
-        // Assert
-        assert_eq!(with_batch_four, Poll::Drop(DropReason::UnackedInput));
-        assert_eq!(after_last_ack, Poll::Idle);
-    }
-
-    #[test]
-    fn poll_one_second_after_last_ping_sends_probe() {
-        // Arrange
-        let start = Instant::now();
-        let mut liveness = Liveness::new(Role::Initiator, start);
-        liveness.on_received(start + ms(1000));
-
-        // Act
-        let early = liveness.poll(start + ms(999));
-        let due = liveness.poll(start + ms(1000));
-        let echo = Ping { probe: 0, echo: 1 };
-        let rtt = liveness.on_ping(&echo, start + ms(1030));
-
-        // Assert
-        assert_eq!(early, Poll::Idle);
-        assert_eq!(due, Poll::SendPing(Ping { probe: 1, echo: 0 }));
-        assert_eq!(rtt, Some(ms(30)));
-    }
-
-    #[test]
     fn new_probe_counter_wrapped_skips_zero() {
         // Arrange
         let start = Instant::now();

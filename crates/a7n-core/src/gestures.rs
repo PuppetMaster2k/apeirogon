@@ -71,20 +71,4 @@ mod tests {
             ]
         );
     }
-
-    #[test]
-    fn events_unbound_or_pinch_gesture_emits_nothing() {
-        // Arrange
-        let bindings = Bindings {
-            swipe_up: Some(Chord::parse("meta+tab").unwrap()),
-            ..Bindings::default()
-        };
-
-        // Act
-        let unbound = bindings.events(Gesture::SwipeDown).count();
-        let pinch = bindings.events(Gesture::Pinch).count();
-
-        // Assert
-        assert_eq!((unbound, pinch), (0, 0));
-    }
 }

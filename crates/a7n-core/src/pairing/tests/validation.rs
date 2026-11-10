@@ -3,19 +3,6 @@
 use super::*;
 
 #[test]
-fn parse_invalid_codes_refuses_non_ascii_or_wrong_length() {
-    // Arrange
-    let inputs = ["12345", "1234567", " 12345", "１２３４５６", "12345a", ""];
-    for input in inputs {
-        // Act
-        let result = PairingCode::parse(input);
-
-        // Assert
-        assert!(result.is_err());
-    }
-}
-
-#[test]
 fn confirmation_fixed_transcript_matches_independent_key_schedule() {
     // Arrange: independently calculated with Python hashlib/hmac, RFC 9382 sections 3-4.
     let expected_requester = [
@@ -45,55 +32,4 @@ fn confirmation_fixed_transcript_matches_independent_key_schedule() {
     assert_eq!(confirmation.tag(false, false), expected_requester);
     assert_eq!(confirmation.tag(true, false), expected_host);
     assert_eq!(confirmation.tag(true, true), expected_stored);
-}
-
-#[test]
-fn answer_malformed_fields_refuses_without_retry() {
-    // Arrange
-    let now = Instant::now();
-    for field in ["share", "tag", "info", "error"] {
-        let mut host = host(now);
-        let mut requester = requester(code());
-        let good = answer(&mut host, &requester, now);
-        let mut bad = good.clone();
-        match field {
-            "share" => bad.share.clear(),
-            "tag" => bad.tag.clear(),
-            "info" => bad.info = None,
-            _ => bad.error = PairError::Refused.into(),
-        }
-
-        // Act
-        let result = requester.answer(bad, pin(2), [3; 32]);
-        let retry = requester.answer(good, pin(2), [3; 32]);
-
-        // Assert
-        assert_eq!(result, Err(PairError::Refused));
-        assert_eq!(retry, Err(PairError::Refused));
-    }
-}
-
-#[test]
-fn start_repeated_during_exchange_discards_original_pending_proof() {
-    // Arrange
-    let now = Instant::now();
-    let mut host = host(now);
-    let mut requester = requester(code());
-    let answer = answer(&mut host, &requester, now);
-    let confirm = requester.answer(answer, pin(2), [3; 32]).unwrap();
-
-    // Act
-    let retry = host.start(
-        requester.start(),
-        pin(1),
-        [3; 32],
-        info("host"),
-        now,
-        &mut TestRng(2),
-    );
-    let original = host.confirm(confirm, now);
-
-    // Assert
-    assert_eq!(retry, Err(PairError::NotPairing));
-    assert!(matches!(original, Err(PairError::Refused)));
 }

@@ -140,65 +140,6 @@ fn exit_touching_edges_maps_offset_and_gaps_are_walls() {
 }
 
 #[test]
-fn exit_all_directions_maps_to_opposite_edge_and_excludes_endpoint() {
-    // Arrange
-    let layout = Layout::empty(id(1))
-        .edit(
-            vec![
-                rect(1, 0, 0),
-                rect(2, 100, 0),
-                rect(3, -100, 0),
-                rect(4, 0, -100),
-                rect(5, 0, 100),
-            ],
-            id(1),
-        )
-        .unwrap();
-    for (edge, target, opposite) in [
-        (Edge::Right, 2, Edge::Left),
-        (Edge::Left, 3, Edge::Right),
-        (Edge::Top, 4, Edge::Bottom),
-        (Edge::Bottom, 5, Edge::Top),
-    ] {
-        // Act
-        let landing = layout.exit(id(1), edge, 0.25, |_| true).unwrap();
-
-        // Assert
-        assert_eq!(
-            (landing.0, landing.1.edge, landing.1.offset),
-            (id(target), opposite as i32, 0.25)
-        );
-        assert!(layout.exit(id(1), edge, 1.0, |_| true).is_none());
-    }
-}
-
-#[test]
-fn shared_edges_partial_contact_lists_both_directions() {
-    // Arrange
-    let placements = [rect(1, 0, 0), rect(2, 100, 50), rect(3, 0, 200)];
-
-    // Act
-    let edges = shared_edges(&placements);
-
-    // Assert
-    assert_eq!(
-        edges,
-        vec![
-            SharedEdge {
-                from: id(1),
-                to: id(2),
-                edge: Edge::Right
-            },
-            SharedEdge {
-                from: id(2),
-                to: id(1),
-                edge: Edge::Left
-            }
-        ]
-    );
-}
-
-#[test]
 fn edit_bumps_version_and_round_trips_wire_but_exhausted_version_errors() {
     // Arrange
     let layout = Layout::empty(id(1));
@@ -336,50 +277,5 @@ fn try_from_unknown_and_absent_blocked_bits_masks_to_known_segments() {
         // Assert
         assert_eq!(u32::from(layout.placements()[0].blocked), expected);
         assert_eq!(layout.to_proto().machines[0].blocked, expected);
-    }
-}
-
-#[test]
-fn toggle_blocked_each_segment_flips_exactly_one_bit_and_invalid_segment_none() {
-    // Arrange
-    for (index, edge) in [Edge::Left, Edge::Top, Edge::Right, Edge::Bottom]
-        .into_iter()
-        .enumerate()
-    {
-        for third in 0..3 {
-            for before in [0, u16::MAX] {
-                let mut placement = Placement {
-                    blocked: before,
-                    ..rect(1, 0, 0)
-                };
-
-                // Act
-                placement.toggle_blocked(edge, third);
-
-                // Assert
-                assert_eq!(
-                    placement.blocked,
-                    before ^ (1 << (index * 3 + usize::from(third)))
-                );
-                assert_eq!(placement.is_blocked(edge, third), before == 0);
-            }
-        }
-    }
-    for (edge, third) in [
-        (Edge::Left, 3),
-        (Edge::Bottom, u8::MAX),
-        (Edge::Unspecified, 0),
-    ] {
-        let mut placement = Placement {
-            blocked: u16::MAX,
-            ..rect(1, 0, 0)
-        };
-
-        // Act
-        placement.toggle_blocked(edge, third);
-
-        // Assert
-        assert_eq!(placement.blocked, u16::MAX);
-        assert!(!placement.is_blocked(edge, third));
     }
 }

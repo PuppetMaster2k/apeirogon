@@ -2,7 +2,7 @@
 
 use super::*;
 use a7n_proto::limits;
-use a7n_proto::v1::{Accept, Ack, Handover, KeyEvent, Refuse, RefuseReason, input_event};
+use a7n_proto::v1::{Accept, Handover, KeyEvent, Refuse, RefuseReason, input_event};
 
 mod owner;
 mod responder;

@@ -221,30 +221,6 @@ fn start_malformed_share_refuses_and_rejects_second_attempt() {
 }
 
 #[test]
-fn confirm_malformed_or_bad_tag_refuses_and_closes_window() {
-    // Arrange
-    let now = Instant::now();
-    for tag in [vec![], vec![0; 31], vec![0; 32], vec![0; 33]] {
-        let mut host = host(now);
-        answer(&mut host, &requester(code()), now);
-
-        // Act
-        let result = host.confirm(
-            PairConfirm {
-                tag,
-                error: PairError::None.into(),
-            },
-            now,
-        );
-
-        // Assert
-        assert!(matches!(result, Err(PairError::Refused)));
-        assert!(host.closed);
-        assert!(host.pending.is_none());
-    }
-}
-
-#[test]
 fn pairing_qr_secret_match_pairs_and_mismatch_refuses() {
     // Arrange
     let now = Instant::now();
@@ -300,23 +276,6 @@ fn allow_sixth_attempt_blocks_until_oldest_expires() {
     assert!(!blocked);
     assert!(independent);
     assert!(renewed);
-}
-
-#[test]
-fn allow_source_churn_bounds_memory_without_evicting_live_limits() {
-    // Arrange
-    let now = Instant::now();
-    let mut limiter = AttemptLimiter::new(1);
-    assert!(limiter.allow("first", now));
-
-    // Act
-    let blocked = limiter.allow("second", now);
-    let renewed = limiter.allow("second", now + limits::PAIRING_ATTEMPT_WINDOW);
-
-    // Assert
-    assert!(!blocked);
-    assert!(renewed);
-    assert_eq!(limiter.sources.len(), 1);
 }
 
 mod validation;

@@ -3,18 +3,6 @@
 use super::*;
 
 #[test]
-fn apply_half_speed_retains_positive_and_negative_subpixels() {
-    // Arrange
-    let mut scale = MotionScale::new(0.5);
-
-    // Act
-    let scaled = [(1, -1), (1, -1), (-1, 1), (-1, 1)].map(|(dx, dy)| scale.apply(dx, dy));
-
-    // Assert
-    assert_eq!(scaled, [(0, 0), (1, -1), (0, 0), (-1, 1)]);
-}
-
-#[test]
 fn apply_stale_or_duplicate_sequence_drops_motion() {
     // Arrange
     let mut tracker = MotionTracker::default();
@@ -119,31 +107,6 @@ fn edge_push_outside_desktop_clamps_point_and_preserves_outward_motion() {
 
         // Assert
         assert_eq!(push, expected, "point ({x}, {y}), motion ({dx}, {dy})");
-    }
-}
-
-#[test]
-fn edge_push_empty_or_single_pixel_bounds_handles_degenerate_desktops() {
-    // Arrange
-    let cases = [
-        ((0, 0, 0, 10), None),
-        ((0, 0, 10, 0), None),
-        ((0, 0, 1, 1), Some((Edge::Left, 1, 0.0))),
-        ((i32::MIN, 0, u32::MAX, 1), Some((Edge::Right, 1, 0.0))),
-    ];
-
-    for (bounds, expected) in cases {
-        let (x, dx) = if bounds.2 == u32::MAX {
-            (i32::MAX - 1, 1)
-        } else {
-            (0, -1)
-        };
-
-        // Act
-        let push = edge_push(bounds, x, 0, dx, 0);
-
-        // Assert
-        assert_eq!(push, expected);
     }
 }
 

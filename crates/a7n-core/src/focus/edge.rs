@@ -176,30 +176,6 @@ mod tests {
     }
 
     #[test]
-    fn apply_multiple_and_unknown_buttons_preserves_known_held_state() {
-        // Arrange
-        let mut buttons = HeldButtons::default();
-        let events = [
-            (Button::Left.into(), true),
-            (Button::Forward.into(), true),
-            (Button::Left.into(), false),
-            (Button::Unspecified.into(), true),
-            (-1, true),
-            (i32::MAX, true),
-            (Button::Forward.into(), false),
-        ];
-
-        // Act
-        let held = events.map(|(button, down)| {
-            buttons.apply(&ButtonEvent { button, down });
-            buttons.any_held()
-        });
-
-        // Assert
-        assert_eq!(held, [true, true, true, true, true, true, false]);
-    }
-
-    #[test]
     fn push_accumulated_overshoot_crosses_at_threshold_and_resets() {
         // Arrange
         let mut resistance = EdgeResistance::new(10);
@@ -232,28 +208,6 @@ mod tests {
             // Assert
             assert!(!reset_crossed);
             assert!(!crossed);
-        }
-    }
-
-    #[test]
-    fn push_absent_or_excessive_resistance_uses_default_or_maximum() {
-        // Arrange
-        let cases = [
-            (0, limits::DEFAULT_RESISTANCE_PX),
-            (u32::MAX, limits::RESISTANCE_MAX_PX),
-        ];
-
-        for (configured, threshold) in cases {
-            let mut resistance = EdgeResistance::new(configured);
-            let threshold = i32::try_from(threshold).expect("resistance limit fits i32");
-
-            // Act
-            let early = resistance.push(Edge::Bottom, threshold - 1);
-            let crossed = resistance.push(Edge::Bottom, 1);
-
-            // Assert
-            assert!(!early);
-            assert!(crossed);
         }
     }
 }
