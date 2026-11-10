@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.23.0...v0.24.0) (2026-11-10)
+
+
+### Features
+
+* **platform:** X11 edge glow and landing indicator ([#190](https://github.com/PuppetMaster2k/apeirogon/issues/190)) ([86dae45](https://github.com/PuppetMaster2k/apeirogon/commit/86dae45faa064bc9ab3acaa5808f5c81d83747ae))
+
 ## [0.23.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.22.0...v0.23.0) (2026-11-10)
 
 
