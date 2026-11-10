@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.24.0...v0.25.0) (2026-11-10)
+
+
+### Features
+
+* **platform:** Windows edge glow and landing indicator ([#191](https://github.com/PuppetMaster2k/apeirogon/issues/191)) ([b9ef7ad](https://github.com/PuppetMaster2k/apeirogon/commit/b9ef7ad3f7f12dcb5f9ea5f9b9b3a5fc7e167c07))
+
 ## [0.24.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.23.0...v0.24.0) (2026-11-10)
 
 
