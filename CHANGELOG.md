@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.25.0...v0.26.0) (2026-11-10)
+
+
+### Features
+
+* **platform:** macOS edge glow, landing indicator and haptics ([#192](https://github.com/PuppetMaster2k/apeirogon/issues/192)) ([ac85be4](https://github.com/PuppetMaster2k/apeirogon/commit/ac85be418b1bc47148c94d38d63af0aa104eabea))
+
 ## [0.25.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.24.0...v0.25.0) (2026-11-10)
 
 
