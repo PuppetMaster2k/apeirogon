@@ -175,6 +175,9 @@ impl Daemon {
     }
 
     pub(super) fn store_peer(&mut self, entry: Entry) -> Result<(), DaemonError> {
+        if entry.machine_id == self.identity.machine_id {
+            return Err(PairingError::Refused.into());
+        }
         let mut staged = self.pins.clone();
         staged.add(entry);
         staged.save()?;

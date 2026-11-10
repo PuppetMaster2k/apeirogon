@@ -75,16 +75,17 @@ impl DeskStore {
             state,
         };
         // Desk is committed first; replay it if a crash left the pins behind.
+        let mut outcome = MergeOutcome {
+            admitted: store.state.members().cloned().collect(),
+            ..MergeOutcome::default()
+        };
         for record in &desk.revocations {
             let id = MachineId::try_from(record.id.as_slice()).map_err(DeskError::from)?;
             if !store.state.members().any(|member| member.id() == id) {
-                pins.remove(&id);
+                outcome.revoked.push(id);
             }
         }
-        for member in store.state.members() {
-            store_member(pins, member);
-        }
-        pins.save()?;
+        Self::apply(pins, &outcome, own_id)?;
         Ok(store)
     }
 
@@ -101,7 +102,7 @@ impl DeskStore {
     ) -> Result<MergeOutcome, DeskStoreError> {
         let (staged, outcome) = self.prepare(identity, pins, incoming)?;
         self.persist(staged)?;
-        Self::apply(pins, &outcome)?;
+        Self::apply(pins, &outcome, identity.machine_id)?;
         Ok(outcome)
     }
 
@@ -142,12 +143,20 @@ impl DeskStore {
     }
 
     /// Apply a committed delta. Keep memory revoked even if the pin write fails.
-    pub(crate) fn apply(pins: &mut PinStore, outcome: &MergeOutcome) -> Result<(), PinStoreError> {
-        for id in &outcome.revoked {
+    pub(crate) fn apply(
+        pins: &mut PinStore,
+        outcome: &MergeOutcome,
+        own_id: MachineId,
+    ) -> Result<(), PinStoreError> {
+        for id in outcome.revoked.iter().filter(|id| **id != own_id) {
             pins.remove(id);
         }
         let mut staged = pins.clone();
-        for member in &outcome.admitted {
+        for member in outcome
+            .admitted
+            .iter()
+            .filter(|member| member.id() != own_id)
+        {
             store_member(&mut staged, member);
         }
         staged.save()?;
@@ -163,6 +172,9 @@ impl DeskStore {
         entry: &Entry,
         now: u64,
     ) -> Result<DeskMember, DeskStoreError> {
+        if entry.machine_id == identity.machine_id {
+            return Err(DeskStoreError::Rejected);
+        }
         let input = member_signing_input(
             entry.machine_id,
             entry.pin,
@@ -195,7 +207,7 @@ impl DeskStore {
         self.persist(staged)?;
         let mut staged_pins = pins.clone();
         staged_pins.add(entry.clone());
-        Self::apply(&mut staged_pins, &outcome)?;
+        Self::apply(&mut staged_pins, &outcome, identity.machine_id)?;
         *pins = staged_pins;
         Ok(member)
     }
@@ -232,7 +244,7 @@ impl DeskStore {
             return Err(DeskStoreError::Rejected);
         }
         self.persist(staged)?;
-        Self::apply(pins, &outcome)?;
+        Self::apply(pins, &outcome, identity.machine_id)?;
         Ok(revocation)
     }
 }
