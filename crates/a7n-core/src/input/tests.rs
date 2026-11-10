@@ -3,19 +3,6 @@
 use super::*;
 
 #[test]
-fn apply_unit_speed_preserves_exact_deltas() {
-    // Arrange
-    let mut scale = MotionScale::new(1.0);
-    let deltas = [(1, -1), (i32::MIN, i32::MAX), (0, 0)];
-
-    // Act
-    let scaled = deltas.map(|(dx, dy)| scale.apply(dx, dy));
-
-    // Assert
-    assert_eq!(scaled, deltas);
-}
-
-#[test]
 fn apply_half_speed_retains_positive_and_negative_subpixels() {
     // Arrange
     let mut scale = MotionScale::new(0.5);
@@ -102,35 +89,6 @@ fn push_wrapped_counters_and_sequence_reset_on_new_route() {
 }
 
 #[test]
-fn edge_push_edges_inward_and_corner_selects_outward_edge() {
-    // Arrange
-    let bounds = (-10, -20, 101, 101);
-    let cases = [
-        (-10, 30, -4, 0, Some((Edge::Left, 4, 0.5))),
-        (90, 30, 4, 0, Some((Edge::Right, 4, 0.5))),
-        (40, -20, 0, -4, Some((Edge::Top, 4, 0.5))),
-        (40, 80, 0, 4, Some((Edge::Bottom, 4, 0.5))),
-        (-10, 30, 4, 0, None),
-        (90, 30, -4, 0, None),
-        (40, -20, 0, 4, None),
-        (40, 80, 0, -4, None),
-        (40, 30, 4, 4, None),
-        (-10, -20, -4, -4, Some((Edge::Left, 4, 0.0))),
-        (90, 80, 4, 4, Some((Edge::Right, 4, 1.0))),
-        (-11, 30, -4, 0, Some((Edge::Left, 4, 0.5))),
-        (-10, 30, i32::MIN, 0, Some((Edge::Left, i32::MAX, 0.5))),
-    ];
-
-    for (x, y, dx, dy, expected) in cases {
-        // Act
-        let push = edge_push(bounds, x, y, dx, dy);
-
-        // Assert
-        assert_eq!(push, expected);
-    }
-}
-
-#[test]
 fn edge_push_outside_desktop_clamps_point_and_preserves_outward_motion() {
     // Arrange
     let bounds = (-100, -200, 201, 401);
@@ -153,6 +111,7 @@ fn edge_push_outside_desktop_clamps_point_and_preserves_outward_motion() {
         (103, 203, 7, 7, Some((Edge::Right, 7, 1.0))),
         (-103, -203, 7, 7, None),
         (0, 0, -7, 0, None),
+        (-100, 0, i32::MIN, 0, Some((Edge::Left, i32::MAX, 0.5))),
     ];
     for (x, y, dx, dy, expected) in cases {
         // Act

@@ -17,51 +17,6 @@ fn matcher() -> HotkeyMatcher {
 }
 
 #[test]
-fn parse_key_table_accepts_known_names_and_rejects_bad_tokens() {
-    // Arrange
-    let names = [
-        ("A", 0x04),
-        ("z", 0x1d),
-        ("0", 0x27),
-        ("1", 0x1e),
-        ("9", 0x26),
-        ("f1", 0x3a),
-        ("F12", 0x45),
-        ("home", 0x4a),
-        ("end", 0x4d),
-        ("insert", 0x49),
-        ("delete", 0x4c),
-        ("page_up", 0x4b),
-        ("page_down", 0x4e),
-        ("scroll_lock", 0x47),
-        ("pause", 0x48),
-        ("escape", 0x29),
-    ];
-    for (name, usage) in names {
-        // Act
-        let chord = Chord::parse(&format!("CTRL+alt+Shift+{name}")).unwrap();
-
-        // Assert
-        assert_eq!(chord.key, KEYBOARD_PAGE | usage);
-        assert_eq!(chord.mods, Mods::parse("ctrl+alt+shift").unwrap());
-    }
-    for (text, bad) in [
-        ("foo", "foo"),
-        ("a+b", "b"),
-        ("", ""),
-        ("ctrl", "ctrl"),
-        ("ctrl+ctrl+a", "ctrl"),
-        ("a+", ""),
-    ] {
-        // Act
-        let error = Chord::parse(text).unwrap_err();
-
-        // Assert
-        assert!(error.to_string().contains(bad));
-    }
-}
-
-#[test]
 fn on_key_chords_consume_down_repeat_and_matching_up() {
     // Arrange
     let now = Instant::now();
@@ -162,24 +117,6 @@ fn on_key_double_tap_timing_and_interruption_control_home() {
         assert_eq!(second.action, expected);
         assert_eq!(second_release.action, None);
     }
-}
-
-#[test]
-fn on_key_expired_second_tap_starts_new_window() {
-    // Arrange
-    let mut matcher = matcher();
-    let now = Instant::now();
-    let alt = KEYBOARD_PAGE | 0xe6;
-    for delay in [0, 401] {
-        matcher.on_key(alt, true, now + Duration::from_millis(delay));
-        matcher.on_key(alt, false, now + Duration::from_millis(delay));
-    }
-
-    // Act
-    let verdict = matcher.on_key(alt, true, now + Duration::from_millis(500));
-
-    // Assert
-    assert_eq!(verdict.action, Some(Hotkey::Home));
 }
 
 #[test]

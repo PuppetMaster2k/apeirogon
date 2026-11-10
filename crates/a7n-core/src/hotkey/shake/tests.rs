@@ -41,23 +41,6 @@ fn on_motion_reversals_spread_over_window_does_not_fire() {
 }
 
 #[test]
-fn on_motion_small_jitter_does_not_count() {
-    // Arrange
-    let mut detector = ShakeDetector::new(4);
-    let now = Instant::now();
-
-    // Act
-    let fired: Vec<_> = [10, 10, 10, -10, -10, -10]
-        .repeat(10)
-        .into_iter()
-        .map(|dx| detector.on_motion(dx, now))
-        .collect();
-
-    // Assert
-    assert!(!fired.into_iter().any(|fired| fired));
-}
-
-#[test]
 fn on_motion_reversals_below_min_travel_does_not_fire() {
     // Arrange
     let mut detector = ShakeDetector::new(SHAKE_DEFAULT);

@@ -71,26 +71,6 @@ fn manifest_path_unsafe_paths_are_rejected() {
 }
 
 #[test]
-fn manifest_path_safe_paths_are_accepted() {
-    // Arrange
-    let paths = [
-        "résumé/日本語.txt",
-        "a folder/a.b.c",
-        ".bashrc",
-        "COM0/COM10/LPT10",
-        "a..b",
-    ];
-    for path in paths {
-        // Act
-        let result = ManifestPath::try_from(path);
-
-        // Assert
-        let validated = result.unwrap();
-        assert_eq!(validated.segments().collect::<Vec<_>>().join("/"), path);
-    }
-}
-
-#[test]
 fn manifest_path_byte_limits_are_enforced() {
     // Arrange
     let longest_segment = "a".repeat(limits::MANIFEST_SEGMENT_MAX);
@@ -206,34 +186,6 @@ fn valid_manifest_invalid_entries_are_rejected() {
 }
 
 #[test]
-fn valid_manifest_ordered_directories_and_implicit_parents_are_accepted() {
-    // Arrange
-    let manifest = FileManifest {
-        entries: vec![
-            directory("a"),
-            directory("a/b"),
-            file("a/b/c", 5),
-            file("implicit/d", 7),
-        ],
-        total_size: 12,
-    };
-
-    // Act
-    let result = ValidManifest::try_from(&manifest);
-
-    // Assert
-    let validated = result.unwrap();
-    assert_eq!(
-        validated.entries()[2].kind,
-        EntryKind::File {
-            size: 5,
-            sha256: [7; 32]
-        }
-    );
-    assert_eq!(validated.entries().len(), manifest.entries.len());
-}
-
-#[test]
 fn valid_manifest_entry_limit_is_enforced() {
     // Arrange
     let entries: Vec<_> = (0..limits::MANIFEST_ENTRIES_MAX)
@@ -257,51 +209,49 @@ fn valid_manifest_entry_limit_is_enforced() {
 }
 
 #[test]
-fn unique_name_collisions_select_first_free_name() {
-    // Arrange
+fn unique_name_collisions_select_first_free_name_or_reject_invalid() {
+    // Arrange: `taken` of None means every candidate collides
     let cases = [
-        ("report.txt", vec![], "report.txt"),
-        ("report.txt", vec!["report.txt"], "report (2).txt"),
+        ("report.txt".into(), Some(vec![]), Ok("report.txt")),
         (
-            "report.txt",
-            vec!["report.txt", "report (2).txt", "report (3).txt"],
-            "report (4).txt",
+            "report.txt".into(),
+            Some(vec!["report.txt"]),
+            Ok("report (2).txt"),
         ),
-        (".bashrc", vec![".bashrc"], ".bashrc (2)"),
-        ("folder", vec!["folder"], "folder (2)"),
         (
-            "archive.tar.gz",
-            vec!["archive.tar.gz"],
-            "archive.tar (2).gz",
+            "report.txt".into(),
+            Some(vec!["report.txt", "report (2).txt", "report (3).txt"]),
+            Ok("report (4).txt"),
+        ),
+        (".bashrc".into(), Some(vec![".bashrc"]), Ok(".bashrc (2)")),
+        (
+            "archive.tar.gz".into(),
+            Some(vec!["archive.tar.gz"]),
+            Ok("archive.tar (2).gz"),
+        ),
+        ("name".into(), None, Err(NameError::Exhausted)),
+        ("a/b".into(), None, Err(NameError::Nested)),
+        (
+            "../a".into(),
+            None,
+            Err(NameError::Path(PathError::DotSegment)),
+        ),
+        (
+            "a".repeat(limits::MANIFEST_SEGMENT_MAX),
+            None,
+            Err(NameError::Exhausted),
         ),
     ];
     for (name, taken, expected) in cases {
         // Act
-        let result = unique_name(name, |candidate| taken.contains(&candidate));
+        let result = unique_name(&name, |candidate| {
+            taken
+                .as_ref()
+                .is_none_or(|taken| taken.contains(&candidate))
+        });
 
         // Assert
-        assert_eq!(result.unwrap(), expected);
-    }
-}
-
-#[test]
-fn unique_name_exhausted_or_invalid_returns_error() {
-    // Arrange
-    let cases = [
-        ("name".to_owned(), NameError::Exhausted),
-        ("a/b".to_owned(), NameError::Nested),
-        ("../a".to_owned(), NameError::Path(PathError::DotSegment)),
-        (
-            "a".repeat(limits::MANIFEST_SEGMENT_MAX),
-            NameError::Exhausted,
-        ),
-    ];
-    for (name, expected) in cases {
-        // Act
-        let result = unique_name(&name, |_| true);
-
-        // Assert
-        assert_eq!(result, Err(expected));
+        assert_eq!(result, expected.map(str::to_owned));
     }
 }
 

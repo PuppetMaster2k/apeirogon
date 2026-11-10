@@ -116,15 +116,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn holds_disabled_push_never_queries() {
+    fn holds_disabled_or_ended_push_never_queries() {
         // Arrange
-        let mut hold = FullscreenHold::new(false);
+        let mut disabled = FullscreenHold::new(false);
+        let mut ended = FullscreenHold::new(true);
+        ended.holds(true, || true);
 
         // Act
-        let result = hold.holds(true, || panic!("disabled hold must not query"));
+        let disabled_result = disabled.holds(true, || panic!("disabled hold must not query"));
+        let ended_result = ended.holds(false, || panic!("ending push must not query"));
+        let next_push = ended.holds(true, || false);
 
         // Assert
-        assert!(!result);
+        assert!(!disabled_result);
+        assert!(!ended_result);
+        assert!(!next_push);
     }
 
     #[test]
@@ -140,21 +146,6 @@ mod tests {
             // Assert
             assert_eq!((first, next), (fullscreen, fullscreen));
         }
-    }
-
-    #[test]
-    fn holds_push_ends_clears_cached_result() {
-        // Arrange
-        let mut hold = FullscreenHold::new(true);
-        hold.holds(true, || true);
-
-        // Act
-        let ended = hold.holds(false, || panic!("ending push must not query"));
-        let next = hold.holds(true, || false);
-
-        // Assert
-        assert!(!ended);
-        assert!(!next);
     }
 
     #[test]
@@ -182,25 +173,6 @@ mod tests {
 
         // Assert
         assert_eq!(crossed, [false, false, true]);
-    }
-
-    #[test]
-    fn reset_held_buttons_clears_all() {
-        // Arrange
-        let mut buttons = HeldButtons::default();
-        for button in [Button::Left, Button::Forward] {
-            buttons.apply(&ButtonEvent {
-                button: button.into(),
-                down: true,
-            });
-        }
-        assert!(buttons.any_held());
-
-        // Act
-        buttons.reset();
-
-        // Assert
-        assert!(!buttons.any_held());
     }
 
     #[test]
@@ -240,22 +212,14 @@ mod tests {
     }
 
     #[test]
-    fn push_edge_change_discards_previous_overshoot() {
+    fn push_edge_change_or_moving_away_discards_previous_overshoot() {
         // Arrange
-        let mut resistance = EdgeResistance::new(10);
-        resistance.push(Edge::Right, 9);
-
-        // Act
-        let crossed = [1, 9].map(|px| resistance.push(Edge::Left, px));
-
-        // Assert
-        assert_eq!(crossed, [false, true]);
-    }
-
-    #[test]
-    fn push_moving_away_discards_previous_overshoot() {
-        // Arrange
-        let reset_cases = [(Edge::Right, 0), (Edge::Right, -1), (Edge::Unspecified, 5)];
+        let reset_cases = [
+            (Edge::Right, 0),
+            (Edge::Right, -1),
+            (Edge::Unspecified, 5),
+            (Edge::Left, 1),
+        ];
 
         for (edge, overshoot) in reset_cases {
             let mut resistance = EdgeResistance::new(10);

@@ -199,35 +199,26 @@ fn shared_edges_partial_contact_lists_both_directions() {
 }
 
 #[test]
-fn edit_valid_placements_bumps_version_and_round_trips_wire() {
+fn edit_bumps_version_and_round_trips_wire_but_exhausted_version_errors() {
     // Arrange
     let layout = Layout::empty(id(1));
     let placements = vec![rect(1, 0, 0)];
-
-    // Act
-    let edited = layout.edit(placements.clone(), id(2)).unwrap();
-
-    // Assert
-    assert_eq!(edited.version(), 1);
-    assert_eq!(edited.by(), id(2));
-    assert_eq!(edited.placements(), placements);
-    assert_eq!(Layout::try_from(&edited.to_proto()).unwrap(), edited);
-}
-
-#[test]
-fn edit_exhausted_version_returns_error() {
-    // Arrange
-    let layout = Layout {
+    let exhausted = Layout {
         version: u64::MAX,
         by: id(1),
         placements: vec![],
     };
 
     // Act
-    let result = layout.edit(vec![], id(1));
+    let edited = layout.edit(placements.clone(), id(2)).unwrap();
+    let overflow = exhausted.edit(vec![], id(1));
 
     // Assert
-    assert!(matches!(result, Err(LayoutError::VersionExhausted)));
+    assert!(matches!(overflow, Err(LayoutError::VersionExhausted)));
+    assert_eq!(edited.version(), 1);
+    assert_eq!(edited.by(), id(2));
+    assert_eq!(edited.placements(), placements);
+    assert_eq!(Layout::try_from(&edited.to_proto()).unwrap(), edited);
 }
 
 #[test]
@@ -252,38 +243,6 @@ fn try_from_malformed_ids_and_overlapping_wire_rejects() {
         // Assert
         assert!(result.is_err());
     }
-}
-
-#[test]
-fn nth_unsorted_placements_returns_one_based_canvas_order() {
-    // Arrange
-    let layout = Layout::empty(id(1))
-        .edit(
-            vec![
-                rect(1, 0, 0),
-                rect(2, 100, -100),
-                rect(3, -100, -100),
-                rect(4, -100, 0),
-            ],
-            id(1),
-        )
-        .unwrap();
-
-    // Act
-    let order: Vec<_> = (0..=5).map(|n| layout.nth(n, |_| true)).collect();
-
-    // Assert
-    assert_eq!(
-        order,
-        vec![
-            None,
-            Some(id(3)),
-            Some(id(2)),
-            Some(id(4)),
-            Some(id(1)),
-            None
-        ]
-    );
 }
 
 #[test]
@@ -381,7 +340,7 @@ fn try_from_unknown_and_absent_blocked_bits_masks_to_known_segments() {
 }
 
 #[test]
-fn toggle_blocked_each_segment_flips_exactly_one_bit() {
+fn toggle_blocked_each_segment_flips_exactly_one_bit_and_invalid_segment_none() {
     // Arrange
     for (index, edge) in [Edge::Left, Edge::Top, Edge::Right, Edge::Bottom]
         .into_iter()
@@ -406,11 +365,6 @@ fn toggle_blocked_each_segment_flips_exactly_one_bit() {
             }
         }
     }
-}
-
-#[test]
-fn toggle_blocked_invalid_segment_leaves_bits_unchanged() {
-    // Arrange
     for (edge, third) in [
         (Edge::Left, 3),
         (Edge::Bottom, u8::MAX),

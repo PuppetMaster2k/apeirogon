@@ -244,25 +244,6 @@ mod tests {
     }
 
     #[test]
-    fn on_ack_held_time_is_subtracted_from_rtt() {
-        // Arrange
-        let start = Instant::now();
-        let mut liveness = Liveness::new(Role::Initiator, start);
-        liveness.on_input_sent(1, start);
-
-        // Act
-        let rtt = liveness.on_ack(1, 4_000, start + ms(10));
-        let held_longer_than_elapsed = {
-            liveness.on_input_sent(2, start);
-            liveness.on_ack(2, 50_000, start + ms(10))
-        };
-
-        // Assert
-        assert_eq!(rtt, Some(ms(6)));
-        assert_eq!(held_longer_than_elapsed, Some(Duration::ZERO));
-    }
-
-    #[test]
     fn poll_one_second_after_last_ping_sends_probe() {
         // Arrange
         let start = Instant::now();

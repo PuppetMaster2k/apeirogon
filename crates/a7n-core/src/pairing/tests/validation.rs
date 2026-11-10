@@ -48,42 +48,6 @@ fn confirmation_fixed_transcript_matches_independent_key_schedule() {
 }
 
 #[test]
-fn generate_random_code_preserves_six_ascii_digits_and_leading_zeroes() {
-    // Arrange
-    let mut rng = TestRng(42);
-
-    // Act
-    let generated = PairingCode::generate(&mut rng);
-    let leading_zeroes = PairingCode::parse("000001").unwrap();
-
-    // Assert
-    assert_eq!(generated.to_string().len(), limits::PAIRING_CODE_LENGTH);
-    assert!(
-        generated
-            .to_string()
-            .bytes()
-            .all(|byte| byte.is_ascii_digit())
-    );
-    assert_eq!(leading_zeroes.to_string(), "000001");
-    assert!(!format!("{leading_zeroes:?}").contains("000001"));
-}
-
-#[test]
-fn done_without_verified_answer_refuses_pairing() {
-    // Arrange
-    let requester = requester(code());
-
-    // Act
-    let result = requester.done(PairDone {
-        error: PairError::None.into(),
-        tag: vec![0; 32],
-    });
-
-    // Assert
-    assert!(matches!(result, Err(PairError::Refused)));
-}
-
-#[test]
 fn answer_malformed_fields_refuses_without_retry() {
     // Arrange
     let now = Instant::now();

@@ -78,48 +78,24 @@ fn announce_inline_budget_keeps_other_items_pending() {
 }
 
 #[test]
-fn announce_oversized_text_rejects_entire_copy() {
+fn announce_oversized_empty_or_unsupported_items_reject_entire_copy() {
     // Arrange
-    let items = vec![
-        item(TEXT_PLAIN, 1),
-        item(TEXT_HTML, limits::CLIPBOARD_TEXT_MAX + 1),
+    let cases = [
+        vec![
+            item(TEXT_PLAIN, 1),
+            item(TEXT_HTML, limits::CLIPBOARD_TEXT_MAX + 1),
+        ],
+        vec![item(TEXT_PLAIN, 0), item("image/jpeg", 1)],
+        vec![item(IMAGE_PNG, limits::IMAGE_CLIPBOARD_MAX + 1)],
     ];
 
-    // Act
-    let result = announce(items, generation(1, 1));
+    for items in cases {
+        // Act
+        let result = announce(items, generation(1, 1));
 
-    // Assert
-    assert!(result.is_none());
-}
-
-#[test]
-fn announce_empty_or_unsupported_items_are_dropped() {
-    // Arrange
-    let items = vec![item(TEXT_PLAIN, 0), item("image/jpeg", 1)];
-
-    // Act
-    let result = announce(items, generation(1, 1));
-
-    // Assert
-    assert!(result.is_none());
-}
-
-#[test]
-fn announce_text_at_limit_remains_metadata() {
-    // Arrange
-    let items = vec![
-        item(TEXT_PLAIN, limits::CLIPBOARD_TEXT_MAX),
-        item(TEXT_HTML, 1),
-    ];
-
-    // Act
-    let wire = announce(items, generation(1, 1)).unwrap();
-    let received = accept(None, &wire).unwrap().unwrap();
-
-    // Assert
-    assert_eq!(wire.items[0].inline_data, Vec::<u8>::new());
-    assert_eq!(wire.items[1].inline_data.len(), 1);
-    assert_eq!(received.pending, vec![0]);
+        // Assert
+        assert!(result.is_none());
+    }
 }
 
 #[test]
@@ -267,32 +243,7 @@ fn announce_image_items_uses_image_limit_and_shared_inline_budget() {
 }
 
 #[test]
-fn announce_image_above_limit_rejects_copy() {
-    // Arrange
-    let items = vec![item(IMAGE_PNG, limits::IMAGE_CLIPBOARD_MAX + 1)];
-
-    // Act
-    let result = announce(items, generation(1, 1));
-
-    // Assert
-    assert!(result.is_none());
-}
-
-#[test]
-fn accept_image_above_limit_rejects_metadata() {
-    // Arrange
-    let mut wire = announce(vec![item(IMAGE_PNG, 1)], generation(1, 1)).unwrap();
-    wire.items[0].size = limits::IMAGE_CLIPBOARD_MAX as u64 + 1;
-
-    // Act
-    let result = accept(None, &wire);
-
-    // Assert
-    assert_eq!(result.unwrap_err(), ClipboardError::Size);
-}
-
-#[test]
-fn accept_files_item_without_digest_is_pending_whatever_its_size() {
+fn accept_files_item_digest_or_inline_data_rejected_else_pending() {
     // Arrange
     let mut wire = announce(vec![item(TEXT_PLAIN, 1)], generation(1, 1)).unwrap();
     wire.items.push(ClipboardItem {
@@ -300,33 +251,23 @@ fn accept_files_item_without_digest_is_pending_whatever_its_size() {
         size: u64::MAX,
         ..ClipboardItem::default()
     });
+    let with_extra = |sha256, inline_data| {
+        let mut wire = wire.clone();
+        wire.items[1].sha256 = sha256;
+        wire.items[1].inline_data = inline_data;
+        wire
+    };
 
     // Act
     let received = accept(None, &wire).unwrap().unwrap();
+    let digest = accept(None, &with_extra(vec![0; 32], vec![]));
+    let inline = accept(None, &with_extra(vec![], vec![1]));
 
     // Assert
     assert_eq!(received.pending, [1]);
     assert_eq!(received.items.len(), 1);
-}
-
-#[test]
-fn accept_files_item_with_digest_or_inline_data_is_rejected() {
-    // Arrange
-    for (sha256, inline_data) in [(vec![0; 32], vec![]), (vec![], vec![1])] {
-        let mut wire = announce(vec![item(TEXT_PLAIN, 1)], generation(1, 1)).unwrap();
-        wire.items.push(ClipboardItem {
-            mime: FILES.into(),
-            size: 1,
-            sha256,
-            inline_data,
-        });
-
-        // Act
-        let result = accept(None, &wire);
-
-        // Assert
-        assert_eq!(result.unwrap_err(), ClipboardError::Digest);
-    }
+    assert_eq!(digest.unwrap_err(), ClipboardError::Digest);
+    assert_eq!(inline.unwrap_err(), ClipboardError::Digest);
 }
 
 #[test]

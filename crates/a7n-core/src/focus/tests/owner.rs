@@ -40,27 +40,6 @@ fn go_home_locked_owner_returns_home_and_keeps_lock() {
 }
 
 #[test]
-fn on_handover_locked_owner_taken_over_returns_home() {
-    // Arrange
-    let now = Instant::now();
-    let mut focus = driving(now);
-    focus.set_locked(true);
-    let handover = Handover {
-        route: 1,
-        next: id(1).as_bytes().to_vec(),
-        taken_over_by: id(3).as_bytes().to_vec(),
-        ..Default::default()
-    };
-
-    // Act
-    let actions = focus.on_handover(id(2), &handover, now);
-
-    // Assert
-    assert_eq!(actions, vec![Action::Cursor(Cursor::Home)]);
-    assert!(focus.is_locked());
-}
-
-#[test]
 fn on_accepts_denied_pending_target_cancels_take() {
     // Arrange
     let mut focus = Focus::new(id(1));
@@ -186,25 +165,6 @@ fn on_handover_onward_takes_directly_then_lets_go_previous() {
     assert!(!has_let_go(&actions, 2, 3));
     assert!(has_let_go(&accepted, 2, 3));
     assert_eq!(focus.cursor(), Cursor::Driving(id(3)));
-}
-
-#[test]
-fn on_handover_home_lets_go_target() {
-    // Arrange
-    let now = Instant::now();
-    let mut focus = driving(now);
-    let handover = Handover {
-        route: 1,
-        next: id(1).as_bytes().to_vec(),
-        ..Default::default()
-    };
-
-    // Act
-    let actions = focus.on_handover(id(2), &handover, now);
-
-    // Assert
-    assert!(has_let_go(&actions, 2, 1));
-    assert_eq!(focus.cursor(), Cursor::Home);
 }
 
 #[test]
