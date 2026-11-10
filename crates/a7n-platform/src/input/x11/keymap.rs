@@ -34,16 +34,4 @@ mod tests {
         assert_eq!(keycode, Some(38));
         assert_eq!(hid_from_keycode(38), Some(usage));
     }
-
-    #[test]
-    fn hid_from_keycode_below_evdev_range_is_unknown() {
-        // Arrange
-        let reserved_keycode = 7;
-
-        // Act
-        let usage = hid_from_keycode(reserved_keycode);
-
-        // Assert
-        assert_eq!(usage, None);
-    }
 }

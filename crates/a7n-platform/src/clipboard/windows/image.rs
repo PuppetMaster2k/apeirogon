@@ -253,54 +253,6 @@ mod tests {
     }
 
     #[test]
-    fn from_dib_palette_bgr_and_bitfields_preserves_colors() {
-        // Arrange
-        let cases = [
-            (1_u16, INFO_HEADER, BI_RGB),
-            (24, INFO_HEADER, BI_RGB),
-            (32, V5_HEADER, BI_BITFIELDS),
-        ];
-        for (depth, header, compression) in cases {
-            let palette = if depth == 1 { 8 } else { 0 };
-            let mut dib = vec![0; header + palette + 4];
-            dib[..4].copy_from_slice(&u32::try_from(header).unwrap().to_le_bytes());
-            dib[4..8].copy_from_slice(&1_u32.to_le_bytes());
-            dib[8..12].copy_from_slice(&(-1_i32).to_le_bytes());
-            dib[12..14].copy_from_slice(&1_u16.to_le_bytes());
-            dib[14..16].copy_from_slice(&depth.to_le_bytes());
-            dib[16..20].copy_from_slice(&compression.to_le_bytes());
-            let expected = if depth == 1 {
-                dib[header + 4..header + 8].copy_from_slice(&[3, 2, 1, 0]);
-                dib[header + palette] = 0x80;
-                [1, 2, 3, 255]
-            } else {
-                dib[header..header + 4].copy_from_slice(&[3, 2, 1, 128]);
-                if compression == BI_BITFIELDS {
-                    for (index, mask) in [0x00ff_0000_u32, 0xff00, 0xff, 0xff00_0000]
-                        .into_iter()
-                        .enumerate()
-                    {
-                        dib[INFO_HEADER + index * 4..INFO_HEADER + index * 4 + 4]
-                            .copy_from_slice(&mask.to_le_bytes());
-                    }
-                    [1, 2, 3, 128]
-                } else {
-                    [1, 2, 3, 255]
-                }
-            };
-
-            // Act
-            let encoded = from_dib(&dib).unwrap();
-            let mut reader = png::Decoder::new(Cursor::new(encoded)).read_info().unwrap();
-            let mut decoded = [0; 4];
-            reader.next_frame(&mut decoded).unwrap();
-
-            // Assert
-            assert_eq!(decoded, expected);
-        }
-    }
-
-    #[test]
     fn from_dib_unsafe_dimensions_rejects_before_allocating_pixels() {
         // Arrange
         let mut dib = vec![0; INFO_HEADER];

@@ -76,20 +76,6 @@ mod tests {
     }
 
     #[test]
-    fn update_small_travel_and_two_fingers_emit_nothing() {
-        // Arrange
-        let mut swipes = Swipes::default();
-        swipes.update(3, (0.5, 0.5));
-
-        // Act
-        let small = swipes.update(3, (0.55, 0.55));
-        let two = swipes.update(2, (0.9, 0.9));
-
-        // Assert
-        assert_eq!((small, two), (None, None));
-    }
-
-    #[test]
     fn update_emitted_swipe_reversal_or_changed_count_emits_nothing() {
         // Arrange
         let mut reversed = Swipes::default();

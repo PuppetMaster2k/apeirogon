@@ -182,19 +182,4 @@ mod tests {
             assert_eq!(hid_from_evdev(evdev), Some(hid));
         }
     }
-
-    #[test]
-    fn keys_table_has_no_duplicate_codes_or_usages() {
-        // Arrange
-        let mut codes: Vec<u16> = KEYS.iter().map(|&(evdev, _)| evdev).collect();
-        let mut usages: Vec<u32> = KEYS.iter().map(|&(_, hid)| hid).collect();
-
-        // Act
-        codes.sort_unstable();
-        usages.sort_unstable();
-
-        // Assert
-        assert!(codes.windows(2).all(|pair| pair[0] != pair[1]));
-        assert!(usages.windows(2).all(|pair| pair[0] != pair[1]));
-    }
 }

@@ -269,17 +269,72 @@ mod tests {
         }
     }
 
+    fn assert_missing_allow(problems: &[Problem], what: &str) {
+        assert!(matches!(problems, [Problem::MissingAllow { .. }]), "{what}");
+    }
+
     #[test]
-    fn evaluate_program_path_differs_in_case_matches() {
+    fn evaluate_allow_rules_reach_program_and_profile_only_when_applicable() {
         // Arrange
-        let mut allow = rule(Action::Allow, "*", ALL_PROFILES);
-        allow.program = Some(PathBuf::from(r"c:/apps/APEIROGOND.EXE"));
+        let reaching = |edit: fn(&mut Rule)| {
+            let mut allow = rule(Action::Allow, "42042,5353", PRIVATE);
+            edit(&mut allow);
+            allow
+        };
+        let reaches: [(&str, Rule); 4] = [
+            ("both ports", reaching(|_| {})),
+            (
+                "program path in other case",
+                reaching(|r| r.program = Some(PathBuf::from(r"c:/apps/APEIROGOND.EXE"))),
+            ),
+            (
+                "any program and protocol",
+                reaching(|r| {
+                    r.program = None;
+                    r.protocol = Protocol::Any;
+                    r.local_ports = "*".into();
+                    r.profiles = ALL_PROFILES;
+                }),
+            ),
+            (
+                "local subnet only",
+                reaching(|r| r.remote_addresses = "LocalSubnet".into()),
+            ),
+        ];
+        let misses: [(&str, Rule); 8] = [
+            ("other profile", reaching(|r| r.profiles = PUBLIC)),
+            ("disabled", reaching(|r| r.enabled = false)),
+            ("outbound", reaching(|r| r.direction = Direction::Outbound)),
+            ("tcp", reaching(|r| r.protocol = Protocol::Tcp)),
+            ("other protocol", reaching(|r| r.protocol = Protocol::Other)),
+            (
+                "other program",
+                reaching(|r| r.program = Some(PathBuf::from(r"C:\Other\app.exe"))),
+            ),
+            (
+                "other user",
+                reaching(|r| r.local_users = "D:(A;;CC;;;S-1-5-18)".into()),
+            ),
+            (
+                "package scoped",
+                reaching(|r| r.package_id = "S-1-15-2-123".into()),
+            ),
+        ];
 
-        // Act
-        let problems = evaluate_private(&[allow]);
+        for (what, allow) in reaches {
+            // Act
+            let problems = evaluate_private(&[allow]);
 
-        // Assert
-        assert_eq!(problems, Vec::new());
+            // Assert
+            assert_eq!(problems, Vec::new(), "{what}");
+        }
+        for (what, allow) in misses {
+            // Act
+            let problems = evaluate_private(&[allow]);
+
+            // Assert
+            assert_missing_allow(&problems, what);
+        }
     }
 
     #[test]
@@ -299,74 +354,55 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_rule_for_other_profile_reports_missing_allow() {
-        // Arrange
-        let rules = [rule(Action::Allow, "*", PUBLIC)];
-
-        // Act
-        let problems = evaluate_private(&rules);
-
-        // Assert
-        assert!(matches!(
-            problems.as_slice(),
-            [Problem::MissingAllow { .. }]
-        ));
-    }
-
-    #[test]
-    fn evaluate_unusable_rules_are_ignored() {
-        // Arrange
-        let mut disabled = rule(Action::Allow, "*", ALL_PROFILES);
-        disabled.enabled = false;
-        let mut outbound = rule(Action::Allow, "*", ALL_PROFILES);
-        outbound.direction = Direction::Outbound;
-        let mut tcp = rule(Action::Allow, "*", ALL_PROFILES);
-        tcp.protocol = Protocol::Tcp;
-        let mut icmp = rule(Action::Allow, "*", ALL_PROFILES);
-        icmp.protocol = Protocol::Other;
-        let mut other_program = rule(Action::Allow, "*", ALL_PROFILES);
-        other_program.program = Some(PathBuf::from(r"C:\Other\app.exe"));
-
-        // Act
-        let problems = evaluate_private(&[disabled, outbound, tcp, icmp, other_program]);
-
-        // Assert
-        assert!(matches!(
-            problems.as_slice(),
-            [Problem::MissingAllow { .. }]
-        ));
-    }
-
-    #[test]
-    fn evaluate_allow_rule_for_any_program_counts() {
-        // Arrange
-        let mut allow = rule(Action::Allow, "*", ALL_PROFILES);
-        allow.program = None;
-        allow.protocol = Protocol::Any;
-
-        // Act
-        let problems = evaluate_private(&[allow]);
-
-        // Assert
-        assert_eq!(problems, Vec::new());
-    }
-
-    #[test]
     fn evaluate_block_rule_wins_over_allow_rule() {
         // Arrange
         let allow = rule(Action::Allow, "*", ALL_PROFILES);
         let mut block = rule(Action::Block, "42000-42100", PRIVATE);
         block.name = "Dismissed prompt".into();
+        let mut listing_user = rule(Action::Block, "*", PRIVATE);
+        listing_user.local_users = format!("D:(A;;CC;;;S-1-5-18)(A;;CC;;;{USER_SID})");
+        listing_user.remote_addresses = String::new();
 
         // Act
-        let problems = evaluate_private(&[allow, block]);
+        let named = evaluate_private(&[allow.clone(), block]);
+        let scoped = evaluate_private(&[allow, listing_user]);
 
         // Assert
         let expected = Problem::Blocked {
             rule: "Dismissed prompt".into(),
             ports: vec![PORT],
         };
-        assert_eq!(problems, vec![expected]);
+        assert_eq!(named, vec![expected]);
+        assert!(matches!(scoped.as_slice(), [Problem::Blocked { .. }]));
+    }
+
+    #[test]
+    fn evaluate_block_not_reaching_this_user_or_peers_reports_nothing() {
+        // Arrange
+        let other_user = format!("D:(A;;CC;;;{USER_SID}0)");
+        let deny_overrides = format!("D:(A;;CC;;;{USER_SID})(D;;CC;;;{USER_SID})");
+        let deny_first = format!("D:(D;;CC;;;{USER_SID})(A;;CC;;;{USER_SID})");
+        let scopes = [
+            ("other user", other_user.as_str(), "*"),
+            ("deny ace overrides allow", deny_overrides.as_str(), "*"),
+            ("deny ace first", deny_first.as_str(), "*"),
+            ("local subnet", "", "LocalSubnet"),
+            ("single address", "", "192.0.2.1"),
+            ("cidr", "", "10.0.0.0/8"),
+        ];
+
+        for (what, local_users, remote_addresses) in scopes {
+            let allow = rule(Action::Allow, "*", PRIVATE);
+            let mut block = rule(Action::Block, "*", PRIVATE);
+            block.local_users = local_users.into();
+            block.remote_addresses = remote_addresses.into();
+
+            // Act
+            let problems = evaluate_private(&[allow, block]);
+
+            // Assert
+            assert_eq!(problems, Vec::new(), "{what}");
+        }
     }
 
     #[test]
@@ -379,105 +415,5 @@ mod tests {
 
         // Assert
         assert_eq!(problems, Vec::new());
-    }
-
-    #[test]
-    fn evaluate_block_for_other_user_reports_nothing() {
-        // Arrange
-        let allow = rule(Action::Allow, "*", PRIVATE);
-        let mut block = rule(Action::Block, "*", PRIVATE);
-        block.local_users = format!("D:(A;;CC;;;{USER_SID}0)");
-
-        // Act
-        let problems = evaluate_private(&[allow, block]);
-
-        // Assert
-        assert_eq!(problems, Vec::new());
-    }
-
-    #[test]
-    fn evaluate_block_listing_current_user_reports_blocked() {
-        // Arrange
-        let allow = rule(Action::Allow, "*", PRIVATE);
-        let mut block = rule(Action::Block, "*", PRIVATE);
-        block.local_users = format!("D:(A;;CC;;;S-1-5-18)(A;;CC;;;{USER_SID})");
-        block.remote_addresses = String::new();
-
-        // Act
-        let problems = evaluate_private(&[allow, block]);
-
-        // Assert
-        assert!(matches!(problems.as_slice(), [Problem::Blocked { .. }]));
-    }
-
-    #[test]
-    fn evaluate_block_with_specific_remote_addresses_reports_nothing() {
-        // Arrange
-        let addresses = ["LocalSubnet", "192.0.2.1", "10.0.0.0/8"];
-        for address in addresses {
-            let allow = rule(Action::Allow, "*", PRIVATE);
-            let mut block = rule(Action::Block, "*", PRIVATE);
-            block.remote_addresses = address.into();
-
-            // Act
-            let problems = evaluate_private(&[allow, block]);
-
-            // Assert
-            assert!(problems.is_empty(), "{address}");
-        }
-    }
-
-    #[test]
-    fn evaluate_allow_for_other_user_reports_missing_allow() {
-        // Arrange
-        let mut allow = rule(Action::Allow, "*", PRIVATE);
-        allow.local_users = "D:(A;;CC;;;S-1-5-18)".into();
-
-        // Act
-        let problems = evaluate_private(&[allow]);
-
-        // Assert
-        assert!(matches!(
-            problems.as_slice(),
-            [Problem::MissingAllow { .. }]
-        ));
-    }
-
-    #[test]
-    fn applies_to_user_deny_ace_overrides_allow() {
-        // Arrange
-        let cases = [
-            format!("D:(A;;CC;;;{USER_SID})(D;;CC;;;{USER_SID})"),
-            format!("D:(D;;CC;;;{USER_SID})(A;;CC;;;{USER_SID})"),
-            format!("D:(D;;CC;;;{USER_SID})"),
-        ];
-        for sddl in cases {
-            let mut scoped = rule(Action::Block, "*", PRIVATE);
-            scoped.local_users = sddl;
-
-            // Act
-            let applies = scoped.applies_to_user(USER_SID);
-
-            // Assert
-            assert!(!applies);
-        }
-    }
-
-    #[test]
-    fn evaluate_package_scoped_rules_do_not_apply() {
-        // Arrange
-        for action in [Action::Allow, Action::Block] {
-            let mut scoped = rule(action, "*", PRIVATE);
-            scoped.package_id = "S-1-15-2-123".into();
-
-            // Act
-            let problems = evaluate_private(&[scoped]);
-
-            // Assert
-            assert!(matches!(
-                problems.as_slice(),
-                [Problem::MissingAllow { .. }]
-            ));
-        }
     }
 }

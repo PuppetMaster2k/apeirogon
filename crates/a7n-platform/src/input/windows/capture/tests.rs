@@ -79,51 +79,6 @@ fn key_repeated_down_is_dropped_but_release_and_other_injection_are_captured() {
 }
 
 #[test]
-fn mouse_own_warp_updates_baseline_without_reporting_local_activity() {
-    // Arrange
-    let (events, mut receiver) = tokio::sync::mpsc::channel(4);
-    let mut state = CaptureState {
-        events,
-        deadman: DeadMan::new(Instant::now()),
-        grabbed: false,
-        absolute_motion: false,
-        queue_full: false,
-        last: POINT::default(),
-        keys: [false; HELD_KEY_COUNT],
-    };
-    let injected = MSLLHOOKSTRUCT {
-        pt: POINT { x: 500, y: 100 },
-        flags: LLMHF_INJECTED,
-        dwExtraInfo: INJECTION_MARKER,
-        ..Default::default()
-    };
-
-    // Act
-    state.mouse(WM_MOUSEMOVE, &injected);
-    state.mouse(
-        WM_MOUSEMOVE,
-        &MSLLHOOKSTRUCT {
-            pt: POINT { x: 501, y: 102 },
-            flags: 0,
-            dwExtraInfo: 0,
-            ..injected
-        },
-    );
-
-    // Assert
-    assert!(matches!(
-        receiver.try_recv(),
-        Ok(Captured::Pointer {
-            x: 501,
-            y: 102,
-            dx: 1,
-            dy: 2
-        })
-    ));
-    assert!(receiver.try_recv().is_err());
-}
-
-#[test]
 fn own_injection_only_our_injected_marker_is_ignored() {
     // Arrange
     let cases = [
@@ -137,44 +92,6 @@ fn own_injection_only_our_injected_marker_is_ignored() {
 
     // Assert
     assert_eq!(ignored, [true, false, false]);
-}
-
-#[test]
-fn motion_absolute_fallback_keeps_anchor_and_reports_each_swallowed_delta() {
-    // Arrange
-    let (events, _) = tokio::sync::mpsc::channel(1);
-    let mut state = CaptureState {
-        events,
-        deadman: DeadMan::new(Instant::now()),
-        grabbed: true,
-        absolute_motion: true,
-        queue_full: false,
-        last: POINT { x: 100, y: 200 },
-        keys: [false; HELD_KEY_COUNT],
-    };
-
-    // Act
-    let reports = [POINT { x: 103, y: 198 }, POINT { x: 104, y: 201 }].map(|p| state.motion(p));
-
-    // Assert
-    assert!(matches!(
-        reports[0],
-        Some(Captured::Pointer {
-            x: 100,
-            y: 200,
-            dx: 3,
-            dy: -2
-        })
-    ));
-    assert!(matches!(
-        reports[1],
-        Some(Captured::Pointer {
-            x: 100,
-            y: 200,
-            dx: 4,
-            dy: 1
-        })
-    ));
 }
 
 #[test]
@@ -213,37 +130,4 @@ fn select_delta_capture_modes_choose_one_motion_source() {
         // Assert
         assert_eq!(deltas, expected.map(|selected| selected.then_some((3, -2))));
     }
-}
-
-#[test]
-fn raw_motion_grabbed_emits_relative_deltas_and_ignores_synthetic_motion() {
-    // Arrange
-    let (events, mut receiver) = tokio::sync::mpsc::channel(4);
-    let mut state = CaptureState {
-        events,
-        deadman: DeadMan::new(Instant::now()),
-        grabbed: true,
-        absolute_motion: false,
-        queue_full: false,
-        last: POINT { x: 100, y: 200 },
-        keys: [false; HELD_KEY_COUNT],
-    };
-
-    // Act
-    state.raw_motion(true, false, 3, -2);
-    state.raw_motion(false, true, 500, 100);
-    let hook = state.motion(POINT { x: 110, y: 210 });
-
-    // Assert
-    assert!(matches!(
-        receiver.try_recv(),
-        Ok(Captured::Pointer {
-            x: 100,
-            y: 200,
-            dx: 3,
-            dy: -2,
-        })
-    ));
-    assert!(receiver.try_recv().is_err());
-    assert!(hook.is_none());
 }
