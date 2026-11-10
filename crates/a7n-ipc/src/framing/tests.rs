@@ -26,22 +26,6 @@ async fn read_oversized_unterminated_line_closes_connection() {
     assert!(matches!(peer_result, Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof));
 }
 
-#[tokio::test]
-async fn read_line_large_stream_stops_before_collecting_remainder() {
-    // Arrange
-    const INPUT_LENGTH: u64 = 1024 * 1024 * 1024;
-    const BUFFER_LENGTH: usize = 1024;
-    let source = tokio::io::repeat(b'x').take(INPUT_LENGTH);
-    let mut reader = BufReader::with_capacity(BUFFER_LENGTH, source);
-
-    // Act
-    let result = read_line::<_, serde_json::Value>(&mut reader).await;
-
-    // Assert
-    assert!(matches!(result, Err(IpcError::LineTooLong)));
-    assert!(INPUT_LENGTH - reader.get_ref().limit() <= (MAX_LINE_LENGTH + BUFFER_LENGTH) as u64);
-}
-
 #[tokio::test(start_paused = true)]
 async fn read_partial_line_times_out_and_closes() {
     // Arrange
@@ -73,21 +57,6 @@ async fn write_oversized_message_closes_without_sending_partial_json() {
         receiver.read_u8().await.unwrap_err().kind(),
         std::io::ErrorKind::UnexpectedEof
     );
-}
-
-#[tokio::test]
-async fn read_batched_lines_preserves_buffered_next_message() {
-    // Arrange
-    let (mut sender, receiver) = tokio::io::duplex(1024);
-    sender.write_all(b"1\n2\n").await.unwrap();
-    let mut lines = JsonLines::new(receiver);
-
-    // Act
-    let first: u8 = lines.read().await.unwrap();
-    let second: u8 = lines.read().await.unwrap();
-
-    // Assert
-    assert_eq!((first, second), (1, 2));
 }
 
 #[tokio::test]

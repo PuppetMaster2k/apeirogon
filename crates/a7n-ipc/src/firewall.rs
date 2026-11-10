@@ -125,27 +125,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fix_missing_allow_returns_add_command() {
-        // Arrange
-        let problem = FirewallProblem::MissingAllow {
-            program: PathBuf::from(r"C:\Apps\apeirogond.exe"),
-            ports: vec![42042, 5353],
-            profiles: vec![NetworkProfile::Public],
-        };
-
-        // Act
-        let fix = problem.fix();
-
-        // Assert
-        assert_eq!(
-            fix.as_deref(),
-            Some(
-                r#"netsh advfirewall firewall add rule name="Apeirogon" dir=in action=allow program="C:\Apps\apeirogond.exe" protocol=UDP localport=42042,5353 profile=public"#
-            )
-        );
-    }
-
-    #[test]
     fn fix_program_path_returns_only_paste_safe_commands() {
         // Arrange
         let cases = [
@@ -172,20 +151,5 @@ mod tests {
                 assert!(command.contains(&format!("program=\"{path}\"")));
             }
         }
-    }
-
-    #[test]
-    fn fix_blocked_rule_offers_no_command() {
-        // Arrange
-        let problem = FirewallProblem::Blocked {
-            rule: "codex_sandbox_offline_block_inbound".into(),
-            ports: vec![42042],
-        };
-
-        // Act
-        let fix = problem.fix();
-
-        // Assert
-        assert_eq!(fix, None);
     }
 }

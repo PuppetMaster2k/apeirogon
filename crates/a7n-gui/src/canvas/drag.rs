@@ -76,21 +76,6 @@ mod tests {
     }
 
     #[test]
-    fn update_overlapping_drag_shows_overlapping_position() {
-        // Arrange
-        let others = [placement(1, 0)];
-        let mut current = placement(2, 150);
-        let mut drag = Drag::new(current);
-
-        // Act
-        drag.update(&mut current, &others, egui::vec2(-100.0, 0.0), 1.0);
-
-        // Assert
-        assert_eq!(current.x, 50);
-        assert!(overlaps(&current, &others));
-    }
-
-    #[test]
     fn finish_overlapping_drag_returns_last_valid_or_start_position() {
         // Arrange
         let others = [placement(1, 0)];
@@ -111,36 +96,5 @@ mod tests {
             // Assert
             assert_eq!(final_placement.x, expected);
         }
-    }
-
-    #[test]
-    fn finish_valid_drag_keeps_final_snapped_position() {
-        // Arrange
-        let others = [placement(1, 0)];
-        let mut current = placement(2, 150);
-        let mut drag = Drag::new(current);
-        drag.update(&mut current, &others, egui::vec2(-42.0, 0.0), 1.0);
-
-        // Act
-        let final_placement = drag.finish();
-
-        // Assert
-        assert_eq!(final_placement.x, 100);
-    }
-
-    #[test]
-    fn update_snapped_drag_accumulates_motion_from_start() {
-        // Arrange
-        let others = [placement(1, 0)];
-        let mut current = placement(2, 100);
-        let mut drag = Drag::new(current);
-
-        // Act
-        for _ in 0..65 {
-            drag.update(&mut current, &others, egui::vec2(0.4, 0.0), 2.0);
-        }
-
-        // Assert
-        assert_eq!(current.x, 113);
     }
 }

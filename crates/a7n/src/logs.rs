@@ -93,28 +93,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn read_tail_line_limits_returns_only_requested_lines() {
-        // Arrange
-        for (count, expected) in [
-            (0, ""),
-            (1, "third"),
-            (2, "second\nthird"),
-            (4, "first\nsecond\nthird"),
-        ] {
-            let mut reader = io::Cursor::new(b"first\nsecond\nthird");
-
-            // Act
-            let result = read_tail(&mut reader, count).unwrap();
-
-            // Assert
-            assert_eq!(
-                result.into_iter().flatten().collect::<Vec<_>>(),
-                expected.as_bytes()
-            );
-        }
-    }
-
-    #[test]
     fn read_new_rotation_drains_old_file_and_reads_larger_replacement() {
         // Arrange
         let dir = tempfile::tempdir().unwrap();

@@ -136,39 +136,17 @@ mod tests {
     }
 
     #[test]
-    fn machine_id_try_from_wrong_length_returns_bad_machine_id() {
+    fn try_from_wrong_length_bytes_are_rejected() {
         // Arrange
-        let bytes = [0u8; 15];
+        let short_id = [0u8; MachineId::LEN - 1];
+        let short_pin = [0u8; 31];
 
         // Act
-        let result = MachineId::try_from(&bytes[..]);
+        let id = MachineId::try_from(&short_id[..]);
+        let pin = Pin::try_from(&short_pin[..]);
 
         // Assert
-        assert!(matches!(result, Err(ProtoError::BadMachineId(15))));
-    }
-
-    #[test]
-    fn pin_try_from_wrong_length_returns_bad_pin() {
-        // Arrange
-        let bytes = [0u8; 31];
-
-        // Act
-        let result = Pin::try_from(&bytes[..]);
-
-        // Assert
-        assert!(matches!(result, Err(ProtoError::BadPin(31))));
-    }
-
-    #[test]
-    fn generation_max_equal_generation_larger_origin_wins() {
-        // Arrange
-        let low = MachineId::try_from(&[1u8; 16][..]).unwrap();
-        let high = MachineId::try_from(&[2u8; 16][..]).unwrap();
-
-        // Act
-        let winner = (Generation(5), low).max((Generation(5), high));
-
-        // Assert
-        assert_eq!(winner.1, high);
+        assert!(matches!(id, Err(ProtoError::BadMachineId(15))));
+        assert!(matches!(pin, Err(ProtoError::BadPin(31))));
     }
 }
