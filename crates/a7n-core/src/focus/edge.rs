@@ -37,6 +37,18 @@ impl HeldButtons {
     }
 }
 
+/// Push progress when the resistance is fully built up, in per-mille.
+pub const PROGRESS_FULL: u16 = 1000;
+
+/// Haptic ticks fire at each quarter of the push.
+const PROGRESS_QUARTER: u16 = PROGRESS_FULL / 4;
+
+/// Whether a quarter of the push was passed going from one progress to the next.
+#[must_use]
+pub fn quarter_crossed(from: u16, to: u16) -> bool {
+    to / PROGRESS_QUARTER > from / PROGRESS_QUARTER
+}
+
 /// Accumulated overshoot on one edge; moving away or crossing resets it.
 #[derive(Debug)]
 pub struct EdgeResistance {
@@ -77,6 +89,19 @@ impl EdgeResistance {
         }
         self.overshoot_px = 0;
         true
+    }
+
+    /// The edge being pushed and how much resistance has built up, in
+    /// per-mille of [`PROGRESS_FULL`]. `None` when nothing is pushing.
+    #[must_use]
+    pub fn progress(&self) -> Option<(Edge, u16)> {
+        if self.edge == Edge::Unspecified || self.overshoot_px == 0 {
+            return None;
+        }
+        let per_mille =
+            u64::from(self.overshoot_px) * u64::from(PROGRESS_FULL) / u64::from(self.resistance_px);
+        let per_mille = per_mille.min(u64::from(PROGRESS_FULL));
+        Some((self.edge, u16::try_from(per_mille).unwrap_or(PROGRESS_FULL)))
     }
 }
 
@@ -208,6 +233,57 @@ mod tests {
             // Assert
             assert!(!reset_crossed);
             assert!(!crossed);
+        }
+    }
+
+    #[test]
+    fn progress_push_builds_up_and_resets_with_the_push() {
+        // Arrange
+        let mut resistance = EdgeResistance::new(100);
+        let mut seen = vec![resistance.progress()];
+
+        // Act
+        for (edge, px) in [(Edge::Right, 25), (Edge::Right, 50), (Edge::Left, 10)] {
+            resistance.push(edge, px);
+            seen.push(resistance.progress());
+        }
+        resistance.push(Edge::Left, 90);
+        seen.push(resistance.progress());
+        resistance.push(Edge::Left, 0);
+        seen.push(resistance.progress());
+
+        // Assert
+        assert_eq!(
+            seen,
+            [
+                None,
+                Some((Edge::Right, 250)),
+                Some((Edge::Right, 750)),
+                Some((Edge::Left, 100)),
+                None,
+                None,
+            ]
+        );
+    }
+
+    #[test]
+    fn quarter_crossed_progress_steps_ticks_once_per_quarter() {
+        // Arrange
+        let cases = [
+            (0, 249, false),
+            (200, 250, true),
+            (250, 499, false),
+            (240, 760, true),
+            (750, 999, false),
+            (999, 1000, true),
+        ];
+
+        for (from, to, expected) in cases {
+            // Act
+            let crossed = quarter_crossed(from, to);
+
+            // Assert
+            assert_eq!(crossed, expected, "{from} -> {to}");
         }
     }
 }

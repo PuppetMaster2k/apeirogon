@@ -29,6 +29,7 @@ pub struct Config {
     pub name: Option<String>,
     pub port: u16,
     pub input: InputConfig,
+    pub feedback: FeedbackConfig,
     pub hotkeys: HotkeyConfig,
     pub gestures: GestureConfig,
     pub sync: SyncConfig,
@@ -44,6 +45,7 @@ impl Default for Config {
             name: None,
             port: limits::DEFAULT_UDP_PORT,
             input: InputConfig::default(),
+            feedback: FeedbackConfig::default(),
             hotkeys: HotkeyConfig::default(),
             gestures: GestureConfig::default(),
             sync: SyncConfig::default(),
@@ -93,6 +95,25 @@ impl Default for InputConfig {
             speed: 1.0,
             natural_scrolling: false,
             fullscreen_hold: false,
+        }
+    }
+}
+
+/// Local cues for edge pushes and landings; never synced between machines.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FeedbackConfig {
+    pub edge: bool,
+    pub landing: bool,
+    pub haptics: bool,
+}
+
+impl Default for FeedbackConfig {
+    fn default() -> Self {
+        Self {
+            edge: true,
+            landing: true,
+            haptics: false,
         }
     }
 }
@@ -366,6 +387,7 @@ impl Config {
                     ConfigError::Invalid("input.speed must be between 0.1 and 10.0".into())
                 })?),
                 ["input", "natural_scrolling" | "fullscreen_hold"]
+                | ["feedback", "edge" | "landing" | "haptics"]
                 | ["notifications", "files"]
                 | ["peers", _, "allow_drive" | "wake"]
                 | ["sync", "settings"] => {

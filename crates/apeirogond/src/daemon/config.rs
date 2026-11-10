@@ -22,6 +22,7 @@ impl Daemon {
             .unwrap_or_else(|| self.identity.machine_id.to_string());
         self.input.scale = MotionScale::new(config.input.speed);
         self.input.fullscreen_hold = FullscreenHold::new(config.input.fullscreen_hold);
+        self.input.sink.configure(config.feedback);
         self.input.hotkeys = HotkeyMatcher::new(config.bindings());
         self.input.gestures = config.gesture_bindings();
         self.input.shake = ShakeDetector::new(config.hotkeys.shake);
@@ -63,6 +64,7 @@ impl Daemon {
         if config.input.fullscreen_hold != self.config.input.fullscreen_hold {
             self.input.fullscreen_hold = FullscreenHold::new(config.input.fullscreen_hold);
         }
+        self.input.sink.configure(config.feedback);
         self.input.hotkeys = HotkeyMatcher::new(config.bindings());
         self.input.gestures = config.gesture_bindings();
         self.input.shake = ShakeDetector::new(config.hotkeys.shake);

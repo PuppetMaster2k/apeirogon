@@ -15,14 +15,19 @@ impl Daemon {
         dy: i32,
         driven: bool,
     ) {
+        let display = bounds;
         let bounds = (bounds.x, bounds.y, bounds.width, bounds.height);
         let Some((edge, overshoot, along)) = self.crossing_push(bounds, (x, y), (dx, dy), driven)
         else {
+            self.input.sink.clear();
             return;
         };
         if !self.input.resistance.push(edge, overshoot) {
+            let progress = self.input.resistance.progress();
+            self.input.sink.push(display, progress);
             return;
         }
+        self.input.sink.clear();
         let Some((target, landing)) = self.crossing_exit(bounds, (x, y), (dx, dy), edge, along)
         else {
             if !driven && self.input.edge_no_target.replace(edge) != Some(edge) {

@@ -156,6 +156,7 @@ fn set_invalid_value_leaves_config_unchanged() {
         ("sync.settings", "no"),
         ("notifications.files", "no"),
         ("input.fullscreen_hold", "yes"),
+        ("feedback.haptics", "yes"),
         ("files.receive_dir", "incoming"),
         ("files.receive_dir", "../incoming"),
         ("files.receive_dir", ""),

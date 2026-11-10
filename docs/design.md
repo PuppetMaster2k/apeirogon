@@ -226,6 +226,15 @@ crates/
   X11 detects only EWMH full-screen windows; borderless games without that state
   are not held.
 
+- **Feedback:** purely local cues, never synced. Settings `feedback.edge`
+  (default true) draws a glow along the pushed edge that grows with the built-up
+  resistance; `feedback.landing` (default true) briefly marks where the pointer
+  lands after a take; `feedback.haptics` (default false, macOS only) ticks the
+  trackpad at each quarter of the push. The daemon decides what to send
+  (progress changes of at least 5 % and quarter crossings); each OS backend draws
+  a click-through overlay that never takes focus and honours the OS reduce-motion
+  setting itself. Windows, macOS and X11 are supported; Wayland has none.
+
 - **Safety hotkeys** (all rebindable):
   - Return to the local machine: double-tap the trigger key (Right Alt / Right
     Option by default, within 400 ms), or Scroll Lock / `Ctrl+Alt+Shift+Home`.
