@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.21.1...v0.22.0) (2026-11-10)
+
+
+### Features
+
+* keep the pointer in full-screen apps ([#180](https://github.com/PuppetMaster2k/apeirogon/issues/180)) ([c9524f7](https://github.com/PuppetMaster2k/apeirogon/commit/c9524f7008cb8ceb3767d62ff5d1983485750119))
+
 ## [0.21.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.21.0...v0.21.1) (2026-11-10)
 
 
