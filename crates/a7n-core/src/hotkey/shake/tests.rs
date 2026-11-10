@@ -7,7 +7,7 @@ fn on_motion_four_big_reversals_fires_once() {
     // Arrange
     let mut detector = ShakeDetector::new(4);
     let start = Instant::now();
-    let motion = [20, 20, 0, -40, 40, -40, 40, 0, 40];
+    let motion = [40, 40, 0, -80, 80, -80, 80, 0, 80];
 
     // Act
     let fired: Vec<_> = motion
@@ -30,7 +30,7 @@ fn on_motion_reversals_spread_over_window_does_not_fire() {
     let start = Instant::now();
 
     // Act
-    let fired: Vec<_> = [40, -40, 40, -40, 40, -40, 40, -40]
+    let fired: Vec<_> = [80, -80, 80, -80, 80, -80, 80, -80]
         .into_iter()
         .zip(0..)
         .map(|(dx, index)| detector.on_motion(dx, start + Duration::from_millis(index * 250)))
@@ -58,6 +58,22 @@ fn on_motion_small_jitter_does_not_count() {
 }
 
 #[test]
+fn on_motion_reversals_below_min_travel_does_not_fire() {
+    // Arrange
+    let mut detector = ShakeDetector::new(SHAKE_DEFAULT);
+    let now = Instant::now();
+
+    // Act
+    let fired = [40, -40]
+        .repeat(10)
+        .into_iter()
+        .any(|dx| detector.on_motion(dx, now));
+
+    // Assert
+    assert!(!fired);
+}
+
+#[test]
 fn on_motion_disabled_never_fires() {
     // Arrange
     let mut detector = ShakeDetector::new(0);
@@ -75,13 +91,13 @@ fn on_motion_disabled_never_fires() {
 }
 
 #[test]
-fn on_motion_custom_count_needs_six_reversals() {
+fn on_motion_default_count_needs_six_reversals() {
     // Arrange
-    let mut detector = ShakeDetector::new(6);
+    let mut detector = ShakeDetector::new(SHAKE_DEFAULT);
     let now = Instant::now();
 
     // Act
-    let fired: Vec<_> = [40, -40, 40, -40, 40, -40, 40]
+    let fired: Vec<_> = [80, -80, 80, -80, 80, -80, 80]
         .into_iter()
         .map(|dx| detector.on_motion(dx, now))
         .collect();

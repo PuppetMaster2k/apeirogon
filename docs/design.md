@@ -237,7 +237,7 @@ crates/
     Non-modifier trigger keys are consumed; modifier triggers keep forwarding.
     The GUI can record a trigger key from local capture before saving it.
   - Shake the mouse left and right while driving a peer to return home: by
-    default 4 horizontal reversals within 600 ms, each after at least 40 px
+    default 6 horizontal reversals within 600 ms, each after at least 80 px
     of travel. `hotkeys.shake` accepts 3–10 reversals, or 0 to turn it off.
     Shaking at home or while driven does nothing; focus changes reset it.
   - Lock cursor to the current machine: `Ctrl+Alt+Shift+L`

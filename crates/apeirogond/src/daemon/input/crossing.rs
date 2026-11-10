@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_core::input::{corner_push, edge_push};
+use a7n_core::input::{clamp_position, corner_push, edge_push};
 use a7n_proto::v1::Landing;
 
 use super::{Bounds, Daemon, Edge, MachineId, now};
@@ -25,8 +25,12 @@ impl Daemon {
         }
         let Some((target, landing)) = self.crossing_exit(bounds, (x, y), (dx, dy), edge, along)
         else {
+            if !driven && self.input.edge_no_target.replace(edge) != Some(edge) {
+                crate::log::event!("kind=edge_no_target");
+            }
             return;
         };
+        self.input.edge_no_target = None;
         self.dispatch_crossing(target, landing, driven).await;
     }
 
@@ -55,7 +59,7 @@ impl Daemon {
         if self
             .input
             .fullscreen_hold
-            .holds(true, || focused_fullscreen_at(x, y))
+            .holds(true, || focused_fullscreen_at(bounds, x, y))
         {
             self.input.resistance.push(Edge::Unspecified, 0);
             return None;
@@ -104,7 +108,9 @@ impl Daemon {
     }
 }
 
-fn focused_fullscreen_at(x: i32, y: i32) -> bool {
+fn focused_fullscreen_at(bounds: (i32, i32, u32, u32), x: i32, y: i32) -> bool {
+    // Hook points can lie beyond the desktop; query the monitor at the clamped cursor.
+    let (x, y) = clamp_position(bounds, x, y);
     let held = a7n_platform::fullscreen::focused_fullscreen_at(x, y);
     if held {
         crate::log::event!("kind=edge_held_fullscreen");

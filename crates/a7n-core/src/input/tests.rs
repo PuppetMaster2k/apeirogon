@@ -117,7 +117,7 @@ fn edge_push_edges_inward_and_corner_selects_outward_edge() {
         (40, 30, 4, 4, None),
         (-10, -20, -4, -4, Some((Edge::Left, 4, 0.0))),
         (90, 80, 4, 4, Some((Edge::Right, 4, 1.0))),
-        (-11, 30, -4, 0, None),
+        (-11, 30, -4, 0, Some((Edge::Left, 4, 0.5))),
         (-10, 30, i32::MIN, 0, Some((Edge::Left, i32::MAX, 0.5))),
     ];
 
@@ -127,6 +127,39 @@ fn edge_push_edges_inward_and_corner_selects_outward_edge() {
 
         // Assert
         assert_eq!(push, expected);
+    }
+}
+
+#[test]
+fn edge_push_outside_desktop_clamps_point_and_preserves_outward_motion() {
+    // Arrange
+    let bounds = (-100, -200, 201, 401);
+    let cases = [
+        (-103, 0, -7, 0, Some((Edge::Left, 7, 0.5))),
+        (103, 0, 7, 0, Some((Edge::Right, 7, 0.5))),
+        (0, -203, 0, -7, Some((Edge::Top, 7, 0.5))),
+        (0, 203, 0, 7, Some((Edge::Bottom, 7, 0.5))),
+        (-103, 0, 7, 0, None),
+        (103, 0, -7, 0, None),
+        (0, -203, 0, 7, None),
+        (0, 203, 0, -7, None),
+        (-103, -1000, -7, 0, Some((Edge::Left, 7, 0.0))),
+        (103, 1000, 7, 0, Some((Edge::Right, 7, 1.0))),
+        (-1000, -203, 0, -7, Some((Edge::Top, 7, 0.0))),
+        (1000, 203, 0, 7, Some((Edge::Bottom, 7, 1.0))),
+        (-103, -203, -7, -7, Some((Edge::Left, 7, 0.0))),
+        (103, -203, 7, -7, Some((Edge::Right, 7, 0.0))),
+        (-103, 203, -7, 7, Some((Edge::Left, 7, 1.0))),
+        (103, 203, 7, 7, Some((Edge::Right, 7, 1.0))),
+        (-103, -203, 7, 7, None),
+        (0, 0, -7, 0, None),
+    ];
+    for (x, y, dx, dy, expected) in cases {
+        // Act
+        let push = edge_push(bounds, x, y, dx, dy);
+
+        // Assert
+        assert_eq!(push, expected, "point ({x}, {y}), motion ({dx}, {dy})");
     }
 }
 
@@ -176,6 +209,11 @@ fn corner_push_near_edge_end_requires_diagonal_outward_motion() {
         (90, 80, 1, -1, None),
         (90, 80, -1, -1, None),
         (89, 79, 1, 1, None),
+        (-13, -23, -3, -3, Some((Edge::Left, Corner::TopLeft))),
+        (93, -23, 3, -3, Some((Edge::Right, Corner::TopRight))),
+        (-13, 83, -3, 3, Some((Edge::Left, Corner::BottomLeft))),
+        (93, 83, 3, 3, Some((Edge::Right, Corner::BottomRight))),
+        (-13, -23, 3, 3, None),
     ];
     for (x, y, dx, dy, expected) in cases {
         // Act

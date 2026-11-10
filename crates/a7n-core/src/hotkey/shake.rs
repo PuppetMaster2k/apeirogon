@@ -3,10 +3,10 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-pub const SHAKE_DEFAULT: u8 = 4;
+pub const SHAKE_DEFAULT: u8 = 6;
 pub const SHAKE_MIN: u8 = 3;
 pub const SHAKE_MAX: u8 = 10;
-pub const SHAKE_MIN_TRAVEL: u32 = 40;
+pub const SHAKE_MIN_TRAVEL: u32 = 80;
 pub const SHAKE_WINDOW: Duration = Duration::from_millis(600);
 
 /// Horizontal reversals measured using time supplied by the input owner.

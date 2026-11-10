@@ -135,6 +135,79 @@ async fn match_hotkey_unpaired_slot_does_nothing_and_preserves_later_numbers() {
 }
 
 #[tokio::test]
+async fn cross_edge_outside_left_point_reaches_paired_target() {
+    // Arrange
+    let (mut daemon, _dir, [own, target, _]) = placed_daemon(0);
+    let mut placements = daemon.layout.state.placements().to_vec();
+    placements[1].x = -100;
+    daemon.layout.state = daemon.layout.state.edit(placements, own).unwrap();
+    daemon.wol.sender = Box::new(|_| Ok(()));
+    let bounds = Bounds {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+    };
+    let dx = -i32::try_from(a7n_proto::limits::DEFAULT_RESISTANCE_PX).unwrap();
+
+    // Act
+    daemon.cross_edge(bounds, -3, 50, dx, 0, false).await;
+
+    // Assert
+    let pending = daemon.wol.pending.as_ref().unwrap();
+    assert_eq!(pending.peer, target);
+    assert!(daemon.input.edge_no_target.is_none());
+}
+
+#[tokio::test]
+async fn cross_edge_missing_target_limits_diagnostic_to_each_push() {
+    // Arrange
+    let (mut daemon, _dir, _) = placed_daemon(0);
+    daemon.wol.sender = Box::new(|_| Ok(()));
+    let bounds = Bounds {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+    };
+    let dx = i32::try_from(a7n_proto::limits::DEFAULT_RESISTANCE_PX).unwrap();
+    let pushes = [
+        (0, 50, -1, 0, false),
+        (-3, 50, -dx, 0, false),
+        (-3, 50, -dx, 0, false),
+        (50, 50, 1, 0, false),
+        (-3, 50, -dx, 0, false),
+        (50, 0, 0, -1, false),
+        (50, -3, 0, -dx, false),
+        (50, 103, 0, dx, true),
+        (103, 50, dx, 0, false),
+    ];
+    let mut noted = Vec::new();
+
+    // Act
+    for (x, y, dx, dy, driven) in pushes {
+        daemon.cross_edge(bounds, x, y, dx, dy, driven).await;
+        noted.push(daemon.input.edge_no_target);
+    }
+
+    // Assert
+    assert_eq!(
+        noted,
+        [
+            None,
+            Some(Edge::Left),
+            Some(Edge::Left),
+            Some(Edge::Left),
+            Some(Edge::Left),
+            Some(Edge::Left),
+            Some(Edge::Top),
+            Some(Edge::Top),
+            None
+        ]
+    );
+}
+
+#[tokio::test]
 async fn cross_edge_unpaired_target_does_not_wake() {
     // Arrange
     let (mut daemon, _dir, [_, target, _]) = placed_daemon(0);

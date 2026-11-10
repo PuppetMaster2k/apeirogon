@@ -128,7 +128,7 @@ The layout is a 2D canvas on which each machine's whole virtual desktop (all its
 - **Chains**: A drives B; B sends `Handover{next = C}` to A; A takes C directly. There is no relay through B.
 - **Hotkeys** (handled locally by the owner): return home (a trigger key or a chord), jump to machine N (a direct take), and lock the cursor to the current machine. The trigger defaults to Right Alt / Right Option; `hotkeys.double_tap` selects a modifier side, F1–F24, Scroll Lock, Pause, Menu or `none`. `hotkeys.trigger_mode` is `double_tap` (default, within 400 ms), `hold` or `both`; `hotkeys.hold_ms` defaults to 800 ms and accepts 300–3000 ms. A fresh press arms a hold; release or another key cancels it, repeats never restart it, and it fires once. Non-modifier trigger keys are consumed, while modifier triggers keep forwarding.
   Shaking the mouse left and right while driving a peer also returns home:
-  by default 4 horizontal reversals within 600 ms, each after at least 40 px
+  by default 6 horizontal reversals within 600 ms, each after at least 80 px
   of travel. `hotkeys.shake` accepts 3–10 reversals, or 0 to turn it off.
   It has no effect at home or while driven, and resets on focus changes.
 - **Capture dead-man switch** (local, not on the wire): the platform capture releases the keyboard and mouse by itself when the daemon's keepalive is missing for 1.5 s.

@@ -171,7 +171,7 @@ async fn captured_shake_while_driving_returns_home() {
     input.grab(true).await;
 
     // Act
-    for dx in [40, -40, 40, -40, 40] {
+    for dx in [80, -80, 80, -80, 80, -80, 80] {
         daemon
             .captured(Some(Captured::Pointer {
                 x: 50,
@@ -194,7 +194,7 @@ async fn captured_shake_at_home_does_nothing() {
     let mut input = input.unwrap();
 
     // Act
-    for dx in [40, -40, 40, -40, 40] {
+    for dx in [80, -80, 80, -80, 80, -80, 80] {
         daemon
             .captured(Some(Captured::Pointer {
                 x: 50,

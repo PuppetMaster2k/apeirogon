@@ -19,16 +19,14 @@ impl Daemon {
             match action {
                 Action::Send { peer, body } => self.send_input(peer, body),
                 Action::Release(events) => {
-                    self.input.buttons.reset();
-                    self.input.fullscreen_hold.reset();
+                    self.input.reset_edge_state();
                     for event in events {
                         self.input.inject(Inject::Event(event)).await;
                     }
                 }
                 Action::Cursor(cursor) => {
                     self.input.shake = ShakeDetector::new(self.config.hotkeys.shake);
-                    self.input.buttons.reset();
-                    self.input.fullscreen_hold.reset();
+                    self.input.reset_edge_state();
                     if let Cursor::Driving(peer) = cursor {
                         self.input.counter.reset();
                         self.snapshot_remap(peer);
@@ -41,8 +39,7 @@ impl Daemon {
                     resistance_px,
                     ..
                 } => {
-                    self.input.buttons.reset();
-                    self.input.fullscreen_hold.reset();
+                    self.input.reset_edge_state();
                     self.input.hotkeys = HotkeyMatcher::new(self.config.bindings());
                     self.input.shake = ShakeDetector::new(self.config.hotkeys.shake);
                     self.input.tracker.reset();

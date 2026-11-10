@@ -99,10 +99,10 @@ impl App {
         theme::setting_row(
             ui,
             "Shake to return",
-            "Shake the mouse left and right this many times to return to this machine. 0 turns it off.",
+            "Shake the mouse left and right this many times to return to this machine. Enter zero to turn it off.",
             Some(key),
             |ui| {
-                if theme::text_input(ui, "Number of reversals", &mut value, "4", true).changed() {
+                if theme::text_input(ui, "Number of reversals", &mut value, "", true).changed() {
                     self.edit(key, &value, "");
                 }
             },

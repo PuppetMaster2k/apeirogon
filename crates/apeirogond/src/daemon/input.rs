@@ -41,6 +41,7 @@ pub(super) struct Input {
     pub(super) recording: recording::Recording,
     pub(super) fullscreen_hold: FullscreenHold,
     resistance: EdgeResistance,
+    edge_no_target: Option<Edge>,
     buttons: HeldButtons,
     pub(super) failed: bool,
     lost: Vec<MachineId>,
@@ -71,11 +72,18 @@ impl Input {
             recording: recording::Recording::default(),
             fullscreen_hold: FullscreenHold::new(false),
             resistance: EdgeResistance::new(0),
+            edge_no_target: None,
             buttons: HeldButtons::default(),
             failed: false,
             lost: Vec::new(),
             retried: None,
         }
+    }
+
+    fn reset_edge_state(&mut self) {
+        self.buttons.reset();
+        self.fullscreen_hold.reset();
+        self.edge_no_target = None;
     }
 
     pub(super) fn keepalive(&mut self) {

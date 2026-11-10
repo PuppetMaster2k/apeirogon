@@ -106,11 +106,24 @@ impl MotionTracker {
     }
 }
 
-/// Detect outward motion on an edge pixel; horizontal motion wins at corners.
+/// Clamp a desktop point to its bounds, including negative origins.
+#[must_use]
+pub fn clamp_position(
+    (left, top, width, height): (i32, i32, u32, u32),
+    x: i32,
+    y: i32,
+) -> (i32, i32) {
+    (
+        x.clamp(left, left.saturating_add_unsigned(width.saturating_sub(1))),
+        y.clamp(top, top.saturating_add_unsigned(height.saturating_sub(1))),
+    )
+}
+
+/// Detect outward motion at or beyond an edge; horizontal motion wins at corners.
 #[must_use]
 #[allow(clippy::cast_possible_truncation)] // Normalized fractions in 0..=1 fit f32.
 pub fn edge_push(
-    (left, top, width, height): (i32, i32, u32, u32),
+    bounds @ (left, top, width, height): (i32, i32, u32, u32),
     x: i32,
     y: i32,
     dx: i32,
@@ -119,15 +132,9 @@ pub fn edge_push(
     if width == 0 || height == 0 {
         return None;
     }
+    let (x, y) = clamp_position(bounds, x, y);
     let right = i64::from(left) + i64::from(width) - 1;
     let bottom = i64::from(top) + i64::from(height) - 1;
-    if i64::from(x) < i64::from(left)
-        || i64::from(x) > right
-        || i64::from(y) < i64::from(top)
-        || i64::from(y) > bottom
-    {
-        return None;
-    }
     let (edge, overshoot, position, start, length) = if x == left && dx < 0 {
         (Edge::Left, dx.saturating_neg(), y, top, height)
     } else if i64::from(x) == right && dx > 0 {
@@ -154,6 +161,7 @@ pub fn corner_push(
     dy: i32,
 ) -> Option<(Edge, Corner)> {
     let (edge, _, _) = edge_push(bounds, x, y, dx, dy)?;
+    let (x, y) = clamp_position(bounds, x, y);
     let right = i64::from(left) + i64::from(width) - 1;
     let bottom = i64::from(top) + i64::from(height) - 1;
     let (position, start, end, delta) = match edge {
