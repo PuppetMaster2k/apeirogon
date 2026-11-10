@@ -43,6 +43,9 @@ use crate::input::Bounds;
 mod macos;
 #[cfg(windows)]
 mod windows;
+#[cfg(all(test, not(windows)))]
+#[path = "feedback/windows/geometry.rs"]
+mod windows_geometry;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod x11;
 
