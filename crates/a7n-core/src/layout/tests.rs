@@ -129,7 +129,7 @@ fn exit_touching_edges_maps_offset_and_gaps_are_walls() {
     ];
     for (along, offset) in cases {
         // Act
-        let landing = layout.exit(id(1), Edge::Right, along);
+        let landing = layout.exit(id(1), Edge::Right, along, |_| true);
 
         // Assert
         assert_eq!(
@@ -161,14 +161,14 @@ fn exit_all_directions_maps_to_opposite_edge_and_excludes_endpoint() {
         (Edge::Bottom, 5, Edge::Top),
     ] {
         // Act
-        let landing = layout.exit(id(1), edge, 0.25).unwrap();
+        let landing = layout.exit(id(1), edge, 0.25, |_| true).unwrap();
 
         // Assert
         assert_eq!(
             (landing.0, landing.1.edge, landing.1.offset),
             (id(target), opposite as i32, 0.25)
         );
-        assert!(layout.exit(id(1), edge, 1.0).is_none());
+        assert!(layout.exit(id(1), edge, 1.0, |_| true).is_none());
     }
 }
 
@@ -270,7 +270,7 @@ fn nth_unsorted_placements_returns_one_based_canvas_order() {
         .unwrap();
 
     // Act
-    let order: Vec<_> = (0..=5).map(|n| layout.nth(n)).collect();
+    let order: Vec<_> = (0..=5).map(|n| layout.nth(n, |_| true)).collect();
 
     // Assert
     assert_eq!(
@@ -309,7 +309,7 @@ fn exit_blocked_thirds_only_prevent_source_segment_crossings() {
                 .unwrap();
             for (segment, along) in [0.1, 0.5, 0.9].into_iter().enumerate() {
                 // Act
-                let exit = layout.exit(id(1), edge, along);
+                let exit = layout.exit(id(1), edge, along, |_| true);
 
                 // Assert
                 assert_eq!(exit.is_none(), segment == third);
@@ -344,7 +344,7 @@ fn exit_corner_diagonal_neighbours_land_on_opposite_edge_at_shared_corner() {
         (Corner::BottomRight, Edge::Bottom, 5, Edge::Top, 0.0),
     ] {
         // Act
-        let (target_id, landing) = layout.exit_corner(id(1), edge, corner).unwrap();
+        let (target_id, landing) = layout.exit_corner(id(1), edge, corner, |_| true).unwrap();
 
         // Assert
         assert_eq!(

@@ -82,7 +82,7 @@ Every item must pass before a release.
   `hotkeys.home` chord (default Ctrl+Option+Shift+Home; Scroll Lock also
   works on keyboards that have it).
 - [ ] Cursor lock: Ctrl+Option+Shift+L prevents edge crossing; pressing it
-  again restores crossing. Ctrl+Option+Shift+1…9 jumps to the configured
+  again restores crossing. Ctrl+Option+Shift+1…9 jumps to the configured paired
   machine. Repeat with rebound `hotkeys.lock` and `hotkeys.jump` settings.
 
 ## Trackpad swipe shortcuts (#97)

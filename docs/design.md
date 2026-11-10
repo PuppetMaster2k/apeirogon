@@ -241,7 +241,9 @@ crates/
     of travel. `hotkeys.shake` accepts 3–10 reversals, or 0 to turn it off.
     Shaking at home or while driven does nothing; focus changes reset it.
   - Lock cursor to the current machine: `Ctrl+Alt+Shift+L`
-  - Jump to machine N: `Ctrl+Alt+Shift+1…9`
+  - Jump to paired machine N: `Ctrl+Alt+Shift+1…9` (Alt is Option on macOS).
+    Unpaired slots do nothing; other machines keep their layout numbers.
+    Edge crossings ignore unpaired placements.
   - Peer disconnect auto-releases all held keys and buttons on it.
 - **Capture dead-man switch:** the platform capture releases the local
   keyboard and mouse by itself when the daemon's keepalive (every 500 ms) is

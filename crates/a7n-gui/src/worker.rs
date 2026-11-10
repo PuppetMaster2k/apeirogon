@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use a7n_ipc::config::Config;
-use a7n_ipc::{IpcClient, Request, Response};
+use a7n_ipc::{IpcClient, MachineId, Request, Response};
 use eframe::egui;
 use tokio::sync::mpsc as async_mpsc;
 
@@ -64,6 +64,12 @@ impl Worker {
                                 Ok(_) => Err("Unexpected daemon response".into()),
                             })
                         }
+                        Command::Request(Request::Unpair { machine }) => {
+                            let Some(update) = unpair(&mut client, machine, &publish).await else {
+                                break;
+                            };
+                            update
+                        }
                         Command::Request(request) => Update::Response(request_daemon(&mut client, &request).await),
                         Command::Config => Update::Config(load_config().map(Box::new)),
                         Command::SaveConfig(values) => {
@@ -89,6 +95,23 @@ impl Worker {
         })?;
         Ok(Self { commands, updates })
     }
+}
+
+async fn unpair(
+    client: &mut Option<IpcClient>,
+    machine: MachineId,
+    publish: &impl Fn(Update) -> bool,
+) -> Option<Update> {
+    let response = request_daemon(client, &Request::Unpair { machine }).await;
+    if !matches!(response, Ok(Response::Done)) {
+        return Some(Update::Response(response));
+    }
+    if !publish(Update::Notice("Machine unpaired".into())) {
+        return None;
+    }
+    Some(Update::Response(
+        request_daemon(client, &Request::Status).await,
+    ))
 }
 
 async fn request_daemon(

@@ -65,7 +65,12 @@ and secure desktops are out of scope; input must release there.
   press Scroll Lock, and press Ctrl+Alt+Shift+Home in separate runs; each
   returns focus home and releases held inputs on the peer.
 - [ ] Cursor lock: Ctrl+Alt+Shift+L prevents edge crossing; press it again
-  to unlock. Ctrl+Alt+Shift+1…9 jumps to an available layout machine.
+  to unlock. Ctrl+Alt+Shift+1…9 jumps to an available paired layout machine.
+  Windows' Alt+Shift input-language hotkey also fires on this chord; turn it off under Settings > Time & language > Typing > Advanced keyboard settings > Input language hot keys, or pick other jump keys.
+- [ ] Unpair a machine: it disappears from Paired machines immediately (it
+  may remain under Nearby machines). Its retained layout placement says
+  “Unpaired machine”; edge pushes and jumps skip it without a wake attempt.
+  Jumping to its slot does nothing; later machines keep their numbers.
 - [ ] Secure desktop: open a UAC prompt or press Ctrl+Alt+Del locally while
   driving, then repeat while this machine is driven. Remote control of
   these screens is out of scope; input must release, with local keyboard

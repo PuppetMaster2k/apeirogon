@@ -34,6 +34,8 @@ paired to a second machine. Every item must pass before a release.
 
 ## Failure handling
 
+- [ ] Ctrl+Alt+Shift+1…9 jumps to a paired layout machine.
+  After unpairing, edge pushes and jumps skip that placement without waking it.
 - [ ] Stuck keys: hold a key and a modifier on the peer, cut the link (pull
   the cable or block the port); the keys release on this machine and do not
   stay down.

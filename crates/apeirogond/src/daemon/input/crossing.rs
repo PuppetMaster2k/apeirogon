@@ -72,10 +72,15 @@ impl Daemon {
         along: f32,
     ) -> Option<(MachineId, Landing)> {
         let own = self.identity.machine_id;
-        self.layout.state.exit(own, edge, along).or_else(|| {
-            let (edge, corner) = corner_push(bounds, x, y, dx, dy)?;
-            self.layout.state.exit_corner(own, edge, corner)
-        })
+        self.layout
+            .state
+            .exit(own, edge, along, |id| self.is_layout_target(id))
+            .or_else(|| {
+                let (edge, corner) = corner_push(bounds, x, y, dx, dy)?;
+                self.layout
+                    .state
+                    .exit_corner(own, edge, corner, |id| self.is_layout_target(id))
+            })
     }
 
     async fn dispatch_crossing(&mut self, target: MachineId, landing: Landing, driven: bool) {
@@ -106,3 +111,6 @@ fn focused_fullscreen_at(x: i32, y: i32) -> bool {
     }
     held
 }
+
+#[cfg(test)]
+mod tests;

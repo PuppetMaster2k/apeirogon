@@ -10,6 +10,11 @@ use a7n_proto::{
 use super::{Daemon, DaemonError};
 
 impl Daemon {
+    pub(super) fn is_layout_target(&self, machine: MachineId) -> bool {
+        // Stored placements outlive pairing; only current pins authorize remote targets.
+        machine == self.identity.machine_id || self.pins.contains_key(&machine)
+    }
+
     pub(super) fn layout_info(&self) -> LayoutInfo {
         let placed = self
             .layout
@@ -62,7 +67,7 @@ impl Daemon {
         if id == self.identity.machine_id {
             return self.info.name.clone();
         }
-        self.peer_name(id).unwrap_or("unknown").to_owned()
+        self.peer_name(id).unwrap_or("Unpaired machine").to_owned()
     }
 
     pub(super) fn set_layout(&mut self, placed: Vec<LayoutPlacement>) -> Result<(), DaemonError> {

@@ -99,6 +99,10 @@ impl PinStore {
         self.entries.get(machine_id)
     }
 
+    pub(crate) fn contains_key(&self, machine_id: &MachineId) -> bool {
+        self.entries.contains_key(machine_id)
+    }
+
     /// Caches a public key only after checking the pinned certificate and id.
     pub(crate) fn record_certificate(&mut self, cert_der: &[u8]) -> Result<(), PinStoreError> {
         let machine_id = identity::machine_id_of(cert_der)?;

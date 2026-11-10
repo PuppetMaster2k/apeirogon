@@ -36,7 +36,7 @@ async fn receive_newer_peer_layout_replaces_and_persists() {
     assert_eq!(daemon.layout.state, incoming);
     let restored = LayoutStore::load(&dir.path().join("layout.pb"), daemon.identity.machine_id);
     assert_eq!(restored.state, incoming);
-    assert_eq!(daemon.layout_info().placed[0].name, "unknown");
+    assert_eq!(daemon.layout_info().placed[0].name, "Unpaired machine");
 }
 
 #[tokio::test]
