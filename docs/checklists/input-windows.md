@@ -92,3 +92,25 @@ and secure desktops are out of scope; input must release there.
 - [ ] The desktop, taskbar and shell windows do not hold edges.
 - [ ] A borderless game slightly larger than its monitor still holds. An ordinary
   maximized window does not hold, including with an auto-hidden taskbar.
+
+## Edge glow and landing marker (#185)
+
+- [ ] Push the pointer against an edge that has a neighbour: a thin accent
+  strip appears along that edge, centred on the pointer, and grows longer and
+  stronger as the push builds up.
+- [ ] The strip never takes focus, never moves the active window's title bar
+  to inactive, and clicks, scrolls and drags pass straight through it. It does
+  not show in the taskbar or Alt+Tab.
+- [ ] The strip disappears at once when the pointer crosses, when the push
+  stops, and when the setting is turned off.
+- [ ] After crossing to this machine, a ring marks the landing point and fades
+  out within half a second.
+- [ ] Turn off Settings > Accessibility > Visual effects > Animation effects:
+  the ring appears at full strength for the same short time and vanishes
+  without fading; the strip still works.
+- [ ] With two monitors at different scaling (for example 100% and 175%), the
+  strip appears on the monitor holding the pointer, hugs the right edge, and
+  has the same apparent thickness on both; the ring is centred on the landing
+  point on either monitor. Repeat with a monitor at negative coordinates.
+- [ ] Take a screenshot and start screen sharing while the strip and ring are
+  showing: neither appears in the capture (Windows 10 2004 or later).
