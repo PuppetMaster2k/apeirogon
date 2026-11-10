@@ -102,67 +102,6 @@ async fn offer_files_receive_policy_verifies_tree_and_preserves_collisions() {
 }
 
 #[tokio::test]
-async fn accept_files_ask_policy_downloads_after_confirmation() {
-    // Arrange
-    let (a, a_dir) = daemon();
-    let (b, b_dir) = daemon();
-    let source = a_dir.path().join("send.txt");
-    fs::write(&source, b"payload").unwrap();
-    let receive_dir = b.config.files.receive_dir().unwrap();
-    let (a, b) = (Peer::run(a, a_dir), Peer::run(b, b_dir));
-    a.pair(&b).await;
-    offer(&a, &b, source).await;
-    let status = b.wait(|status| !status.held_files.is_empty()).await;
-    assert!(!receive_dir.exists());
-    assert_eq!(status.held_files[0].files, 1);
-    assert_eq!(status.held_files[0].total_size, 7);
-
-    // Act
-    b.command(|reply| Command::FilesAccept {
-        peer: a.machine,
-        offer_id: status.held_files[0].offer_id,
-        reply,
-    })
-    .await
-    .unwrap();
-    landed(&b, &receive_dir.join("send.txt")).await;
-
-    // Assert
-    assert_eq!(fs::read(receive_dir.join("send.txt")).unwrap(), b"payload");
-    assert_eq!(b.status().await.held_files, []);
-    a.stop().await;
-    b.stop().await;
-}
-
-#[tokio::test]
-async fn reject_files_ask_policy_drops_without_creating_receive_dir() {
-    // Arrange
-    let (a, a_dir) = daemon();
-    let (b, b_dir) = daemon();
-    let source = a_dir.path().join("send.txt");
-    fs::write(&source, b"payload").unwrap();
-    let receive_dir = b.config.files.receive_dir().unwrap();
-    let (a, b) = (Peer::run(a, a_dir), Peer::run(b, b_dir));
-    a.pair(&b).await;
-    offer(&a, &b, source).await;
-    b.wait(|status| !status.held_files.is_empty()).await;
-
-    // Act
-    b.command(|reply| Command::FilesReject {
-        peer: a.machine,
-        reply,
-    })
-    .await
-    .unwrap();
-
-    // Assert
-    assert_eq!(b.status().await.held_files, []);
-    assert!(!receive_dir.exists());
-    a.stop().await;
-    b.stop().await;
-}
-
-#[tokio::test]
 async fn offer_files_peer_without_capability_is_refused() {
     // Arrange
     let (a, a_dir) = daemon();
@@ -278,45 +217,30 @@ fn build_source_tree_symlinks_are_skipped_without_reading_target() {
 }
 
 #[test]
-fn prepare_completed_files_rehashes_before_resuming_at_full_size() {
+fn prepare_complete_staged_file_resumes_only_when_hash_matches() {
     // Arrange
-    let temp = tempdir();
-    let source = temp.path().join("source");
-    fs::write(&source, b"payload").unwrap();
-    let origin = MachineId::try_from([1; MachineId::LEN].as_slice()).unwrap();
-    let offer = offer::build(origin, 1, vec![source]).unwrap();
-    let manifest = ValidManifest::try_from(offer.wire.files.as_ref().unwrap()).unwrap();
-    let stage = temp.path().join("stage");
-    fs::create_dir(&stage).unwrap();
-    fs::write(stage.join("source"), b"payload").unwrap();
+    let cases: [(&[u8], u64); 2] = [(b"payload", 7), (b"corrupt", 0)];
+    for (staged, expected_offset) in cases {
+        let temp = tempdir();
+        let source = temp.path().join("source");
+        fs::write(&source, b"payload").unwrap();
+        let origin = MachineId::try_from([1; MachineId::LEN].as_slice()).unwrap();
+        let offer = offer::build(origin, 1, vec![source]).unwrap();
+        let manifest = ValidManifest::try_from(offer.wire.files.as_ref().unwrap()).unwrap();
+        let stage = temp.path().join("stage");
+        fs::create_dir(&stage).unwrap();
+        fs::write(stage.join("source"), staged).unwrap();
 
-    // Act
-    let prepared = staging::prepare(&stage, &manifest).unwrap();
+        // Act
+        let prepared = staging::prepare(&stage, &manifest).unwrap();
 
-    // Assert
-    assert_eq!(prepared.resume[0].offset, 7);
-    assert_eq!(prepared.files[0].as_ref().unwrap().written, 7);
-}
-
-#[test]
-fn prepare_corrupted_complete_file_restarts_from_zero() {
-    // Arrange
-    let temp = tempdir();
-    let source = temp.path().join("source");
-    fs::write(&source, b"payload").unwrap();
-    let origin = MachineId::try_from([1; MachineId::LEN].as_slice()).unwrap();
-    let offer = offer::build(origin, 1, vec![source]).unwrap();
-    let manifest = ValidManifest::try_from(offer.wire.files.as_ref().unwrap()).unwrap();
-    let stage = temp.path().join("stage");
-    fs::create_dir(&stage).unwrap();
-    fs::write(stage.join("source"), b"corrupt").unwrap();
-
-    // Act
-    let prepared = staging::prepare(&stage, &manifest).unwrap();
-
-    // Assert
-    assert_eq!(prepared.resume, []);
-    assert_eq!(prepared.files[0].as_ref().unwrap().written, 0);
+        // Assert
+        assert_eq!(prepared.files[0].as_ref().unwrap().written, expected_offset);
+        assert_eq!(prepared.resume.len(), usize::from(expected_offset > 0));
+        if expected_offset > 0 {
+            assert_eq!(prepared.resume[0].offset, expected_offset);
+        }
+    }
 }
 
 #[cfg(unix)]

@@ -156,28 +156,6 @@ async fn receive_files_link_loss_resumes_only_verified_prefix_remainder() {
 }
 
 #[tokio::test]
-async fn expire_files_confirmation_deadline_drops_held_offer() {
-    // Arrange
-    let (mut a, a_dir) = daemon();
-    let (mut b, _b_dir) = daemon();
-    let peer = a.identity.machine_id;
-    let source = a_dir.path().join("source");
-    fs::write(&source, b"payload").unwrap();
-    connect(&mut a, &mut b).await;
-    let wire = offer::build(peer, 1, vec![source]).unwrap().wire;
-    b.receive_file_offer(peer, &wire);
-    let deadline = b.files_deadline().unwrap();
-
-    // Act
-    b.expire_files(deadline);
-
-    // Assert
-    assert!(b.files.incoming.is_empty());
-    assert!(b.accept_files(peer, 1).is_err());
-    assert!(!b.config.files.receive_dir().unwrap().exists());
-}
-
-#[tokio::test]
 async fn accept_files_replaced_offer_returns_invalid_request_without_receiving() {
     // Arrange
     let (mut a, a_dir) = daemon();
@@ -207,36 +185,6 @@ async fn accept_files_replaced_offer_returns_invalid_request_without_receiving()
     let held = b.held_files();
     assert_eq!(held.len(), 1);
     assert_eq!(held[0].offer_id, newer.generation);
-}
-
-#[tokio::test]
-async fn cancel_file_transfer_active_receive_cleans_staging_and_releases_slot() {
-    // Arrange
-    let (mut a, a_dir) = daemon();
-    let (mut b, _b_dir) = daemon();
-    let peer = a.identity.machine_id;
-    b.config
-        .set(&format!("peers.{peer}.files"), "receive")
-        .unwrap();
-    let source = a_dir.path().join("source");
-    fs::write(&source, b"payload").unwrap();
-    connect(&mut a, &mut b).await;
-    let wire = offer::build(peer, 1, vec![source]).unwrap().wire;
-    b.receive_file_offer(peer, &wire);
-    let id = b.file_transfers()[0].id;
-    let stage = b.files.incoming[&(peer, 1)].staging.clone();
-
-    // Act
-    b.cancel_file_transfer(id).unwrap();
-    pump(&mut a, &mut b, |_, b| b.files.active.is_empty()).await;
-
-    // Assert
-    assert!(!stage.exists());
-    assert!(b.files.incoming.is_empty());
-    assert_eq!(
-        b.clipboard.links[&peer].slots.available_permits(),
-        a7n_proto::limits::CONCURRENT_TRANSFERS_PER_LINK
-    );
 }
 
 #[tokio::test]

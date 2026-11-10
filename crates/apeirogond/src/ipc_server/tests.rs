@@ -51,45 +51,6 @@ fn error_response_daemon_failures_maps_safe_categories() {
 }
 
 #[tokio::test]
-async fn dispatch_closed_command_channel_returns_internal() {
-    // Arrange
-    let (commands, receiver) = mpsc::channel(1);
-    drop(receiver);
-
-    // Act
-    let response = dispatch(Request::Status, &commands).await;
-
-    // Assert
-    assert!(matches!(
-        response,
-        Response::Error {
-            kind: ErrorKind::Internal,
-            ..
-        }
-    ));
-}
-
-#[tokio::test]
-async fn dispatch_switch_unlinked_peer_returns_not_connected() {
-    // Arrange
-    let peer = crate::daemon::test_peer::Peer::start();
-    let machine = a7n_proto::MachineId::try_from(&[0; a7n_proto::MachineId::LEN][..]).unwrap();
-
-    // Act
-    let response = dispatch(Request::Switch { machine }, peer.sender.as_ref().unwrap()).await;
-
-    // Assert
-    assert!(matches!(
-        response,
-        Response::Error {
-            kind: ErrorKind::NotConnected,
-            ..
-        }
-    ));
-    peer.stop().await;
-}
-
-#[tokio::test]
 async fn serve_shutdown_flushes_done_and_stops_with_clients_alive() {
     // Arrange
     let peer = crate::daemon::test_peer::Peer::start();

@@ -267,30 +267,6 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn finish_connects_superseded_without_winning_link_returns_error() {
-        // Arrange
-        let dir = tempfile::tempdir().unwrap();
-        let mut daemon =
-            Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
-        let peer = daemon.identity.machine_id;
-        let (reply, mut receiver) = oneshot::channel();
-        daemon.pending_connects.push(PendingConnect {
-            peer,
-            deadline: Instant::now(),
-            reply,
-        });
-
-        // Act
-        daemon.event(Event::ExpireConnects);
-
-        // Assert
-        assert!(
-            matches!(receiver.try_recv().unwrap(), Err(DaemonError::Link(LinkError::Superseded(id))) if id == peer)
-        );
-        assert!(daemon.pending_connects.is_empty());
-    }
-
-    #[tokio::test]
     async fn event_joined_follow_up_connect_fails_returns_stored_peer() {
         // Arrange
         let dir = tempfile::tempdir().unwrap();

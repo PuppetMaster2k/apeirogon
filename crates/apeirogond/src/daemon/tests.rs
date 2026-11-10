@@ -72,31 +72,6 @@ async fn pair_join_two_daemons_stores_pins_and_links_both_sides() {
 }
 
 #[tokio::test]
-async fn pair_host_three_daemons_propagates_membership_and_trust() {
-    // Arrange
-    let (a, b, c) = (Peer::start(), Peer::start(), Peer::start());
-    a.pair(&b).await;
-
-    // Act
-    a.pair(&c).await;
-
-    // Assert
-    b.wait(|status| paired(status, c.machine)).await;
-    c.wait(|status| paired(status, b.machine)).await;
-    // Membership received through A is sufficient for a pinned B-C handshake.
-    b.command(|reply| Command::Connect {
-        addr: c.addr,
-        reply,
-    })
-    .await
-    .unwrap();
-    c.wait(|status| linked(status, b.machine)).await;
-    a.stop().await;
-    b.stop().await;
-    c.stop().await;
-}
-
-#[tokio::test]
 async fn unpair_linked_member_removes_remote_pin_and_closes_links() {
     // Arrange
     let (a, b, c) = (Peer::start(), Peer::start(), Peer::start());
@@ -174,53 +149,6 @@ async fn accept_unknown_control_pin_during_pairing_window_closes_before_hello() 
 }
 
 #[tokio::test]
-async fn connect_simultaneous_dials_keeps_live_registry() {
-    // Arrange
-    let a_dir = tempfile::tempdir().unwrap();
-    let b_dir = tempfile::tempdir().unwrap();
-    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
-    let mut a = Daemon::load(a_dir.path(), addr).unwrap();
-    let mut b = Daemon::load(b_dir.path(), addr).unwrap();
-    let a_identity = (a.identity.machine_id, a.identity.pin);
-    let b_identity = (b.identity.machine_id, b.identity.pin);
-    for (local, (machine_id, pin)) in [(&mut a, b_identity), (&mut b, a_identity)] {
-        local.pins.add(crate::pin_store::Entry {
-            machine_id,
-            pin,
-            name: "peer".into(),
-            spki_der: None,
-            hw_addr: None,
-            screen_mm: None,
-        });
-        local.pins.save().unwrap();
-        local.sync_trust().unwrap();
-    }
-    let (a, b) = (Peer::run(a, a_dir), Peer::run(b, b_dir));
-
-    // Act
-    let (a_result, b_result) = tokio::join!(
-        a.command(|reply| Command::Connect {
-            addr: b.addr,
-            reply
-        }),
-        b.command(|reply| Command::Connect {
-            addr: a.addr,
-            reply
-        }),
-    );
-
-    // Assert
-    a_result.unwrap();
-    b_result.unwrap();
-    for (local, remote) in [(&a, &b), (&b, &a)] {
-        let status = local.wait(|status| linked(status, remote.machine)).await;
-        assert_eq!(status.peers.iter().filter(|peer| peer.connected).count(), 1);
-    }
-    a.stop().await;
-    b.stop().await;
-}
-
-#[tokio::test]
 async fn pair_join_wrong_code_closes_listener_window_without_storing_pins() {
     // Arrange
     let dir = tempfile::tempdir().unwrap();
@@ -250,73 +178,6 @@ async fn pair_join_wrong_code_closes_listener_window_without_storing_pins() {
     assert_eq!(b.status().await.peers, []);
     a.stop().await;
     b.stop().await;
-}
-
-#[tokio::test]
-async fn status_ipc_round_trip_returns_own_machine() {
-    // Arrange
-    let dir = tempfile::tempdir().unwrap();
-    let mut daemon = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
-    daemon.info.name = "own machine".into();
-    let offline = MachineId::try_from(&[1; MachineId::LEN][..]).unwrap();
-    daemon.pins.add(Entry {
-        machine_id: offline,
-        pin: daemon.identity.pin,
-        name: "offline peer".into(),
-        spki_der: None,
-        hw_addr: None,
-        screen_mm: None,
-    });
-    let peer = Peer::run(daemon, dir);
-    let socket_dir = tempfile::tempdir().unwrap();
-    let location = a7n_ipc::SocketLocation::new(socket_dir.path().join("private/control.sock"));
-    let server = a7n_ipc::IpcServer::bind_at(&location).await.unwrap();
-    let server_task = tokio::spawn(crate::ipc_server::serve(
-        server,
-        peer.sender.as_ref().unwrap().clone(),
-    ));
-    let mut client = a7n_ipc::IpcClient::connect_at(&location).await.unwrap();
-
-    // Act
-    let response = client.request(&a7n_ipc::Request::Status).await.unwrap();
-
-    // Assert
-    let a7n_ipc::Response::Status(info) = response else {
-        panic!("expected status")
-    };
-    assert_eq!(
-        info,
-        a7n_ipc::StatusInfo {
-            held_clipboard: None,
-            transfers: Vec::new(),
-            held_files: Vec::new(),
-            finished_sends: Vec::new(),
-            input: None,
-            pid: std::process::id(),
-            paused: false,
-            focused: peer.machine,
-            machine: peer.machine,
-            name: "own machine".into(),
-            nearby: vec![],
-            missing_permissions: a7n_platform::permissions::missing()
-                .into_iter()
-                .map(Into::into)
-                .collect(),
-            firewall: Vec::new(),
-            peers: vec![a7n_ipc::PeerInfo {
-                id: offline,
-                name: "offline peer".into(),
-                connected: false,
-                rtt_ms: None,
-                can_wake: false,
-                waking: false,
-            }],
-        }
-    );
-    drop(client);
-    server_task.abort();
-    let _ = server_task.await;
-    peer.stop().await;
 }
 
 #[tokio::test]

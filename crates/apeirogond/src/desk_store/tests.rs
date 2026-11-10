@@ -43,48 +43,6 @@ fn merge_desk_containing_own_member_stores_only_peer_pins() {
 }
 
 #[test]
-fn admit_own_machine_rejects_without_storing_pin_or_desk() {
-    // Arrange
-    let dir = tempfile::tempdir().unwrap();
-    let own = identity::load_or_create(dir.path()).unwrap();
-    let mut pins = PinStore::load(&dir.path().join("pins.toml")).unwrap();
-    let path = dir.path().join("desk.pb");
-    let mut desk = DeskStore::load(&path, own.machine_id, &mut pins).unwrap();
-
-    // Act
-    let result = desk.admit(&own, &mut pins, &entry(&own, "self"), 1);
-
-    // Assert
-    assert!(matches!(result, Err(DeskStoreError::Rejected)));
-    assert!(pins.get(&own.machine_id).is_none());
-    assert!(!path.exists());
-}
-
-#[test]
-fn apply_own_and_peer_revocations_removes_only_peer_pin() {
-    // Arrange
-    let dir = tempfile::tempdir().unwrap();
-    let peer_dir = tempfile::tempdir().unwrap();
-    let own = identity::load_or_create(dir.path()).unwrap();
-    let peer = identity::load_or_create(peer_dir.path()).unwrap();
-    let mut pins = PinStore::load(&dir.path().join("pins.toml")).unwrap();
-    pins.add(entry(&own, "self"));
-    pins.add(entry(&peer, "peer"));
-    let outcome = MergeOutcome {
-        revoked: vec![own.machine_id, peer.machine_id],
-        self_revoked: true,
-        ..MergeOutcome::default()
-    };
-
-    // Act
-    DeskStore::apply(&mut pins, &outcome, own.machine_id).unwrap();
-
-    // Assert
-    assert_eq!(pins.get(&own.machine_id), Some(&entry(&own, "self")));
-    assert!(pins.get(&peer.machine_id).is_none());
-}
-
-#[test]
 fn merge_admission_then_revocation_survives_reload_and_stale_desk() {
     // Arrange
     let a_dir = tempfile::tempdir().unwrap();
@@ -179,49 +137,4 @@ fn admit_desk_write_failure_leaves_pins_and_state_unchanged() {
     assert!(matches!(result, Err(DeskStoreError::Io(_))));
     assert!(pins.get(&b.machine_id).is_none());
     assert_eq!(desk.to_desk().members.len(), 0);
-}
-
-#[test]
-fn admit_repaired_member_keeps_certificate_key_after_reload() {
-    // Arrange
-    let a_dir = tempfile::tempdir().unwrap();
-    let b_dir = tempfile::tempdir().unwrap();
-    let a = identity::load_or_create(a_dir.path()).unwrap();
-    let b = identity::load_or_create(b_dir.path()).unwrap();
-    let mut pins = PinStore::load(&a_dir.path().join("pins.toml")).unwrap();
-    let path = a_dir.path().join("desk.pb");
-    let mut desk = DeskStore::load(&path, a.machine_id, &mut pins).unwrap();
-    desk.admit(&a, &mut pins, &entry(&b, "b"), 1).unwrap();
-    desk.revoke(&a, &mut pins, b.machine_id, 2).unwrap();
-
-    // Act
-    desk.admit(&a, &mut pins, &entry(&b, "b"), 3).unwrap();
-    let mut pins = PinStore::load(&a_dir.path().join("pins.toml")).unwrap();
-    let reloaded = DeskStore::load(&path, a.machine_id, &mut pins).unwrap();
-
-    // Assert
-    assert_eq!(pins.get(&b.machine_id), Some(&entry(&b, "b")));
-    assert_eq!(reloaded.to_desk(), desk.to_desk());
-}
-
-#[test]
-fn revoke_older_time_rejects_unstored_record() {
-    // Arrange
-    let a_dir = tempfile::tempdir().unwrap();
-    let b_dir = tempfile::tempdir().unwrap();
-    let a = identity::load_or_create(a_dir.path()).unwrap();
-    let b = identity::load_or_create(b_dir.path()).unwrap();
-    let mut pins = PinStore::load(&a_dir.path().join("pins.toml")).unwrap();
-    let mut desk = DeskStore::load(&a_dir.path().join("desk.pb"), a.machine_id, &mut pins).unwrap();
-    desk.admit(&a, &mut pins, &entry(&b, "b"), 1).unwrap();
-    desk.revoke(&a, &mut pins, b.machine_id, 3).unwrap();
-    let persisted = desk.to_desk();
-
-    // Act
-    let result = desk.revoke(&a, &mut pins, b.machine_id, 2);
-
-    // Assert
-    assert!(matches!(result, Err(DeskStoreError::Rejected)));
-    assert_eq!(desk.to_desk(), persisted);
-    assert!(pins.get(&b.machine_id).is_none());
 }

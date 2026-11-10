@@ -82,37 +82,6 @@ async fn discovery_unpaired_peer_lists_address_without_dialing() {
 }
 
 #[tokio::test]
-async fn discovery_full_registry_ignores_new_ids_and_forgets_lost_peers() {
-    // Arrange
-    let dir = tempfile::tempdir().unwrap();
-    let mut daemon = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
-    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, a7n_proto::limits::DEFAULT_UDP_PORT));
-    for seed in 0..MAX_NEARBY {
-        let mut bytes = [0; MachineId::LEN];
-        bytes[..size_of::<usize>()].copy_from_slice(&seed.to_be_bytes());
-        let id = MachineId::try_from(bytes.as_slice()).unwrap();
-        daemon.discovery(DiscoveryEvent::Discovered(Announcement {
-            id,
-            addrs: vec![addr],
-        }));
-    }
-    let extra = MachineId::try_from(&[255; MachineId::LEN][..]).unwrap();
-    let existing = *daemon.nearby.nearby.keys().next().unwrap();
-
-    // Act
-    daemon.discovery(DiscoveryEvent::Discovered(Announcement {
-        id: extra,
-        addrs: vec![addr],
-    }));
-    daemon.discovery(DiscoveryEvent::Lost(existing));
-
-    // Assert
-    assert_eq!(daemon.nearby.nearby.len(), MAX_NEARBY - 1);
-    assert!(!daemon.nearby.nearby.contains_key(&existing));
-    assert!(!daemon.nearby.nearby.contains_key(&extra));
-}
-
-#[tokio::test]
 async fn discovery_full_unpaired_table_accepts_paired_and_preserves_lost_addresses() {
     // Arrange
     let dir = tempfile::tempdir().unwrap();

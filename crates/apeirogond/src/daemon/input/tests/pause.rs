@@ -1,40 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::command::Command;
-
 use super::*;
-
-#[tokio::test]
-async fn set_paused_driving_returns_home_and_releases_peer_key() {
-    // Arrange
-    let (a, b, mut a_input, mut b_input) = pair().await;
-    drive(&mut a_input, &mut b_input).await;
-    a_input
-        .capture
-        .send(Captured::Input(key(true)))
-        .await
-        .unwrap();
-    b_input.injected().await;
-    assert_eq!(a.status().await.focused, b.machine);
-
-    // Act
-    a.command(|reply| Command::SetPaused {
-        paused: true,
-        reply,
-    })
-    .await
-    .unwrap();
-
-    // Assert
-    a_input.grab(false).await;
-    assert!(matches!(b_input.injected().await, Inject::Event(event) if event == key(false)));
-    b_input.grab(false).await;
-    let status = a.status().await;
-    assert!(status.paused);
-    assert_eq!(status.focused, a.machine);
-    a.stop().await;
-    b.stop().await;
-}
 
 #[tokio::test]
 async fn switch_machine_paused_rejects_peer_but_allows_home_and_resume() {

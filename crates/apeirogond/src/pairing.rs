@@ -243,29 +243,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn valid_peer_name_unsafe_names_are_rejected() {
+    fn valid_peer_name_unsafe_names_are_rejected_and_plain_name_is_accepted() {
         // Arrange
         let long = "x".repeat(limits::PEER_NAME_MAX + 1);
-        let unsafe_names = ["", "desk\u{1b}[2J", "a\nb", "tab\there", long.as_str()];
+        let cases = [
+            ("", false),
+            ("desk\u{1b}[2J", false),
+            ("a\nb", false),
+            ("tab\there", false),
+            (long.as_str(), false),
+            ("Büro-Mac ✓", true),
+        ];
 
-        for name in unsafe_names {
+        for (name, expected) in cases {
             // Act
             let valid = valid_peer_name(name);
 
             // Assert
-            assert!(!valid, "{name:?} should be rejected");
+            assert_eq!(valid, expected, "{name:?}");
         }
-    }
-
-    #[test]
-    fn valid_peer_name_plain_name_is_accepted() {
-        // Arrange
-        let name = "Büro-Mac ✓";
-
-        // Act
-        let valid = valid_peer_name(name);
-
-        // Assert
-        assert!(valid);
     }
 }

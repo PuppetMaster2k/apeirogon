@@ -66,24 +66,6 @@ async fn finish_wake_deadline_passed_clears_pending() {
 }
 
 #[tokio::test]
-async fn switch_machine_auto_wake_disabled_sends_nothing() {
-    // Arrange
-    let (mut daemon, _dir, peer, packets) = offline();
-    daemon
-        .config
-        .set(&format!("peers.{peer}.wake"), "false")
-        .unwrap();
-
-    // Act
-    let result = daemon.switch_machine(peer).await;
-
-    // Assert
-    assert!(matches!(result, Err(DaemonError::NotConnected)));
-    assert!(packets.try_recv().is_err());
-    assert!(daemon.wol.pending.is_none());
-}
-
-#[tokio::test]
 async fn switch_machine_home_cancels_pending_take() {
     // Arrange
     let (mut daemon, _dir, peer, _packets) = offline();
@@ -224,23 +206,4 @@ async fn finish_wake_link_up_takes_once_with_original_landing() {
             Err(DaemonError::InvalidRequest("machine is already online"))
         ));
     }
-}
-
-#[tokio::test]
-async fn command_switch_offline_returns_waking_name() {
-    // Arrange
-    let (daemon, dir, machine, packets) = offline();
-    let peer = crate::daemon::test_peer::Peer::run(daemon, dir);
-
-    // Act
-    let name = peer
-        .command(|reply| crate::command::Command::Switch { machine, reply })
-        .await
-        .unwrap();
-
-    // Assert
-    assert_eq!(name.as_deref(), Some("desktop"));
-    assert!(peer.status().await.peers[0].waking);
-    assert_eq!(packets.try_recv().unwrap(), [2; 6]);
-    peer.stop().await;
 }

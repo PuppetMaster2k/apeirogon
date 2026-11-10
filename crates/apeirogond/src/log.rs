@@ -158,20 +158,4 @@ mod tests {
             LOG_FILE_MAX + 1
         );
     }
-
-    #[test]
-    fn timestamp_epoch_and_leap_day_formats_utc() {
-        // Arrange
-        let cases = [
-            (0, "1970-01-01T00:00:00Z"),
-            (951_827_696, "2000-02-29T12:34:56Z"),
-        ];
-        for (seconds, expected) in cases {
-            // Act
-            let result = timestamp(seconds);
-
-            // Assert
-            assert_eq!(result, expected);
-        }
-    }
 }

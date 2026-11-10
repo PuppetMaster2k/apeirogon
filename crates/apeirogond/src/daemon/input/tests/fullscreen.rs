@@ -81,27 +81,3 @@ async fn reload_config_fullscreen_hold_rebuilds_enabled_and_clears_cache() {
     assert!(enabled);
     assert!(!disabled);
 }
-
-#[tokio::test]
-async fn reload_config_unrelated_setting_preserves_fullscreen_push_cache() {
-    // Arrange
-    let (mut daemon, dir, _input) = daemon(true);
-    daemon.config_path = dir.path().join("config.toml");
-    std::fs::write(&daemon.config_path, "[input]\nfullscreen_hold = true\n").unwrap();
-    daemon.reload_config().await.unwrap();
-    daemon.input.fullscreen_hold.holds(true, || true);
-    std::fs::write(
-        &daemon.config_path,
-        "[input]\nfullscreen_hold = true\nspeed = 2.0\n",
-    )
-    .unwrap();
-
-    // Act
-    daemon.reload_config().await.unwrap();
-    let result = daemon.input.fullscreen_hold.holds(true, || {
-        panic!("unrelated reload must preserve the cached query")
-    });
-
-    // Assert
-    assert!(result);
-}

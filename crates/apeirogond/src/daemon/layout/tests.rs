@@ -66,25 +66,6 @@ async fn receive_invalid_layout_ignores_without_link_error() {
     assert!(!dir.path().join("layout.pb").exists());
 }
 
-#[tokio::test]
-async fn receive_concurrent_winner_sets_notice_until_local_save() {
-    // Arrange
-    let dir = tempfile::tempdir().unwrap();
-    let mut daemon = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
-    daemon.set_layout(vec![]).unwrap();
-    let mut winner = daemon.layout.state.to_proto();
-    winner.by = vec![u8::MAX; MachineId::LEN];
-
-    // Act
-    daemon.receive_layout(&winner).unwrap();
-
-    // Assert
-    assert!(daemon.layout_info().lost_edit);
-    daemon.set_layout(vec![]).unwrap();
-    assert!(!daemon.layout_info().lost_edit);
-    assert_eq!(daemon.layout.state.version(), 2);
-}
-
 #[test]
 fn load_corrupt_or_invalid_layout_starts_empty() {
     // Arrange

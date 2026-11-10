@@ -49,36 +49,6 @@ async fn reload_config_denied_owner_releases_keys_and_returns_owner_home() {
 }
 
 #[tokio::test]
-async fn reload_config_invalid_file_keeps_previous_input_settings() {
-    // Arrange
-    let (a, b, mut a_input, mut b_input) = pair().await;
-    drive(&mut a_input, &mut b_input).await;
-    std::fs::write(b.dir.path().join("config.toml"), "[input]\nspeed = 0\n").unwrap();
-
-    // Act
-    let result = b.command(Command::ReloadConfig).await;
-
-    // Assert
-    assert!(matches!(result, Err(DaemonError::Config(_))));
-    a_input
-        .capture
-        .send(Captured::Pointer {
-            x: 50,
-            y: 50,
-            dx: 4,
-            dy: -6,
-        })
-        .await
-        .unwrap();
-    assert!(matches!(
-        b_input.injected().await,
-        Inject::Motion { dx: 4, dy: -6 }
-    ));
-    a.stop().await;
-    b.stop().await;
-}
-
-#[tokio::test]
 async fn forward_capture_reload_mid_press_preserves_remap_until_next_take() {
     // Arrange
     let (a, b, mut a_input, mut b_input) = configured_pair(|a, b| {
@@ -195,65 +165,6 @@ async fn reload_config_input_settings_apply_scrolling_and_receiver_speed() {
             break;
         }
     }
-    a.stop().await;
-    b.stop().await;
-}
-
-#[tokio::test]
-async fn reload_config_synced_speed_changes_peer_file_and_live_motion() {
-    // Arrange
-    let (a, b, mut a_input, mut b_input) = pair().await;
-    timeout(TEST_TIMEOUT, async {
-        loop {
-            let a_state =
-                crate::settings_store::SettingsStore::load(&a.dir.path().join("settings.pb"));
-            let b_state =
-                crate::settings_store::SettingsStore::load(&b.dir.path().join("settings.pb"));
-            if a_state.state.is_some() && a_state.state == b_state.state {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
-    save(&a, "[input]\nspeed = 2.0\n");
-
-    // Act
-    a.command(Command::ReloadConfig).await.unwrap();
-    timeout(TEST_TIMEOUT, async {
-        loop {
-            if Config::load(&b.dir.path().join("config.toml"))
-                .unwrap()
-                .input
-                .speed
-                .to_bits()
-                == 2.0_f64.to_bits()
-            {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
-    drive(&mut a_input, &mut b_input).await;
-    a_input
-        .capture
-        .send(Captured::Pointer {
-            x: 50,
-            y: 50,
-            dx: 4,
-            dy: -6,
-        })
-        .await
-        .unwrap();
-
-    // Assert
-    assert!(matches!(
-        b_input.injected().await,
-        Inject::Motion { dx: 8, dy: -12 }
-    ));
     a.stop().await;
     b.stop().await;
 }

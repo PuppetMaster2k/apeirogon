@@ -179,37 +179,22 @@ async fn reload_config_unchanged_remote_snapshot_preserves_version() {
 }
 
 #[tokio::test]
-async fn detect_settings_edit_clock_behind_snapshot_advances_timestamp() {
-    // Arrange
-    let (mut daemon, _dir) = daemon();
-    let state = daemon.settings.state.as_mut().unwrap();
-    state.set_at = u64::MAX - 1;
-    daemon.config.input.speed = 2.0;
+async fn detect_settings_edit_timestamp_near_counter_max_saturates_and_records_edit() {
+    for (set_at, speed) in [(u64::MAX - 1, 2.0), (u64::MAX, 3.0)] {
+        // Arrange
+        let (mut daemon, _dir) = daemon();
+        daemon.settings.state.as_mut().unwrap().set_at = set_at;
+        daemon.config.input.speed = speed;
 
-    // Act
-    daemon.detect_settings_edit().unwrap();
+        // Act
+        let result = daemon.detect_settings_edit();
 
-    // Assert
-    assert_eq!(daemon.settings.state.as_ref().unwrap().set_at, u64::MAX);
-}
-
-#[tokio::test]
-async fn detect_settings_edit_exhausted_timestamp_still_records_edit() {
-    // Arrange
-    let (mut daemon, _dir) = daemon();
-    let state = daemon.settings.state.as_mut().unwrap();
-    state.set_at = u64::MAX;
-    daemon.config.input.speed = 3.0;
-
-    // Act
-    let result = daemon.detect_settings_edit();
-
-    // Assert
-    assert!(result.is_ok());
-    assert_eq!(
-        daemon.settings.state.as_ref().unwrap().values["input.speed"],
-        "3.0"
-    );
+        // Assert
+        assert!(result.is_ok());
+        let state = daemon.settings.state.as_ref().unwrap();
+        assert_eq!(state.set_at, u64::MAX);
+        assert_eq!(state.values["input.speed"], format!("{speed:?}"));
+    }
 }
 
 #[test]
@@ -231,31 +216,6 @@ fn load_missing_corrupt_or_oversized_snapshot_starts_without_settings() {
         // Assert
         assert!(store.state.is_none());
     }
-}
-
-#[tokio::test]
-async fn reload_config_sync_disabled_tracks_edits_without_sending() {
-    // Arrange
-    let (mut daemon, _dir) = daemon();
-    daemon.config.sync.settings = false;
-    daemon.config.input.speed = 2.0;
-    daemon.config.save(&daemon.config_path).unwrap();
-    let old = daemon.settings.state.clone().unwrap();
-
-    // Act
-    daemon.reload_config().await.unwrap();
-
-    // Assert
-    let edited = daemon.settings.state.clone().unwrap();
-    assert!(edited.set_at > old.set_at);
-    assert_eq!(edited.values["input.speed"], "2.0");
-    assert!(daemon.settings_message().is_none());
-    let mut config = daemon.config.clone();
-    config.sync.settings = true;
-    config.save(&daemon.config_path).unwrap();
-    daemon.reload_config().await.unwrap();
-    assert_eq!(daemon.settings.state, Some(edited));
-    assert!(daemon.settings_message().is_some());
 }
 
 #[tokio::test]

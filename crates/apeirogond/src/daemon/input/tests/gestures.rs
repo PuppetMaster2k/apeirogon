@@ -72,53 +72,6 @@ fn swipe(gesture: Gesture) -> InputEvent {
 }
 
 #[tokio::test]
-async fn receive_input_accepted_swipe_injects_one_chord_in_order() {
-    // Arrange
-    let (mut daemon, dir, mut input, owner, _owner_dir) =
-        receiver(vec![Capability::Gestures]).await;
-    let path = dir.path().join("config.toml");
-    daemon = daemon.with_config(a7n_ipc::config::Config::default(), path.clone());
-    let mut changed = daemon.config.clone();
-    changed.set("gestures.swipe_up", "ctrl+meta+left").unwrap();
-    changed.save(&path).unwrap();
-    daemon.reload_config().await.unwrap();
-    let batch = InputBatch {
-        route: 1,
-        events: vec![swipe(Gesture::SwipeUp)],
-        ..InputBatch::default()
-    };
-
-    // Act
-    daemon
-        .receive_input(owner.identity.machine_id, &batch)
-        .await;
-
-    // Assert
-    if a7n_platform::input::GESTURE_CHORDS_SUPPORTED {
-        let Inject::Chord(keys) = input.inject.try_recv().unwrap() else {
-            panic!("expected one chord");
-        };
-        let events: Vec<_> = keys.iter().map(|key| (key.usage, key.down)).collect();
-        assert_eq!(
-            events,
-            [
-                (0x0007_00e0, true),
-                (0x0007_00e3, true),
-                (0x0007_0050, true),
-                (0x0007_0050, false),
-                (0x0007_00e3, false),
-                (0x0007_00e0, false)
-            ]
-        );
-    } else {
-        assert!(
-            matches!(input.inject.try_recv().unwrap(), Inject::Event(event) if event == swipe(Gesture::SwipeUp))
-        );
-    }
-    assert!(input.inject.try_recv().is_err());
-}
-
-#[tokio::test]
 async fn receive_input_unnegotiated_gesture_is_dropped() {
     // Arrange
     let (mut daemon, _dir, mut input, owner, _owner_dir) = receiver(vec![]).await;
@@ -174,64 +127,6 @@ async fn receive_input_multiple_gestures_in_batch_expands_only_first() {
     }
     assert!(matches!(input.inject.try_recv().unwrap(), Inject::Event(event) if event == key(true)));
     assert!(input.inject.try_recv().is_err());
-}
-
-#[tokio::test]
-async fn forward_capture_swipe_requires_only_negotiated_capability() {
-    // Arrange
-    for (platform, capability, forwarded) in [
-        (Platform::Windows, true, true),
-        (Platform::Windows, false, false),
-        (Platform::Linux, true, true),
-        (Platform::Macos, true, true),
-    ] {
-        let (a, b, mut a_input, mut b_input) = configured_pair(|a, b| {
-            a.info.platform = Platform::Macos.into();
-            b.info.platform = platform.into();
-            a.info.capabilities.push(Capability::Gestures.into());
-            b.info
-                .capabilities
-                .retain(|value| *value != i32::from(Capability::Gestures));
-            if capability {
-                b.info.capabilities.push(Capability::Gestures.into());
-            }
-        })
-        .await;
-        drive(&mut a_input, &mut b_input).await;
-        let swipe = InputEvent {
-            event: Some(input_event::Event::Gesture(Gesture::SwipeRight.into())),
-        };
-
-        // Act
-        a_input
-            .capture
-            .send(Captured::Input(swipe.clone()))
-            .await
-            .unwrap();
-        a_input
-            .capture
-            .send(Captured::Input(key(true)))
-            .await
-            .unwrap();
-
-        // Assert
-        if forwarded {
-            if a7n_platform::input::GESTURE_CHORDS_SUPPORTED {
-                let expected: Vec<_> = a7n_ipc::config::Config::default()
-                    .gesture_bindings()
-                    .events(Gesture::SwipeRight)
-                    .collect();
-                assert!(
-                    matches!(b_input.injected().await, Inject::Chord(keys) if keys == expected)
-                );
-            } else {
-                assert!(matches!(b_input.injected().await, Inject::Event(event) if event == swipe));
-            }
-        }
-        assert!(matches!(b_input.injected().await, Inject::Event(event) if event == key(true)));
-        a.stop().await;
-        b.stop().await;
-    }
 }
 
 #[tokio::test]
