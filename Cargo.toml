@@ -40,7 +40,7 @@ serde               = { version = "1", features = ["derive"] }
 directories         = "6"
 interprocess        = { version = "2.4", features = ["tokio"] }
 rustix              = { version = "1", features = ["fs", "pipe", "process", "event", "system", "time"] }
-x11rb               = { version = "0.14", default-features = false, features = ["xinput", "xtest", "xfixes"] }
+x11rb               = { version = "0.14", default-features = false, features = ["xinput", "xtest", "xfixes", "shape", "randr"] }
 serde_json          = "1"
 ashpd               = { version = "0.13", default-features = false, features = ["tokio", "clipboard", "input_capture", "remote_desktop", "screencast"] }
 reis                = { version = "0.7", features = ["tokio"] }

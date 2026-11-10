@@ -233,7 +233,9 @@ crates/
   trackpad at each quarter of the push. The daemon decides what to send
   (progress changes of at least 5 % and quarter crossings); each OS backend draws
   a click-through overlay that never takes focus and honours the OS reduce-motion
-  setting itself. Windows, macOS and X11 are supported; Wayland has none.
+  setting itself. Windows, macOS and X11 are supported; Wayland has none, because a background
+  daemon cannot place an overlay at the screen edges there (layer-shell is
+  compositor-specific and not used).
 
 - **Safety hotkeys** (all rebindable):
   - Return to the local machine: double-tap the trigger key (Right Alt / Right
