@@ -49,6 +49,7 @@ impl Daemon {
                     if let (Some(landing), Some(injector)) = (landing, &self.input.injector) {
                         let (x, y) = landing_point(injector.bounds, &landing);
                         self.input.inject(Inject::Warp { x, y }).await;
+                        self.input.sink.landing(x, y);
                     }
                 }
             }

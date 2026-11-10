@@ -13,6 +13,7 @@ use super::*;
 use crate::daemon::test_peer::{Peer, TEST_TIMEOUT};
 use crate::pin_store::Entry;
 
+mod feedback;
 mod fullscreen;
 mod gestures;
 mod hotkeys;

@@ -11,6 +11,7 @@ mod firewall;
 mod gestures;
 mod hotkeys;
 mod machines;
+mod options;
 mod peers;
 mod permissions;
 
@@ -41,6 +42,8 @@ impl App {
         if self.screen == Screen::Hotkeys {
             self.input_options(ui);
             ui.add_space(theme::size::SECTION_GAP);
+            self.feedback_options(ui);
+            ui.add_space(theme::size::SECTION_GAP);
             self.hotkeys(ui);
             if a7n_platform::input::GESTURE_CHORDS_SUPPORTED {
                 ui.add_space(theme::size::SECTION_GAP);
@@ -57,37 +60,6 @@ impl App {
             ui,
             "Saving rewrites config.toml without comments, like a7n config set.",
         );
-    }
-
-    fn input_options(&mut self, ui: &mut egui::Ui) {
-        theme::card(ui, |ui| {
-            for (key, title, help, supported) in [
-                (
-                    "input.natural_scrolling",
-                    "Natural scrolling",
-                    "Reverse the scrolling direction on other machines.",
-                    true,
-                ),
-                (
-                    "input.fullscreen_hold",
-                    "Keep the pointer in full-screen apps",
-                    "Edges don't switch machines while a full-screen app or game has focus. Shortcuts still work.",
-                    a7n_platform::fullscreen::supported(),
-                ),
-            ] {
-                let mut value = self.value(key, "false") == "true";
-                theme::setting_row(ui, title, help, Some(key), |ui| {
-                    ui.add_enabled_ui(supported, |ui| {
-                        if theme::toggle(ui, &mut value).changed() {
-                            self.edit(key, if value { "true" } else { "false" }, "false");
-                        }
-                    });
-                    if !supported {
-                        theme::small(ui, "Not available on Wayland");
-                    }
-                });
-            }
-        });
     }
 
     fn settings_header(&mut self, ui: &mut egui::Ui, title: &str, subtitle: &str) {

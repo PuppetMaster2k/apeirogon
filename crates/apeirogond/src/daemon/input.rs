@@ -8,6 +8,7 @@ use a7n_core::focus::edge::{EdgeResistance, FullscreenHold, HeldButtons};
 use a7n_core::focus::{Action, Cursor, Focus, Take};
 use a7n_core::hotkey::{HotkeyMatcher, SHAKE_DEFAULT, ShakeDetector};
 use a7n_core::input::{MotionCounter, MotionScale, MotionTracker};
+use a7n_platform::feedback::Feedback;
 use a7n_platform::input::{Bounds, Capture, CaptureControl, Captured, Inject, Injector};
 use a7n_proto::v1::{Edge, Envelope, InputBatch, envelope::Body, input_event::Event};
 use a7n_proto::{MachineId, Route};
@@ -17,11 +18,13 @@ use super::{Daemon, DaemonError};
 
 mod actions;
 mod crossing;
+pub(in crate::daemon) mod feedback_sink;
 mod gestures;
 mod hotkeys;
 mod landing;
 mod recording;
 
+use feedback_sink::FeedbackSink;
 use landing::landing_point;
 
 pub(super) struct Input {
@@ -41,6 +44,7 @@ pub(super) struct Input {
     pub(super) recording: recording::Recording,
     pub(super) fullscreen_hold: FullscreenHold,
     resistance: EdgeResistance,
+    pub(super) sink: FeedbackSink,
     edge_no_target: Option<Edge>,
     buttons: HeldButtons,
     pub(super) failed: bool,
@@ -72,6 +76,7 @@ impl Input {
             recording: recording::Recording::default(),
             fullscreen_hold: FullscreenHold::new(false),
             resistance: EdgeResistance::new(0),
+            sink: FeedbackSink::default(),
             edge_no_target: None,
             buttons: HeldButtons::default(),
             failed: false,
@@ -83,6 +88,7 @@ impl Input {
     fn reset_edge_state(&mut self) {
         self.buttons.reset();
         self.fullscreen_hold.reset();
+        self.sink.clear();
         self.edge_no_target = None;
     }
 
@@ -179,6 +185,11 @@ impl Daemon {
 
     pub(crate) fn with_trace_input(mut self, enabled: bool) -> Self {
         self.input.trace_keys = enabled;
+        self
+    }
+
+    pub(crate) fn with_feedback(mut self, feedback: Option<Feedback>) -> Self {
+        self.input.sink.attach(feedback);
         self
     }
 

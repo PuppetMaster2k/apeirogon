@@ -67,6 +67,7 @@ async fn main() -> Result<()> {
     )?
     .with_config(config, config_path)
     .with_input(input)
+    .with_feedback(a7n_platform::feedback::start())
     .with_input_error(input_error)
     .with_clipboard(a7n_platform::clipboard::start().ok())
     .with_trace_input(cli.trace_input);
