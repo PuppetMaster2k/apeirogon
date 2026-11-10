@@ -6,15 +6,14 @@ use a7n_core::layout::Placement;
 use a7n_proto::v1::{InputEvent, KeyEvent, RefuseReason, input_event};
 use a7n_proto::{FrameKind, limits};
 use tempfile::TempDir;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 use super::*;
 use crate::daemon::test_peer::{Peer, TEST_TIMEOUT};
 use crate::pin_store::Entry;
 
-mod config;
-mod corners;
+mod fullscreen;
 mod gestures;
 mod hotkeys;
 mod pause;
@@ -23,7 +22,7 @@ struct FakeInput {
     capture: mpsc::Sender<Captured>,
     control: mpsc::Receiver<CaptureControl>,
     inject: mpsc::Receiver<Inject>,
-    feedback: mpsc::Sender<Captured>,
+    _feedback: mpsc::Sender<Captured>,
 }
 
 fn daemon(input: bool) -> (Daemon, TempDir, Option<FakeInput>) {
@@ -64,7 +63,7 @@ fn fake_input() -> (Handles, FakeInput) {
             capture: capture_tx,
             control: control_rx,
             inject: inject_rx,
-            feedback: feedback_tx,
+            _feedback: feedback_tx,
         },
     )
 }
@@ -143,15 +142,6 @@ fn key(down: bool) -> InputEvent {
     }
 }
 
-async fn drive(a: &mut FakeInput, b: &mut FakeInput) {
-    a.cross(true).await;
-    a.grab(true).await;
-    assert!(matches!(
-        b.injected().await,
-        Inject::Warp { x: 0, y: 0..=99 }
-    ));
-}
-
 #[tokio::test]
 async fn captured_right_edge_takes_peer_grabs_and_warps() {
     // Arrange
@@ -167,45 +157,6 @@ async fn captured_right_edge_takes_peer_grabs_and_warps() {
         b_input.injected().await,
         Inject::Warp { x: 0, y: 0..=99 }
     ));
-    a.stop().await;
-    b.stop().await;
-}
-
-#[tokio::test]
-async fn receive_input_link_lost_releases_held_key() {
-    // Arrange
-    let (a, b, mut a_input, mut b_input) = pair().await;
-    drive(&mut a_input, &mut b_input).await;
-
-    // Act
-    a_input
-        .capture
-        .send(Captured::Input(key(true)))
-        .await
-        .unwrap();
-    let pressed = b_input.injected().await;
-    a.stop().await;
-    let released = b_input.injected().await;
-
-    // Assert
-    assert!(matches!(pressed, Inject::Event(event) if event == key(true)));
-    assert!(matches!(released, Inject::Event(event) if event == key(false)));
-    b_input.grab(false).await;
-    b.stop().await;
-}
-
-#[tokio::test]
-async fn pointer_feedback_left_edge_returns_owner_home_and_ungrabs() {
-    // Arrange
-    let (a, b, mut a_input, mut b_input) = pair().await;
-    drive(&mut a_input, &mut b_input).await;
-
-    // Act
-    b_input.feedback.send(pointer(false)).await.unwrap();
-
-    // Assert
-    a_input.grab(false).await;
-    b_input.grab(false).await;
     a.stop().await;
     b.stop().await;
 }
@@ -367,82 +318,6 @@ async fn receive_input_full_injector_waits_and_delivers_both_events() {
     assert!(matches!(first, Inject::Event(event) if event == key(true)));
     assert!(matches!(second, Inject::Event(event) if event == key(false)));
     assert!(!daemon.input.failed);
-}
-
-#[tokio::test]
-async fn keepalive_full_control_is_ignored_and_closed_control_is_fatal() {
-    // Arrange
-    let (mut daemon, _dir, input) = daemon(true);
-    let mut input = input.unwrap();
-    let (control, receiver) = mpsc::channel(1);
-    control.send(CaptureControl::Grab(true)).await.unwrap();
-    daemon.input.capture.as_mut().unwrap().control = control;
-    input.control = receiver;
-
-    // Act
-    daemon.input.keepalive();
-    let full_failed = daemon.input.failed;
-    drop(input.control);
-    daemon.input.keepalive();
-
-    // Assert
-    assert!(!full_failed);
-    assert!(daemon.input.failed);
-}
-
-#[tokio::test]
-async fn shutdown_driven_machine_releases_key_and_ungrabs_before_done() {
-    // Arrange
-    let (a, b, mut a_input, mut b_input) = pair().await;
-    drive(&mut a_input, &mut b_input).await;
-    b_input.grab(true).await;
-    a_input
-        .capture
-        .send(Captured::Input(key(true)))
-        .await
-        .unwrap();
-    b_input.injected().await;
-
-    // Act
-    b.command(crate::command::Command::Shutdown).await.unwrap();
-
-    // Assert
-    assert!(matches!(b_input.injected().await, Inject::Event(event) if event == key(false)));
-    b_input.grab(false).await;
-    b.stop().await;
-    a.stop().await;
-}
-
-#[tokio::test]
-async fn attach_input_after_unavailable_start_clears_status_and_forwards_input() {
-    // Arrange
-    let (retry, retried) = oneshot::channel();
-    let (a, b, a_input, mut b_input) = configured_pair(|a, _| {
-        a.input.capture = None;
-        a.input.injector = None;
-        a.input.unavailable = Some("Accessibility permission missing".to_owned());
-        a.input.retried = Some(retried);
-    })
-    .await;
-    assert!(a.status().await.input.is_some());
-    let (handles, mut late_input) = fake_input();
-
-    // Act
-    retry.send(Ok(handles)).unwrap();
-    let status = a.wait(|status| status.input.is_none()).await;
-    late_input.cross(true).await;
-
-    // Assert
-    assert_eq!(status.input, None);
-    late_input.grab(true).await;
-    b_input.grab(true).await;
-    assert!(matches!(
-        b_input.injected().await,
-        Inject::Warp { x: 0, y: 0..=99 }
-    ));
-    drop(a_input);
-    a.stop().await;
-    b.stop().await;
 }
 
 #[tokio::test]

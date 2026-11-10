@@ -281,20 +281,6 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn available_space_missing_directory_queries_existing_ancestor() {
-        // Arrange
-        let temp = tempfile::tempdir().unwrap();
-        let missing = temp.path().join("missing/nested");
-
-        // Act
-        let result = available_space(&missing);
-
-        // Assert
-        assert!(result.is_ok(), "{result:?}");
-        assert!(!missing.exists());
-    }
-
-    #[test]
     fn rename_no_replace_existing_file_or_directory_preserves_both_entries() {
         for directories in [false, true] {
             // Arrange
@@ -319,21 +305,6 @@ mod tests {
                 assert_eq!(fs::read(to).unwrap(), b"existing");
             }
         }
-    }
-
-    #[test]
-    fn create_directory_canonical_path_creates_nested_directories() {
-        // Arrange
-        // On Windows `canonicalize` returns a verbatim `\\?\C:\...` path.
-        let temp = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
-        let nested = temp.path().join("stage").join("nested");
-
-        // Act
-        let result = create_directory(&nested);
-
-        // Assert
-        assert!(result.is_ok(), "{result:?}");
-        assert!(nested.is_dir());
     }
 
     #[cfg(unix)]

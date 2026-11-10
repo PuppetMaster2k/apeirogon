@@ -68,7 +68,7 @@ impl Daemon {
             }
             Hotkey::Jump(n) => {
                 crate::log::event!("kind=hotkey action=jump");
-                let Some(target) = self.layout.state.nth(n) else {
+                let Some(target) = self.layout.state.nth(n, |id| self.is_layout_target(id)) else {
                     crate::log::event!("kind=hotkey_target_unavailable");
                     return;
                 };

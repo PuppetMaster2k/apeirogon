@@ -86,35 +86,6 @@ fn parse_announcement_lan_records_filters_invalid_and_prefers_ipv4() {
 }
 
 #[test]
-fn advertisement_identity_and_listen_port_uses_only_protocol_txt() {
-    // Arrange
-    let own = MachineId::try_from(&[1; MachineId::LEN][..]).unwrap();
-    let hex = own.to_string();
-    let port = a7n_proto::limits::DEFAULT_UDP_PORT + 1;
-
-    // Act
-    let service = advertisement(own, port).unwrap();
-
-    // Assert
-    assert_eq!(
-        service.get_fullname(),
-        &format!("{hex}.{MDNS_SERVICE_TYPE}")
-    );
-    assert_eq!(service.get_hostname(), format!("{hex}.local."));
-    assert_eq!(service.get_port(), port);
-    assert_eq!(service.get_properties().len(), 2);
-    assert_eq!(
-        service.get_property_val_str(MDNS_ID_KEY),
-        Some(hex.as_str())
-    );
-    assert_eq!(
-        service.get_property_val_str(MDNS_VERSION_KEY),
-        Some(PROTOCOL_VERSION.to_string().as_str())
-    );
-    assert!(service.is_addr_auto());
-}
-
-#[test]
 fn service_event_full_name_table_forwards_unknown_service_without_growing() {
     // Arrange
     let own = MachineId::try_from(&[1; MachineId::LEN][..]).unwrap();

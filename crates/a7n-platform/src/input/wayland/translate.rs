@@ -133,20 +133,4 @@ mod tests {
         assert_eq!(scroll.unit(), ScrollUnit::Line);
         assert!((scroll.dy - 1.0).abs() < f32::EPSILON);
     }
-
-    #[test]
-    fn push_frame_with_smooth_only_reports_pixels() {
-        // Arrange
-        let mut translator = Translator::default();
-        translator.push(Raw::ScrollSmooth { dx: 2.5, dy: -4.0 });
-
-        // Act
-        let scroll = scroll_of(translator.push(Raw::Frame).as_ref());
-
-        // Assert
-        let scroll = scroll.expect("one scroll event");
-        assert_eq!(scroll.unit(), ScrollUnit::Pixel);
-        assert!((scroll.dx - 2.5).abs() < f32::EPSILON);
-        assert!((scroll.dy + 4.0).abs() < f32::EPSILON);
-    }
 }

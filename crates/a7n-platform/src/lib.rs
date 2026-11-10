@@ -6,6 +6,7 @@ mod display;
 pub use display::physical_size_mm;
 pub mod firewall;
 pub mod fs;
+pub mod fullscreen;
 pub mod input;
 pub mod local_socket;
 pub mod notify;

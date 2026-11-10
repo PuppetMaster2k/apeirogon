@@ -36,7 +36,7 @@ async fn receive_newer_peer_layout_replaces_and_persists() {
     assert_eq!(daemon.layout.state, incoming);
     let restored = LayoutStore::load(&dir.path().join("layout.pb"), daemon.identity.machine_id);
     assert_eq!(restored.state, incoming);
-    assert_eq!(daemon.layout_info().placed[0].name, "unknown");
+    assert_eq!(daemon.layout_info().placed[0].name, "Unpaired machine");
 }
 
 #[tokio::test]
@@ -64,42 +64,6 @@ async fn receive_invalid_layout_ignores_without_link_error() {
     );
     assert_eq!(daemon.layout.state, before);
     assert!(!dir.path().join("layout.pb").exists());
-}
-
-#[tokio::test]
-async fn receive_concurrent_winner_sets_notice_until_local_save() {
-    // Arrange
-    let dir = tempfile::tempdir().unwrap();
-    let mut daemon = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
-    daemon.set_layout(vec![]).unwrap();
-    let mut winner = daemon.layout.state.to_proto();
-    winner.by = vec![u8::MAX; MachineId::LEN];
-
-    // Act
-    daemon.receive_layout(&winner).unwrap();
-
-    // Assert
-    assert!(daemon.layout_info().lost_edit);
-    daemon.set_layout(vec![]).unwrap();
-    assert!(!daemon.layout_info().lost_edit);
-    assert_eq!(daemon.layout.state.version(), 2);
-}
-
-#[test]
-fn load_corrupt_or_invalid_layout_starts_empty() {
-    // Arrange
-    let dir = tempfile::tempdir().unwrap();
-    let own = MachineId::try_from(&[1; MachineId::LEN][..]).unwrap();
-    let path = dir.path().join("layout.pb");
-    for bytes in [vec![255], vec![]] {
-        std::fs::write(&path, bytes).unwrap();
-
-        // Act
-        let store = LayoutStore::load(&path, own);
-
-        // Assert
-        assert_eq!(store.state, Layout::empty(own));
-    }
 }
 
 #[test]

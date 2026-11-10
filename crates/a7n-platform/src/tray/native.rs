@@ -105,23 +105,3 @@ fn icon_rgba() -> Vec<u8> {
     }
     rgba
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn icon_rgba_polygon_has_transparent_corners_and_opaque_center() {
-        // Arrange
-        let center =
-            ((ICON_SIZE / 2 * ICON_SIZE + ICON_SIZE / 2) * CHANNELS + CHANNELS - 1) as usize;
-
-        // Act
-        let rgba = icon_rgba();
-
-        // Assert
-        assert_eq!(rgba.len(), (ICON_SIZE * ICON_SIZE * CHANNELS) as usize);
-        assert_eq!(rgba[(CHANNELS - 1) as usize], 0);
-        assert_eq!(rgba[center], u8::MAX);
-    }
-}

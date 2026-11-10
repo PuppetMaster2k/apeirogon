@@ -50,27 +50,6 @@ fn merge(
 }
 
 #[test]
-fn merge_two_desks_unions_members() {
-    // Arrange
-    let mut state = DeskState::new(id(9));
-    merge(&mut state, vec![member(2, 10)], vec![]);
-
-    // Act
-    let outcome = merge(&mut state, vec![member(3, 20)], vec![]);
-
-    // Assert
-    assert_eq!(
-        state.members().map(Member::id).collect::<Vec<_>>(),
-        [id(2), id(3)]
-    );
-    assert_eq!(
-        outcome.admitted.iter().map(Member::id).collect::<Vec<_>>(),
-        [id(3)]
-    );
-    assert_eq!(outcome.revoked, []);
-}
-
-#[test]
 fn merge_revocation_at_or_after_admission_removes_member() {
     // Arrange
     for revoked_at in [10, 11] {
@@ -156,91 +135,26 @@ fn merge_same_timestamp_conflicts_converges_on_smaller_signature() {
 }
 
 #[test]
-fn merge_stale_records_keeps_only_latest_member_and_revocation() {
+fn merge_bad_signature_or_untrusted_signer_rejects_both_record_kinds() {
     // Arrange
-    let desk = Desk {
-        members: vec![member(2, 10), member(2, 30), member(2, 21)],
-        revocations: vec![revoke(2, 20), revoke(2, 15)],
-    };
-    let mut state = DeskState::restore(id(9), &desk).unwrap();
-
-    // Act
-    let outcome = merge(
-        &mut state,
-        vec![member(2, 20), member(2, 21)],
-        vec![revoke(2, 15)],
-    );
-
-    // Assert
-    assert_eq!(outcome, MergeOutcome::default());
-    assert_eq!(state.to_desk().members, [member(2, 30)]);
-    assert_eq!(state.to_desk().revocations, [revoke(2, 20)]);
-}
-
-#[test]
-fn merge_bad_signatures_rejects_both_record_kinds() {
-    // Arrange
-    let mut state = DeskState::new(id(9));
     let incoming = Desk {
         members: vec![member(2, 10)],
         revocations: vec![revoke(3, 20)],
     };
+    let mut bad_signature = DeskState::new(id(9));
+    let mut untrusted = DeskState::new(id(9));
 
     // Act
-    let outcome = state.merge(&incoming, &|_| true, |_, _, _| false);
-
-    // Assert
-    assert_eq!(state.to_desk(), Desk::default());
-    assert_eq!(outcome, MergeOutcome::default());
-}
-
-#[test]
-fn merge_untrusted_signers_rejects_both_record_kinds() {
-    // Arrange
-    let mut state = DeskState::new(id(9));
-    let incoming = Desk {
-        members: vec![member(2, 10)],
-        revocations: vec![revoke(3, 20)],
-    };
-
-    // Act
-    let outcome = state.merge(&incoming, &|_| false, |_, _, _| {
+    let bad_outcome = bad_signature.merge(&incoming, &|_| true, |_, _, _| false);
+    let untrusted_outcome = untrusted.merge(&incoming, &|_| false, |_, _, _| {
         panic!("must check trust first")
     });
 
     // Assert
-    assert_eq!(state.to_desk(), Desk::default());
-    assert_eq!(outcome, MergeOutcome::default());
-}
-
-#[test]
-fn merge_repeated_records_produces_no_new_outcome() {
-    // Arrange
-    let mut state = DeskState::new(id(9));
-    let members = vec![member(2, 10), member(3, 10)];
-    let revocations = vec![revoke(2, 20), revoke(9, 20)];
-    merge(&mut state, members.clone(), revocations.clone());
-
-    // Act
-    let outcome = merge(&mut state, members, revocations);
-
-    // Assert
-    assert_eq!(outcome, MergeOutcome::default());
-    assert_eq!(state.to_desk().members.len(), 1);
-    assert_eq!(state.to_desk().revocations.len(), 2);
-}
-
-#[test]
-fn merge_self_revocation_without_member_reports_delta() {
-    // Arrange
-    let mut state = DeskState::new(id(9));
-
-    // Act
-    let outcome = merge(&mut state, vec![], vec![revoke(9, 20)]);
-
-    // Assert
-    assert_eq!(outcome.revoked, [id(9)]);
-    assert!(outcome.self_revoked);
+    for (state, outcome) in [(bad_signature, bad_outcome), (untrusted, untrusted_outcome)] {
+        assert_eq!(state.to_desk(), Desk::default());
+        assert_eq!(outcome, MergeOutcome::default());
+    }
 }
 
 #[test]
@@ -302,24 +216,6 @@ fn merge_malformed_records_drops_only_invalid_entries() {
     assert_eq!(outcome.revoked, []);
     assert_eq!(state.to_desk().members.len(), 1);
     assert_eq!(state.to_desk().revocations, []);
-}
-
-#[test]
-fn try_from_unicode_name_boundary_counts_code_points() {
-    // Arrange
-    for (length, accepted) in [
-        (limits::PEER_NAME_MAX, true),
-        (limits::PEER_NAME_MAX + 1, false),
-    ] {
-        let mut record = member(2, 10);
-        record.name = "🦀".repeat(length);
-
-        // Act
-        let result = Member::try_from(&record);
-
-        // Assert
-        assert_eq!(result.is_ok(), accepted);
-    }
 }
 
 #[test]

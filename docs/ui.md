@@ -307,6 +307,8 @@ theme::setting_row(ui, "Clipboard",
 
 Use one card with a `setting_row` per hotkey (double tap, home, lock, jump). Draw each value with `theme::chord` and give it a Ghost **Edit** button. Editing replaces the keycaps with a mono `text_input` using the existing string syntax; do not add a Record action because egui cannot distinguish left/right modifiers. Home takes several chords, so show each as its own keycap group, with "or" in `text3` between them.
 
+Jump defaults to `Ctrl+Alt+Shift+1…9` (`Ctrl+Option+Shift+1…9` on macOS). Unpaired slots do nothing; later machines keep their layout numbers. An explicitly configured `hotkeys.jump` keeps its existing value.
+
 ### Layout (same pattern)
 
 Draw the layout area as a `card` with `bg` fill. Machines are 6 px rounded rectangles: `surface` with `border` normally, and `accent_subtle` with a 1 px `accent` border when selected. Show the name in Medium and the coordinates in mono `text3`. Put "Fit to canvas" (Secondary) and "Reload" (Ghost) above it, and **Save layout** (Primary) at the top right like on other pages.

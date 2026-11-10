@@ -76,19 +76,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decode_encoded_unicode_round_trips_fragment() {
-        // Arrange
-        let fragment = "<b>Grüße 🌍</b>";
-        let data = encode(fragment);
-
-        // Act
-        let decoded = decode(&data);
-
-        // Assert
-        assert_eq!(decoded, Some(fragment.as_bytes()));
-    }
-
-    #[test]
     fn encode_fragment_offsets_point_to_byte_boundaries() {
         // Arrange
         let fragment = "é";

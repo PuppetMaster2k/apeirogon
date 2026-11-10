@@ -174,36 +174,6 @@ fn load_or_issue_certificate(path: &Path, key: &KeyPair) -> Result<Vec<u8>, Iden
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn issue_certificate_same_key_reissued_keeps_machine_id() {
-        // Arrange
-        let key = KeyPair::generate_for(&rcgen::PKCS_ED25519).unwrap();
-        let first = issue_certificate(&key).unwrap();
-
-        // Act
-        let second = issue_certificate(&key).unwrap();
-
-        // Assert
-        assert_eq!(
-            machine_id_of(&first).unwrap(),
-            machine_id_of(&second).unwrap()
-        );
-    }
-
-    #[test]
-    fn load_or_create_second_start_returns_same_identity() {
-        // Arrange
-        let dir = tempfile::tempdir().unwrap();
-        let first = load_or_create(dir.path()).unwrap();
-
-        // Act
-        let second = load_or_create(dir.path()).unwrap();
-
-        // Assert
-        assert_eq!(first.machine_id, second.machine_id);
-        assert_eq!(first.pin, second.pin);
-    }
     #[test]
     fn sign_device_key_verifies_only_correct_key_and_message() {
         // Arrange

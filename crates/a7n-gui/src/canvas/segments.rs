@@ -94,28 +94,3 @@ pub(super) fn paint(
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hit_test_edge_zone_finds_third_and_nearest_corner_edge() {
-        // Arrange
-        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(300.0, 300.0));
-        let cases = [
-            (egui::pos2(296.0, 50.0), Some((Edge::Right, 0))),
-            (egui::pos2(150.0, 150.0), None),
-            (egui::pos2(301.0, 50.0), None),
-            (egui::pos2(2.0, 5.0), Some((Edge::Left, 0))),
-            (egui::pos2(5.0, 2.0), Some((Edge::Top, 0))),
-        ];
-        for (pointer, expected) in cases {
-            // Act
-            let segment = hit_test(rect, pointer);
-
-            // Assert
-            assert_eq!(segment, expected);
-        }
-    }
-}

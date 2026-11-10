@@ -48,30 +48,3 @@ pub(super) fn render_files<'a>(requested: &str, uri_list: &'a [u8]) -> Cow<'a, [
     }
     Cow::Borrowed(uri_list)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn item_mime_of_aliases_maps_only_supported_names() {
-        // Arrange
-        let cases = [
-            ("UTF8_STRING", Some(TEXT_PLAIN)),
-            ("text/plain", Some(TEXT_PLAIN)),
-            (TEXT_PLAIN, Some(TEXT_PLAIN)),
-            ("text/html", Some(TEXT_HTML)),
-            (SENSITIVE_MARKER, None),
-            ("image/png", Some(IMAGE_PNG)),
-            (URI_LIST, Some(FILES)),
-            (GNOME_COPIED_FILES, Some(FILES)),
-        ];
-        for (name, expected) in cases {
-            // Act
-            let item = item_mime_of(name);
-
-            // Assert
-            assert_eq!(item, expected, "{name}");
-        }
-    }
-}

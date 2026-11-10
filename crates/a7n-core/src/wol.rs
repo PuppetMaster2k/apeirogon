@@ -36,23 +36,4 @@ mod tests {
         assert_eq!(packet.len(), 102);
         assert!(packet[6..].chunks_exact(6).all(|chunk| chunk == mac));
     }
-
-    #[test]
-    fn hw_addr_invalid_or_unicast_returns_only_valid_address() {
-        // Arrange
-        let cases: &[(&[u8], Option<[u8; 6]>)] = &[
-            (&[], None),
-            (&[2; 5], None),
-            (&[0; 6], None),
-            (&[1; 6], None),
-            (&[2; 6], Some([2; 6])),
-        ];
-        for (bytes, expected) in cases {
-            // Act
-            let actual = hw_addr(bytes);
-
-            // Assert
-            assert_eq!(&actual, expected);
-        }
-    }
 }

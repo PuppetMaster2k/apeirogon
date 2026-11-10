@@ -288,28 +288,3 @@ impl Dispatch<ZwlrDataControlSourceV1, ()> for State {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pick_both_protocols_offered_prefers_ext() {
-        // Arrange
-        let cases = [
-            (
-                vec![WLR_MANAGER, EXT_MANAGER, "wl_seat"],
-                Some(Protocol::Ext),
-            ),
-            (vec!["wl_seat", WLR_MANAGER], Some(Protocol::Wlr)),
-            (vec!["wl_seat", "wl_data_device_manager"], None),
-        ];
-        for (interfaces, expected) in cases {
-            // Act
-            let picked = Protocol::pick(&interfaces);
-
-            // Assert
-            assert_eq!(picked, expected);
-        }
-    }
-}

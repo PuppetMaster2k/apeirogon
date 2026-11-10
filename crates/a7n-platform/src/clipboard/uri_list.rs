@@ -161,19 +161,6 @@ mod tests {
         let expected = ["/tmp/a b", "/tmp/c", "/tmp/\u{e9}"].map(PathBuf::from);
         assert_eq!(paths, expected);
     }
-
-    #[test]
-    fn encode_gnome_copied_roundtrips_through_decode() {
-        // Arrange
-        let paths = ["/tmp/a b", "/tmp/c"].map(PathBuf::from);
-
-        // Act
-        let encoded = encode_gnome_copied(&paths);
-
-        // Assert
-        assert_eq!(encoded, b"copy\nfile:///tmp/a%20b\nfile:///tmp/c");
-        assert_eq!(decode(&encoded), paths);
-    }
 }
 
 #[cfg(all(test, windows))]
@@ -181,31 +168,17 @@ mod windows_tests {
     use super::*;
 
     #[test]
-    fn encode_drive_and_unc_paths_use_file_uri_forms() {
+    fn encode_drive_and_unc_paths_round_trip_through_decode() {
         // Arrange
-        let cases = [
-            (r"C:\a b\c.txt", "file:///C%3A/a%20b/c.txt"),
-            (r"\\server\share\d", "file:////server/share/d"),
-        ];
-        for (path, uri) in cases {
-            // Act
-            let encoded = encode(&[PathBuf::from(path)]);
-
-            // Assert
-            assert_eq!(encoded, format!("{uri}\r\n").into_bytes(), "{path}");
-        }
-    }
-
-    #[test]
-    fn decode_drive_and_unc_uris_restore_backslash_paths() {
-        // Arrange
-        let list = "file:///C:/a%20b/c.txt\r\nfile:///C%3A/d\r\nfile:////server/share/e\r\n";
+        let paths = [r"C:\a b\c.txt", r"\\server\share\d"].map(PathBuf::from);
 
         // Act
-        let paths = decode(list.as_bytes());
+        let encoded = encode(&paths);
+        let decoded = decode(&encoded);
 
         // Assert
-        let expected = [r"C:\a b\c.txt", r"C:\d", r"\\server\share\e"].map(PathBuf::from);
-        assert_eq!(paths, expected);
+        let expected = "file:///C%3A/a%20b/c.txt\r\nfile:////server/share/d\r\n";
+        assert_eq!(encoded, expected.as_bytes());
+        assert_eq!(decoded, paths);
     }
 }

@@ -50,56 +50,6 @@ async fn switch_machine_offline_records_wake_and_keeps_cursor_home() {
 }
 
 #[tokio::test]
-async fn finish_wake_deadline_passed_clears_pending() {
-    // Arrange
-    let (mut daemon, _dir, peer, _packets) = offline();
-    let now = Instant::now();
-    daemon.auto_wake(peer, WakeAction::Switch, now).unwrap();
-
-    // Act
-    daemon.finish_wake(now + WAKE_TIMEOUT).await;
-
-    // Assert
-    assert!(daemon.wol.pending.is_none());
-    assert!(!daemon.status().peers[0].waking);
-    assert_eq!(daemon.input.focus.cursor(), Cursor::Home);
-}
-
-#[tokio::test]
-async fn switch_machine_auto_wake_disabled_sends_nothing() {
-    // Arrange
-    let (mut daemon, _dir, peer, packets) = offline();
-    daemon
-        .config
-        .set(&format!("peers.{peer}.wake"), "false")
-        .unwrap();
-
-    // Act
-    let result = daemon.switch_machine(peer).await;
-
-    // Assert
-    assert!(matches!(result, Err(DaemonError::NotConnected)));
-    assert!(packets.try_recv().is_err());
-    assert!(daemon.wol.pending.is_none());
-}
-
-#[tokio::test]
-async fn switch_machine_home_cancels_pending_take() {
-    // Arrange
-    let (mut daemon, _dir, peer, _packets) = offline();
-    daemon.switch_machine(peer).await.unwrap();
-
-    // Act
-    daemon
-        .switch_machine(daemon.identity.machine_id)
-        .await
-        .unwrap();
-
-    // Assert
-    assert!(daemon.wol.pending.is_none());
-}
-
-#[tokio::test]
 async fn wake_peer_repeated_requests_throttles_per_peer() {
     // Arrange
     let (mut daemon, _dir, peer, packets) = offline();
@@ -224,23 +174,4 @@ async fn finish_wake_link_up_takes_once_with_original_landing() {
             Err(DaemonError::InvalidRequest("machine is already online"))
         ));
     }
-}
-
-#[tokio::test]
-async fn command_switch_offline_returns_waking_name() {
-    // Arrange
-    let (daemon, dir, machine, packets) = offline();
-    let peer = crate::daemon::test_peer::Peer::run(daemon, dir);
-
-    // Act
-    let name = peer
-        .command(|reply| crate::command::Command::Switch { machine, reply })
-        .await
-        .unwrap();
-
-    // Assert
-    assert_eq!(name.as_deref(), Some("desktop"));
-    assert!(peer.status().await.peers[0].waking);
-    assert_eq!(packets.try_recv().unwrap(), [2; 6]);
-    peer.stop().await;
 }

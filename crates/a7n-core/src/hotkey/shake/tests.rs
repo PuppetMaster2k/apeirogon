@@ -3,89 +3,30 @@
 use super::*;
 
 #[test]
-fn on_motion_four_big_reversals_fires_once() {
-    // Arrange
-    let mut detector = ShakeDetector::new(4);
-    let start = Instant::now();
-    let motion = [20, 20, 0, -40, 40, -40, 40, 0, 40];
+fn on_motion_reversal_count_size_and_window_decide_whether_it_fires() {
+    // Arrange: (count, motion, step in ms, expected to fire)
+    let cases: [(u8, &[i32], u64, bool); 5] = [
+        (4, &[40, 40, 0, -80, 80, -80, 80, 0, 80], 50, true),
+        (4, &[80, -80, 80, -80, 80, -80, 80, -80], 250, false),
+        (
+            SHAKE_DEFAULT,
+            &[40, -40, 40, -40, 40, -40, 40, -40],
+            0,
+            false,
+        ),
+        (SHAKE_DEFAULT, &[80, -80, 80, -80, 80, -80, 80], 0, true),
+        (0, &[i32::MAX, i32::MIN, i32::MAX, i32::MIN], 0, false),
+    ];
+    for (count, motion, step_ms, expected) in cases {
+        let mut detector = ShakeDetector::new(count);
+        let start = Instant::now();
 
-    // Act
-    let fired: Vec<_> = motion
-        .into_iter()
-        .zip(0..)
-        .map(|(dx, index)| detector.on_motion(dx, start + Duration::from_millis(index * 50)))
-        .collect();
+        // Act
+        let fired = motion.iter().zip(0..).any(|(&dx, index)| {
+            detector.on_motion(dx, start + Duration::from_millis(index * step_ms))
+        });
 
-    // Assert
-    assert_eq!(
-        fired,
-        [false, false, false, false, false, false, true, false, false]
-    );
-}
-
-#[test]
-fn on_motion_reversals_spread_over_window_does_not_fire() {
-    // Arrange
-    let mut detector = ShakeDetector::new(4);
-    let start = Instant::now();
-
-    // Act
-    let fired: Vec<_> = [40, -40, 40, -40, 40, -40, 40, -40]
-        .into_iter()
-        .zip(0..)
-        .map(|(dx, index)| detector.on_motion(dx, start + Duration::from_millis(index * 250)))
-        .collect();
-
-    // Assert
-    assert!(!fired.into_iter().any(|fired| fired));
-}
-
-#[test]
-fn on_motion_small_jitter_does_not_count() {
-    // Arrange
-    let mut detector = ShakeDetector::new(4);
-    let now = Instant::now();
-
-    // Act
-    let fired: Vec<_> = [10, 10, 10, -10, -10, -10]
-        .repeat(10)
-        .into_iter()
-        .map(|dx| detector.on_motion(dx, now))
-        .collect();
-
-    // Assert
-    assert!(!fired.into_iter().any(|fired| fired));
-}
-
-#[test]
-fn on_motion_disabled_never_fires() {
-    // Arrange
-    let mut detector = ShakeDetector::new(0);
-    let now = Instant::now();
-
-    // Act
-    let fired: Vec<_> = [i32::MAX, i32::MIN]
-        .repeat(10)
-        .into_iter()
-        .map(|dx| detector.on_motion(dx, now))
-        .collect();
-
-    // Assert
-    assert!(!fired.into_iter().any(|fired| fired));
-}
-
-#[test]
-fn on_motion_custom_count_needs_six_reversals() {
-    // Arrange
-    let mut detector = ShakeDetector::new(6);
-    let now = Instant::now();
-
-    // Act
-    let fired: Vec<_> = [40, -40, 40, -40, 40, -40, 40]
-        .into_iter()
-        .map(|dx| detector.on_motion(dx, now))
-        .collect();
-
-    // Assert
-    assert_eq!(fired, [false, false, false, false, false, false, true]);
+        // Assert
+        assert_eq!(fired, expected, "count {count}, step {step_ms} ms");
+    }
 }

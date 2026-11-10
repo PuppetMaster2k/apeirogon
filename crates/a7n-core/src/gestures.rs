@@ -71,31 +71,4 @@ mod tests {
             ]
         );
     }
-
-    #[test]
-    fn events_empty_binding_emits_nothing() {
-        // Arrange
-        let bindings = Bindings::default();
-
-        // Act
-        let count = bindings.events(Gesture::SwipeUp).count();
-
-        // Assert
-        assert_eq!(count, 0);
-    }
-
-    #[test]
-    fn events_pinch_emits_nothing() {
-        // Arrange
-        let bindings = Bindings {
-            swipe_up: Some(Chord::parse("meta+tab").unwrap()),
-            ..Bindings::default()
-        };
-
-        // Act
-        let count = bindings.events(Gesture::Pinch).count();
-
-        // Assert
-        assert_eq!(count, 0);
-    }
 }

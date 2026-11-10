@@ -66,39 +66,6 @@ fn poll_release_or_another_key_cancels_hold() {
 }
 
 #[test]
-fn poll_trigger_modes_enable_expected_gestures() {
-    // Arrange
-    for mode in [TriggerMode::DoubleTap, TriggerMode::Hold, TriggerMode::Both] {
-        let mut matcher = matcher();
-        matcher.bindings.trigger_mode = mode;
-        let now = Instant::now();
-        let alt = 0x0007_00e6;
-        matcher.on_key(alt, true, now);
-        let deadline = now + matcher.bindings.hold;
-
-        // Act
-        let hold = matcher.poll(deadline);
-        matcher.on_key(alt, false, deadline);
-        matcher.on_key(alt, true, deadline + Duration::from_secs(1));
-        matcher.on_key(alt, false, deadline + Duration::from_secs(1));
-        let tap = matcher.on_key(alt, true, deadline + Duration::from_millis(1100));
-
-        // Assert
-        assert_eq!(
-            hold,
-            (mode != TriggerMode::DoubleTap).then_some(Hotkey::Home)
-        );
-        assert_eq!(
-            tap.action,
-            (mode != TriggerMode::Hold).then_some(Hotkey::Home)
-        );
-        if mode != TriggerMode::Hold {
-            assert_eq!(matcher.next_deadline(), None);
-        }
-    }
-}
-
-#[test]
 fn parse_trigger_keys_accepts_only_non_typing_keys() {
     // Arrange
     let accepted = [

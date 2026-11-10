@@ -16,6 +16,7 @@ fn try_from_unknown_and_security_keys_drops_everything_outside_allow_list() {
     let mut wire = settings(1, 1).to_proto();
     wire.values = [
         ("input.speed".into(), "2".into()),
+        ("input.fullscreen_hold".into(), "true".into()),
         (
             "peers.01010101010101010101010101010101.allow_drive".into(),
             "false".into(),
@@ -41,21 +42,6 @@ fn try_from_unknown_and_security_keys_drops_everything_outside_allow_list() {
 }
 
 #[test]
-fn try_from_invalid_machine_id_rejects_message() {
-    // Arrange
-    let wire = v1::SettingsSync {
-        by: vec![1; MachineId::LEN - 1],
-        ..Default::default()
-    };
-
-    // Act
-    let result = Settings::try_from(&wire);
-
-    // Assert
-    assert!(matches!(result, Err(ProtoError::BadMachineId(_))));
-}
-
-#[test]
 fn newer_timestamp_and_machine_id_order_requires_strict_increase() {
     // Arrange
     let current = settings(10, 2);
@@ -76,13 +62,19 @@ fn newer_timestamp_and_machine_id_order_requires_strict_increase() {
 }
 
 #[test]
-fn try_from_set_at_above_counter_max_is_rejected() {
+fn try_from_invalid_machine_id_or_counter_above_max_rejects_message() {
     // Arrange
-    let wire = settings(a7n_proto::limits::COUNTER_MAX + 1, 1).to_proto();
+    let bad_id = v1::SettingsSync {
+        by: vec![1; MachineId::LEN - 1],
+        ..Default::default()
+    };
+    let bad_counter = settings(a7n_proto::limits::COUNTER_MAX + 1, 1).to_proto();
 
     // Act
-    let result = Settings::try_from(&wire);
+    let id_result = Settings::try_from(&bad_id);
+    let counter_result = Settings::try_from(&bad_counter);
 
     // Assert
-    assert!(matches!(result, Err(ProtoError::CounterTooLarge)));
+    assert!(matches!(id_result, Err(ProtoError::BadMachineId(_))));
+    assert!(matches!(counter_result, Err(ProtoError::CounterTooLarge)));
 }

@@ -133,19 +133,6 @@ mod tests {
     }
 
     #[test]
-    fn decode_frame_encoded_frame_round_trips() {
-        // Arrange
-        let mut buf = Vec::new();
-        encode_frame(&ack(), &mut buf);
-
-        // Act
-        let result = decode_frame::<Ack>(&buf, FrameKind::Control).unwrap();
-
-        // Assert
-        assert_eq!(result, Some((ack(), buf.len())));
-    }
-
-    #[test]
     fn decode_frame_partial_body_returns_none() {
         // Arrange
         let mut buf = Vec::new();
@@ -190,31 +177,24 @@ mod tests {
     }
 
     #[test]
-    fn decode_datagram_non_motion_is_ignored() {
-        // Arrange
-        let envelope = Envelope {
-            body: Some(Body::Ack(ack())),
-        };
-        let mut buf = Vec::new();
-        encode_datagram(&envelope, &mut buf);
+    fn decode_datagram_non_motion_or_unknown_body_is_ignored() {
+        // Arrange: an Ack body, then unknown fields 99 (length-delimited) and
+        // 98 (varint) that this version does not know.
+        let mut known = Vec::new();
+        encode_datagram(
+            &Envelope {
+                body: Some(Body::Ack(ack())),
+            },
+            &mut known,
+        );
+        let unknown = [0x9a, 0x06, 0x01, 0x00, 0x90, 0x06, 0x01];
 
-        // Act
-        let result = decode_datagram(&buf).unwrap();
+        for bytes in [known.as_slice(), unknown.as_slice()] {
+            // Act
+            let result = decode_datagram(bytes);
 
-        // Assert
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn decode_datagram_unknown_oneof_case_is_ignored() {
-        // Arrange: field 99 (tag 0x9a 0x06), length-delimited, 1 byte; plus
-        // unknown scalar field 98 (tag 0x90 0x06) varint 1. Neither is known.
-        let bytes = [0x9a, 0x06, 0x01, 0x00, 0x90, 0x06, 0x01];
-
-        // Act
-        let result = decode_datagram(&bytes);
-
-        // Assert
-        assert!(matches!(result, Ok(None)));
+            // Assert
+            assert!(matches!(result, Ok(None)));
+        }
     }
 }

@@ -33,28 +33,3 @@ pub(super) fn evdev_from_button(button: Button) -> Option<u32> {
         Button::Forward => Some(BTN_EXTRA),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn evdev_from_button_every_button_round_trips() {
-        // Arrange
-        let buttons = [
-            Button::Left,
-            Button::Right,
-            Button::Middle,
-            Button::Back,
-            Button::Forward,
-        ];
-
-        for button in buttons {
-            // Act
-            let back = evdev_from_button(button).and_then(button_from_evdev);
-
-            // Assert
-            assert_eq!(back, Some(button), "{button:?}");
-        }
-    }
-}

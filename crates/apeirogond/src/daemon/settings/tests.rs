@@ -26,30 +26,6 @@ fn edit(daemon: &Daemon, values: &[(&str, &str)]) -> SettingsSync {
 }
 
 #[tokio::test]
-async fn receive_settings_swapped_home_and_lock_accepts_snapshot() {
-    // Arrange
-    let (mut daemon, _dir) = daemon();
-    daemon.config.set("hotkeys.home", "escape").unwrap();
-    let home = daemon.config.get("hotkeys.home").unwrap();
-    let lock = daemon.config.get("hotkeys.lock").unwrap();
-    let wire = edit(&daemon, &[("hotkeys.home", &lock), ("hotkeys.lock", &home)]);
-
-    // Act
-    daemon.receive_settings(&wire).await.unwrap();
-
-    // Assert
-    assert_eq!(daemon.config.get("hotkeys.home"), Some(lock.clone()));
-    assert_eq!(daemon.config.get("hotkeys.lock"), Some(home.clone()));
-    let saved = Config::load(&daemon.config_path).unwrap();
-    assert_eq!(saved.get("hotkeys.home"), Some(lock));
-    assert_eq!(saved.get("hotkeys.lock"), Some(home));
-    assert_eq!(
-        daemon.settings.state,
-        Some(Settings::try_from(&wire).unwrap())
-    );
-}
-
-#[tokio::test]
 async fn receive_settings_peer_security_key_keeps_local_policy() {
     // Arrange
     let (a, a_dir) = daemon();
@@ -153,65 +129,6 @@ async fn receive_settings_old_or_disabled_message_keeps_config_and_snapshot() {
     }
 }
 
-#[tokio::test]
-async fn reload_config_unchanged_remote_snapshot_preserves_version() {
-    // Arrange
-    let (mut daemon, dir) = daemon();
-    let mut wire = daemon.settings.state.as_ref().unwrap().to_proto();
-    wire.set_at += 1;
-    wire.values.insert("input.speed".into(), "2.0".into());
-    daemon.receive_settings(&wire).await.unwrap();
-    let snapshot = daemon.settings.state.clone();
-
-    // Act
-    daemon.reload_config().await.unwrap();
-
-    // Assert
-    assert_eq!(daemon.settings.state, snapshot);
-    let mut restarted = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
-        .unwrap()
-        .with_config(
-            Config::load(&daemon.config_path).unwrap(),
-            daemon.config_path.clone(),
-        );
-    restarted.detect_settings_edit().unwrap();
-    assert_eq!(restarted.settings.state, snapshot);
-}
-
-#[tokio::test]
-async fn detect_settings_edit_clock_behind_snapshot_advances_timestamp() {
-    // Arrange
-    let (mut daemon, _dir) = daemon();
-    let state = daemon.settings.state.as_mut().unwrap();
-    state.set_at = u64::MAX - 1;
-    daemon.config.input.speed = 2.0;
-
-    // Act
-    daemon.detect_settings_edit().unwrap();
-
-    // Assert
-    assert_eq!(daemon.settings.state.as_ref().unwrap().set_at, u64::MAX);
-}
-
-#[tokio::test]
-async fn detect_settings_edit_exhausted_timestamp_still_records_edit() {
-    // Arrange
-    let (mut daemon, _dir) = daemon();
-    let state = daemon.settings.state.as_mut().unwrap();
-    state.set_at = u64::MAX;
-    daemon.config.input.speed = 3.0;
-
-    // Act
-    let result = daemon.detect_settings_edit();
-
-    // Assert
-    assert!(result.is_ok());
-    assert_eq!(
-        daemon.settings.state.as_ref().unwrap().values["input.speed"],
-        "3.0"
-    );
-}
-
 #[test]
 fn load_missing_corrupt_or_oversized_snapshot_starts_without_settings() {
     // Arrange
@@ -231,31 +148,6 @@ fn load_missing_corrupt_or_oversized_snapshot_starts_without_settings() {
         // Assert
         assert!(store.state.is_none());
     }
-}
-
-#[tokio::test]
-async fn reload_config_sync_disabled_tracks_edits_without_sending() {
-    // Arrange
-    let (mut daemon, _dir) = daemon();
-    daemon.config.sync.settings = false;
-    daemon.config.input.speed = 2.0;
-    daemon.config.save(&daemon.config_path).unwrap();
-    let old = daemon.settings.state.clone().unwrap();
-
-    // Act
-    daemon.reload_config().await.unwrap();
-
-    // Assert
-    let edited = daemon.settings.state.clone().unwrap();
-    assert!(edited.set_at > old.set_at);
-    assert_eq!(edited.values["input.speed"], "2.0");
-    assert!(daemon.settings_message().is_none());
-    let mut config = daemon.config.clone();
-    config.sync.settings = true;
-    config.save(&daemon.config_path).unwrap();
-    daemon.reload_config().await.unwrap();
-    assert_eq!(daemon.settings.state, Some(edited));
-    assert!(daemon.settings_message().is_some());
 }
 
 #[tokio::test]

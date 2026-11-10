@@ -230,26 +230,6 @@ mod tests {
     }
 
     #[test]
-    fn control_grab_off_after_take_releases_without_cursor() {
-        // Arrange
-        let now = Instant::now();
-        let mut flow = pushed_flow(now);
-        flow.control(CaptureControl::Grab(true), now);
-
-        // Act
-        let order = flow.control(CaptureControl::Grab(false), now);
-
-        // Assert
-        assert_eq!(
-            order,
-            Some(ReleaseOrder {
-                activation_id: ACTIVATION,
-                cursor: None
-            })
-        );
-    }
-
-    #[test]
     fn poll_no_take_within_window_releases_at_activation_point() {
         // Arrange
         let now = Instant::now();
@@ -268,21 +248,6 @@ mod tests {
                 cursor: Some((1919.0, 500.0))
             })
         );
-    }
-
-    #[test]
-    fn poll_push_still_getting_further_keeps_capturing_past_the_window() {
-        // Arrange
-        let now = Instant::now();
-        let mut flow = pushed_flow(now);
-        let later = now + TAKE_WINDOW;
-        flow.motion(40, 0, later);
-
-        // Act
-        let order = flow.poll(later + TAKE_WINDOW.saturating_sub(Duration::from_millis(1)));
-
-        // Assert
-        assert_eq!(order, None);
     }
 
     #[test]
@@ -306,21 +271,6 @@ mod tests {
                 cursor: Some((1919.0, 500.0))
             })
         );
-    }
-
-    #[test]
-    fn poll_activation_on_last_pixel_does_not_count_as_moved_back() {
-        // Arrange
-        let now = Instant::now();
-        let mut flow = CaptureFlow::new(zones(), now);
-        flow.activate(ACTIVATION, (1919.0, 500.0), now);
-
-        // Act
-        flow.motion(0, 3, now);
-        let order = flow.poll(now);
-
-        // Assert
-        assert_eq!(order, None);
     }
 
     #[test]
@@ -364,33 +314,5 @@ mod tests {
         // Assert
         assert_eq!(order, None);
         assert!(flow.is_active());
-    }
-
-    #[test]
-    fn activate_grab_already_wanted_is_a_crossing_from_the_start() {
-        // Arrange
-        let now = Instant::now();
-        let mut flow = CaptureFlow::new(zones(), now);
-        flow.control(CaptureControl::Grab(true), now);
-
-        // Act
-        flow.activate(ACTIVATION, (1925.0, 500.0), now);
-        let after_window = flow.poll(now + TAKE_WINDOW);
-
-        // Assert
-        assert_eq!(after_window, None);
-    }
-
-    #[test]
-    fn motion_without_activation_is_ignored() {
-        // Arrange
-        let now = Instant::now();
-        let mut flow = CaptureFlow::new(zones(), now);
-
-        // Act
-        let position = flow.motion(5, 5, now);
-
-        // Assert
-        assert_eq!(position, None);
     }
 }

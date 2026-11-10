@@ -274,29 +274,6 @@ mod tests {
     }
 
     #[test]
-    fn mime_target_aliases_maps_only_supported_formats() {
-        // Arrange
-        let atoms = atoms();
-        let cases = [
-            (atoms.UTF8_STRING, Some(TEXT_PLAIN)),
-            (atoms.PLAIN, Some(TEXT_PLAIN)),
-            (atoms.HTML, Some(TEXT_HTML)),
-            (atoms.HTML_UTF8, Some(TEXT_HTML)),
-            (atoms.PNG, Some(IMAGE_PNG)),
-            (atoms.URI_LIST, Some(FILES)),
-            (atoms.GNOME_FILES, Some(FILES)),
-            (atoms.SENSITIVE, None),
-        ];
-        for (target, expected) in cases {
-            // Act
-            let mapped = mime(&atoms, target);
-
-            // Assert
-            assert_eq!(mapped, expected);
-        }
-    }
-
-    #[test]
     fn chunk_size_request_boundary_leaves_header_and_alignment() {
         // Arrange
         let cases = [

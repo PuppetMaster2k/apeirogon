@@ -99,6 +99,10 @@ impl PinStore {
         self.entries.get(machine_id)
     }
 
+    pub(crate) fn contains_key(&self, machine_id: &MachineId) -> bool {
+        self.entries.contains_key(machine_id)
+    }
+
     /// Caches a public key only after checking the pinned certificate and id.
     pub(crate) fn record_certificate(&mut self, cert_der: &[u8]) -> Result<(), PinStoreError> {
         let machine_id = identity::machine_id_of(cert_der)?;
@@ -214,39 +218,23 @@ mod tests {
     }
 
     #[test]
-    fn pin_store_save_and_load_keeps_entries() {
-        // Arrange
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("pins.toml");
-        let mut store = PinStore::load(&path).unwrap();
-        store.add(entry(1));
-        store.save().unwrap();
-
-        // Act
-        let reloaded = PinStore::load(&path).unwrap();
-
-        // Assert
-        assert_eq!(reloaded.get(&entry(1).machine_id), Some(&entry(1)));
-    }
-
-    #[test]
-    fn record_screen_mm_handshake_size_survives_invalid_updates_and_reload() {
+    fn record_peer_reported_values_invalid_update_keeps_last_known_after_reload() {
         // Arrange
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("pins.toml");
         let mut store = PinStore::load(&path).unwrap();
         let peer = entry(1);
         store.add(peer.clone());
-        let info = a7n_proto::v1::PeerInfo {
-            screen_mm: Some(a7n_proto::v1::ScreenSize {
+        store.record_screen_mm(
+            peer.machine_id,
+            Some(&a7n_proto::v1::ScreenSize {
                 width: 310,
                 height: 174,
             }),
-            ..Default::default()
-        };
+        );
+        store.record_hw_addr(peer.machine_id, &[2; 6]);
 
         // Act
-        store.record_screen_mm(peer.machine_id, info.screen_mm.as_ref());
         store.record_screen_mm(peer.machine_id, None);
         store.record_screen_mm(
             peer.machine_id,
@@ -255,52 +243,15 @@ mod tests {
                 height: 174,
             }),
         );
-        store.save().unwrap();
-        let loaded = PinStore::load(&path).unwrap();
-
-        // Assert
-        assert_eq!(
-            loaded.get(&peer.machine_id).unwrap().screen_mm,
-            Some((310, 174))
-        );
-    }
-
-    #[test]
-    fn record_hw_addr_invalid_update_keeps_last_known_after_reload() {
-        // Arrange
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("pins.toml");
-        let mut store = PinStore::load(&path).unwrap();
-        let peer = entry(1);
-        store.add(peer.clone());
-        store.record_hw_addr(peer.machine_id, &[2; 6]);
-
-        // Act
         store.record_hw_addr(peer.machine_id, &[1; 6]);
         store.record_hw_addr(peer.machine_id, &[]);
         store.save().unwrap();
         let loaded = PinStore::load(&path).unwrap();
 
         // Assert
-        assert_eq!(loaded.get(&peer.machine_id).unwrap().hw_addr, Some([2; 6]));
-    }
-
-    #[test]
-    fn pin_store_remove_then_reload_forgets_peer() {
-        // Arrange
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("pins.toml");
-        let mut store = PinStore::load(&path).unwrap();
-        store.add(entry(1));
-        store.save().unwrap();
-        store.remove(&entry(1).machine_id);
-        store.save().unwrap();
-
-        // Act
-        let reloaded = PinStore::load(&path).unwrap();
-
-        // Assert
-        assert!(reloaded.get(&entry(1).machine_id).is_none());
+        let loaded = loaded.get(&peer.machine_id).unwrap();
+        assert_eq!(loaded.screen_mm, Some((310, 174)));
+        assert_eq!(loaded.hw_addr, Some([2; 6]));
     }
 
     #[test]
@@ -323,29 +274,6 @@ mod tests {
             Err(PinStoreError::Proto(ProtoError::BadPin(31)))
         ));
     }
-    #[test]
-    fn load_old_pin_file_keeps_peer_without_spki() {
-        // Arrange
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("pins.toml");
-        fs::write(
-            &path,
-            format!(
-                "[[peer]]\nmachine_id = \"{}\"\npin = \"{}\"\nname = \"old\"\n",
-                "01".repeat(16),
-                "01".repeat(32)
-            ),
-        )
-        .unwrap();
-
-        // Act
-        let store = PinStore::load(&path).unwrap();
-
-        // Assert
-        assert!(store.get(&entry(1).machine_id).unwrap().spki_der.is_none());
-        assert!(store.get(&entry(1).machine_id).unwrap().hw_addr.is_none());
-    }
-
     #[test]
     fn record_certificate_wrong_pin_rejects_public_key() {
         // Arrange

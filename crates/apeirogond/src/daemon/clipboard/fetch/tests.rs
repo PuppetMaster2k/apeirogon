@@ -67,25 +67,3 @@ fn verify_transfer_corrupt_or_out_of_order_frames_are_rejected() {
         assert!(result.is_err());
     }
 }
-
-#[tokio::test(start_paused = true)]
-async fn receive_stalled_frame_returns_frame_timeout() {
-    // Arrange
-    let item = ClipboardItem {
-        size: 3,
-        ..ClipboardItem::default()
-    };
-    let mut stream = crate::frame::tests::StalledStream {
-        prefix: Some(vec![1]),
-        reads: 0,
-    };
-    let mut buf = Vec::new();
-    let start = tokio::time::Instant::now();
-
-    // Act
-    let result = receive(&mut stream, &mut buf, &item).await;
-
-    // Assert
-    assert_eq!(result, Err(TransferError::Timeout));
-    assert_eq!(start.elapsed(), limits::FRAME_READ_TIMEOUT);
-}

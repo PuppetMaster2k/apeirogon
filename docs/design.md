@@ -217,6 +217,15 @@ crates/
 - **Edge resistance:** while any captured local button (or the remote owner's
   injected button on a driven machine) is held, edge pushes cannot cross and
   discard accumulated resistance; after release a full push is required again.
+  Local `input.fullscreen_hold` (default false, never synced) also blocks edge
+  crossings while the focused app is full-screen on the display at the pointer.
+  Its result is cached for one continuous push; moving away starts a new query.
+  It applies both locally and while driven, discards resistance while held, and
+  leaves shortcuts, jump keys, shake and lock unchanged. Our own GUI is excluded.
+  Windows, macOS and X11 support it; Wayland does not. Query failures allow crossing.
+  X11 detects only EWMH full-screen windows; borderless games without that state
+  are not held.
+
 - **Safety hotkeys** (all rebindable):
   - Return to the local machine: double-tap the trigger key (Right Alt / Right
     Option by default, within 400 ms), or Scroll Lock / `Ctrl+Alt+Shift+Home`.
@@ -228,11 +237,13 @@ crates/
     Non-modifier trigger keys are consumed; modifier triggers keep forwarding.
     The GUI can record a trigger key from local capture before saving it.
   - Shake the mouse left and right while driving a peer to return home: by
-    default 4 horizontal reversals within 600 ms, each after at least 40 px
+    default 6 horizontal reversals within 600 ms, each after at least 80 px
     of travel. `hotkeys.shake` accepts 3–10 reversals, or 0 to turn it off.
     Shaking at home or while driven does nothing; focus changes reset it.
   - Lock cursor to the current machine: `Ctrl+Alt+Shift+L`
-  - Jump to machine N: `Ctrl+Alt+Shift+1…9`
+  - Jump to paired machine N: `Ctrl+Alt+Shift+1…9` (Alt is Option on macOS).
+    Unpaired slots do nothing; other machines keep their layout numbers.
+    Edge crossings ignore unpaired placements.
   - Peer disconnect auto-releases all held keys and buttons on it.
 - **Capture dead-man switch:** the platform capture releases the local
   keyboard and mouse by itself when the daemon's keepalive (every 500 ms) is

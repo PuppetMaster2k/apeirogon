@@ -159,12 +159,16 @@ impl Layout {
     }
 
     /// One-based machine number, ordered top to bottom, then left to right.
+    /// Ineligible placements keep their numbers but cannot be selected.
     #[must_use]
-    pub fn nth(&self, n: u8) -> Option<MachineId> {
+    pub fn nth(&self, n: u8, eligible: impl Fn(MachineId) -> bool) -> Option<MachineId> {
         let index = usize::from(n.checked_sub(1)?);
         let mut placements: Vec<_> = self.placements.iter().collect();
         placements.sort_unstable_by_key(|p| (p.y, p.x));
-        placements.get(index).map(|p| p.id)
+        placements
+            .get(index)
+            .filter(|p| eligible(p.id))
+            .map(|p| p.id)
     }
 
     /// # Errors
@@ -211,7 +215,7 @@ impl Layout {
         }
     }
 
-    /// Map an exit to a touching machine's opposite edge and fractional offset.
+    /// Map an exit to an eligible touching machine's opposite edge and fractional offset.
     #[must_use]
     #[allow(clippy::cast_possible_truncation)] // Landing uses f32 on the wire; geometry uses f64.
     pub fn exit(
@@ -219,6 +223,7 @@ impl Layout {
         from: MachineId,
         edge: Edge,
         along: f32,
+        eligible: impl Fn(MachineId) -> bool,
     ) -> Option<(MachineId, v1::Landing)> {
         if along.is_nan() {
             return None;
@@ -235,7 +240,7 @@ impl Layout {
         };
         let point = f64::from(start) + f64::from(size) * f64::from(along.clamp(0.0, 1.0));
         for target in &self.placements {
-            if target.id == from || !touches(source, target, edge) {
+            if target.id == from || !eligible(target.id) || !touches(source, target, edge) {
                 continue;
             }
             let (start, size) = if horizontal {
@@ -266,6 +271,7 @@ impl Layout {
         from: MachineId,
         edge: Edge,
         corner: Corner,
+        eligible: impl Fn(MachineId) -> bool,
     ) -> Option<(MachineId, v1::Landing)> {
         let source = self.placements.iter().find(|p| p.id == from)?;
         let at_right = matches!(corner, Corner::TopRight | Corner::BottomRight);
@@ -282,6 +288,7 @@ impl Layout {
         }
         let target = self.placements.iter().find(|target| {
             target.id != from
+                && eligible(target.id)
                 && if at_right {
                     right(source) == i64::from(target.x)
                 } else {

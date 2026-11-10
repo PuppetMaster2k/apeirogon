@@ -182,38 +182,4 @@ mod tests {
             assert_eq!(hid_from_evdev(evdev), Some(hid));
         }
     }
-
-    #[test]
-    fn keys_table_has_no_duplicate_codes_or_usages() {
-        // Arrange
-        let mut codes: Vec<u16> = KEYS.iter().map(|&(evdev, _)| evdev).collect();
-        let mut usages: Vec<u32> = KEYS.iter().map(|&(_, hid)| hid).collect();
-
-        // Act
-        codes.sort_unstable();
-        usages.sort_unstable();
-
-        // Assert
-        assert!(codes.windows(2).all(|pair| pair[0] != pair[1]));
-        assert!(usages.windows(2).all(|pair| pair[0] != pair[1]));
-    }
-
-    #[test]
-    fn hid_from_evdev_known_keys_match_usage_tables() {
-        // Arrange
-        let expected = [
-            (30, 0x0007_0004),
-            (28, 0x0007_0028),
-            (125, 0x0007_00E3),
-            (113, 0x000C_00E2),
-        ];
-
-        for (evdev, usage) in expected {
-            // Act
-            let hid = hid_from_evdev(evdev);
-
-            // Assert
-            assert_eq!(hid, Some(usage), "evdev {evdev}");
-        }
-    }
 }

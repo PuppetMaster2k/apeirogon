@@ -32,26 +32,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn push_fractional_motion_adds_up_to_one_pixel() {
+    fn push_fractional_motion_keeps_signed_remainder() {
         // Arrange
-        let mut motion = MotionAccumulator::default();
+        let mut positive = MotionAccumulator::default();
+        let mut negative = MotionAccumulator::default();
 
         // Act
-        let steps = [(0.4, 0.0), (0.4, 0.0), (0.4, 0.0)].map(|(dx, dy)| motion.push(dx, dy));
+        let up = [0.4, 0.4, 0.4].map(|dx| positive.push(dx, 0.0));
+        let down = [-0.6, -0.6, -0.9].map(|dx| negative.push(dx, 0.0));
 
         // Assert
-        assert_eq!(steps, [(0, 0), (0, 0), (1, 0)]);
-    }
-
-    #[test]
-    fn push_negative_motion_keeps_negative_remainder() {
-        // Arrange
-        let mut motion = MotionAccumulator::default();
-
-        // Act
-        let steps = [(-0.6, 0.0), (-0.6, 0.0), (-0.9, 0.0)].map(|(dx, dy)| motion.push(dx, dy));
-
-        // Assert
-        assert_eq!(steps, [(0, 0), (-1, 0), (-1, 0)]);
+        assert_eq!(up, [(0, 0), (0, 0), (1, 0)]);
+        assert_eq!(down, [(0, 0), (-1, 0), (-1, 0)]);
     }
 }

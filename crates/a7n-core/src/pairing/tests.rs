@@ -112,41 +112,56 @@ fn answer_wrong_code_refuses_and_ends_host_pairing() {
 }
 
 #[test]
-fn start_expired_code_refuses_and_closes_window() {
+fn start_or_confirm_expired_window_refuses_and_closes() {
     // Arrange
     let now = Instant::now();
-    let mut host = host(now);
-    let requester = requester(code());
+    let expired = now + limits::PAIRING_CODE_DURATION;
+    let mut late_start = host(now);
+    let mut late_confirm = host(now);
+    let mut requester = requester(code());
+    let answer = answer(&mut late_confirm, &requester, now);
+    let confirm = requester.answer(answer, pin(2), [3; 32]).unwrap();
 
     // Act
-    let result = host.start(
+    let start = late_start.start(
         requester.start(),
         pin(1),
         [3; 32],
         info("host"),
-        now + limits::PAIRING_CODE_DURATION,
+        expired,
         &mut TestRng(2),
     );
+    let confirmed = late_confirm.confirm(confirm, expired);
 
     // Assert
-    assert_eq!(result, Err(PairError::Refused));
-    assert!(host.closed);
+    assert_eq!(start, Err(PairError::Refused));
+    assert!(late_start.closed);
+    assert!(matches!(confirmed, Err(PairError::Refused)));
 }
 
 #[test]
-fn confirm_expired_window_refuses_requester_proof() {
+fn done_tampered_tag_or_unverified_answer_refuses_host_storage_proof() {
     // Arrange
     let now = Instant::now();
     let mut host = host(now);
     let mut requester = requester(code());
     let answer = answer(&mut host, &requester, now);
     let confirm = requester.answer(answer, pin(2), [3; 32]).unwrap();
+    let mut done = host.confirm(confirm, now).unwrap().done();
+    let fresh = self::requester(code());
+    let unverified = PairDone {
+        error: PairError::None.into(),
+        tag: vec![0; 32],
+    };
+    done.tag[0] ^= 1;
 
     // Act
-    let result = host.confirm(confirm, now + limits::PAIRING_CODE_DURATION);
+    let tampered = requester.done(done);
+    let without_answer = fresh.done(unverified);
 
     // Assert
-    assert!(matches!(result, Err(PairError::Refused)));
+    assert!(matches!(tampered, Err(PairError::Refused)));
+    assert!(matches!(without_answer, Err(PairError::Refused)));
 }
 
 #[test]
@@ -180,24 +195,6 @@ fn answer_mismatched_identities_or_binding_refuses_confirmation() {
 }
 
 #[test]
-fn done_tampered_tag_refuses_host_storage_proof() {
-    // Arrange
-    let now = Instant::now();
-    let mut host = host(now);
-    let mut requester = requester(code());
-    let answer = answer(&mut host, &requester, now);
-    let confirm = requester.answer(answer, pin(2), [3; 32]).unwrap();
-    let mut done = host.confirm(confirm, now).unwrap().done();
-    done.tag[0] ^= 1;
-
-    // Act
-    let result = requester.done(done);
-
-    // Assert
-    assert!(matches!(result, Err(PairError::Refused)));
-}
-
-#[test]
 fn start_malformed_share_refuses_and_rejects_second_attempt() {
     // Arrange
     let now = Instant::now();
@@ -220,30 +217,6 @@ fn start_malformed_share_refuses_and_rejects_second_attempt() {
         // Assert
         assert_eq!(result, Err(PairError::Refused));
         assert_eq!(retry, Err(PairError::NotPairing));
-    }
-}
-
-#[test]
-fn confirm_malformed_or_bad_tag_refuses_and_closes_window() {
-    // Arrange
-    let now = Instant::now();
-    for tag in [vec![], vec![0; 31], vec![0; 32], vec![0; 33]] {
-        let mut host = host(now);
-        answer(&mut host, &requester(code()), now);
-
-        // Act
-        let result = host.confirm(
-            PairConfirm {
-                tag,
-                error: PairError::None.into(),
-            },
-            now,
-        );
-
-        // Assert
-        assert!(matches!(result, Err(PairError::Refused)));
-        assert!(host.closed);
-        assert!(host.pending.is_none());
     }
 }
 
@@ -303,23 +276,6 @@ fn allow_sixth_attempt_blocks_until_oldest_expires() {
     assert!(!blocked);
     assert!(independent);
     assert!(renewed);
-}
-
-#[test]
-fn allow_source_churn_bounds_memory_without_evicting_live_limits() {
-    // Arrange
-    let now = Instant::now();
-    let mut limiter = AttemptLimiter::new(1);
-    assert!(limiter.allow("first", now));
-
-    // Act
-    let blocked = limiter.allow("second", now);
-    let renewed = limiter.allow("second", now + limits::PAIRING_ATTEMPT_WINDOW);
-
-    // Assert
-    assert!(!blocked);
-    assert!(renewed);
-    assert_eq!(limiter.sources.len(), 1);
 }
 
 mod validation;

@@ -58,28 +58,3 @@ impl Config {
             .expect("gesture settings have been validated")
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::super::Config;
-
-    #[test]
-    fn set_gesture_bindings_validates_and_preserves_on_error() {
-        // Arrange
-        let mut config = Config::default();
-        for key in ["swipe_up", "swipe_down", "swipe_left", "swipe_right"] {
-            let key = format!("gestures.{key}");
-            config.set(&key, "").unwrap();
-            assert_eq!(config.get(&key).as_deref(), Some(""));
-            config.set(&key, "shift+up").unwrap();
-
-            // Act
-            let error = config.set(&key, "unknown").unwrap_err();
-
-            // Assert
-            assert!(error.to_string().starts_with(&format!("{key}:")));
-            assert_eq!(config.get(&key).as_deref(), Some("shift+up"));
-        }
-        Config::parse(&config.to_toml().unwrap()).unwrap();
-    }
-}

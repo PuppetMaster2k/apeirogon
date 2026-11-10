@@ -214,36 +214,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn version_error_newer_peer_names_local_machine_to_update() {
+    fn check_version_major_mismatch_names_older_machine_to_update() {
         // Arrange
-        let (local, remote) = (1, 2);
+        let cases = [
+            (1, 2, Some("update laptop to protocol v2")),
+            (2, 1, Some("update desktop to protocol v2")),
+            (1, 1, None),
+        ];
 
-        // Act
-        let error = check_version(local, remote, "laptop", "desktop").unwrap_err();
+        for (local, remote, expected) in cases {
+            // Act
+            let result = check_version(local, remote, "laptop", "desktop");
 
-        // Assert
-        assert_eq!(error.to_string(), "update laptop to protocol v2");
-    }
-
-    #[test]
-    fn version_error_older_peer_names_remote_machine_to_update() {
-        // Arrange
-        let (local, remote) = (2, 1);
-
-        // Act
-        let error = check_version(local, remote, "laptop", "desktop").unwrap_err();
-
-        // Assert
-        assert_eq!(error.to_string(), "update desktop to protocol v2");
-    }
-
-    #[test]
-    fn check_version_equal_major_is_accepted() {
-        // Arrange / Act
-        let result = check_version(1, 1, "laptop", "desktop");
-
-        // Assert
-        assert!(result.is_ok());
+            // Assert
+            assert_eq!(
+                result.err().map(|error| error.to_string()).as_deref(),
+                expected,
+                "{local} vs {remote}"
+            );
+        }
     }
 
     #[test]

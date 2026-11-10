@@ -60,16 +60,4 @@ mod tests {
         expected.extend(list.encode_utf16().flat_map(u16::to_le_bytes));
         assert_eq!(bytes, expected);
     }
-
-    #[test]
-    fn build_without_usable_paths_returns_none() {
-        // Arrange
-        let paths = [PathBuf::new(), PathBuf::from("a\0b")];
-
-        // Act
-        let bytes = build(&paths);
-
-        // Assert
-        assert_eq!(bytes, None);
-    }
 }

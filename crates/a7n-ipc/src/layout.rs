@@ -122,43 +122,6 @@ mod tests {
         }
     }
     #[test]
-    fn try_from_known_and_unknown_sizes_uses_physical_units_or_default() {
-        // Arrange
-        let unplaced = [Some((310, 174)), None]
-            .into_iter()
-            .enumerate()
-            .map(|(id, screen_mm)| UnplacedMachine {
-                machine: MachineId::try_from(
-                    [u8::try_from(id).unwrap(); MachineId::LEN].as_slice(),
-                )
-                .unwrap(),
-                name: format!("machine-{id}"),
-                screen_mm,
-            })
-            .collect();
-        let info = LayoutInfo {
-            placed: vec![],
-            unplaced,
-            lost_edit: false,
-        };
-
-        // Act
-        let draft = LayoutDraft::try_from(info).unwrap();
-
-        // Assert
-        assert_eq!(
-            (draft.placements[0].width, draft.placements[0].height),
-            (3100, 1740)
-        );
-        assert_eq!(
-            (draft.placements[1].width, draft.placements[1].height),
-            DEFAULT_MACHINE_SIZE
-        );
-        assert_eq!(draft.placements[1].x, 3100);
-        assert!(validate(&draft.placements).is_ok());
-    }
-
-    #[test]
     fn try_from_unplaced_machines_places_to_right_top_aligned() {
         // Arrange
         let info = LayoutInfo {

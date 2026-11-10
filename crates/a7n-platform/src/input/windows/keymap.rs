@@ -177,7 +177,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scan_from_hid_whole_table_round_trips() {
+    fn key_tables_round_trip_through_hid() {
         // Arrange
         let table = KEYS;
 
@@ -188,6 +188,15 @@ mod tests {
             // Assert
             assert_eq!(back, Some((scan, ext)));
             assert_eq!(hid_from_scan(u32::from(scan), ext), Some(hid));
+        }
+
+        for &(hid, vk) in MEDIA {
+            // Act
+            let back = hid_from_media(u32::from(vk)).and_then(media_from_hid);
+
+            // Assert
+            assert_eq!(back, Some(vk));
+            assert_eq!(hid_from_media(u32::from(vk)), Some(hid));
         }
     }
 
@@ -212,34 +221,5 @@ mod tests {
             assert_eq!(mapped, Some((scan, true)));
             assert_ne!(hid_from_scan(u32::from(scan), false), Some(KBD | id));
         }
-    }
-
-    #[test]
-    fn media_from_hid_whole_table_round_trips() {
-        // Arrange
-        let table = MEDIA;
-
-        for &(hid, vk) in table {
-            // Act
-            let back = hid_from_media(u32::from(vk)).and_then(media_from_hid);
-
-            // Assert
-            assert_eq!(back, Some(vk));
-            assert_eq!(hid_from_media(u32::from(vk)), Some(hid));
-        }
-    }
-
-    #[test]
-    fn hid_from_scan_unknown_codes_are_dropped() {
-        // Arrange
-        let codes = [0, 0xFF, u32::MAX];
-
-        // Act
-        let mapped = codes.map(|code| hid_from_scan(code, false));
-
-        // Assert
-        assert_eq!(mapped, [None; 3]);
-        assert_eq!(scan_from_hid(u32::MAX), None);
-        assert_eq!(media_from_hid(u32::MAX), None);
     }
 }

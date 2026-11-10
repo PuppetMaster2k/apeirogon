@@ -34,9 +34,29 @@ paired to a second machine. Every item must pass before a release.
 
 ## Failure handling
 
+- [ ] Ctrl+Alt+Shift+1…9 jumps to a paired layout machine.
+  After unpairing, edge pushes and jumps skip that placement without waking it.
 - [ ] Stuck keys: hold a key and a modifier on the peer, cut the link (pull
   the cable or block the port); the keys release on this machine and do not
   stay down.
 - [ ] Kill the daemon while driving (`kill -9 apeirogond`): local keyboard
   and mouse work again within 1.5 s and the cursor is visible.
 - [ ] Start the daemon with `XDG_SESSION_TYPE=wayland` set and `WAYLAND_DISPLAY` unset: it reports `kind=input_unavailable` and does not grab anything.
+
+## Full-screen edge hold (#92)
+
+- [ ] Enable `input.fullscreen_hold` (or “Keep the pointer in full-screen apps”)
+  and verify a full-screen game, video and presentation each hold edge pushes,
+  both with local input and while driven. Windowed apps still allow crossing.
+- [ ] Shortcuts, jump keys, shake-to-return and lock still work while held.
+- [ ] A continuous held push logs `kind=edge_held_fullscreen` only once; moving
+  away and pushing again rechecks focus and full-screen state.
+- [ ] Full-screen `a7n-gui` does not hold edges.
+- [ ] With multiple monitors, full-screen on one monitor does not hold a push
+  on another; check displays with negative desktop coordinates and mixed scaling.
+- [ ] Disable the setting and reload: edge crossings work as before. Re-enable
+  and reload: holding works without restarting. Other machines keep their own setting.
+- [ ] In a Wayland session the toggle is disabled with “Not available on Wayland”; setting it through the CLI has no effect.
+- [ ] An EWMH full-screen window without `_NET_WM_PID`, or with an unreadable
+  `/proc/<pid>/exe`, still holds. A borderless game without the EWMH full-screen
+  state does not hold.

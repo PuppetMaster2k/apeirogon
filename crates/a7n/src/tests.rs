@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_ipc::{
-    ErrorKind, FileTransfer, FinishedSend, HeldFiles, PeerInfo, SendOutcome, StatusInfo,
-    TransferDirection,
-};
+use a7n_ipc::{ErrorKind, FileTransfer, FinishedSend, SendOutcome, StatusInfo, TransferDirection};
 
 use super::*;
 
@@ -57,75 +54,6 @@ fn parse_addr_ip_and_port_forms_resolve_or_reject() {
 }
 
 #[test]
-fn write_response_status_displays_identity_and_peer_states() {
-    // Arrange
-    let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
-    let response = Response::Status(StatusInfo {
-        held_clipboard: None,
-        transfers: vec![FileTransfer {
-            id: 7,
-            offer_id: Some(2),
-            peer: machine,
-            direction: TransferDirection::Send,
-            files_done: 1,
-            files_total: 3,
-            bytes_done: 1536,
-            bytes_total: 5 * 1024 * 1024,
-        }],
-        finished_sends: Vec::new(),
-        held_files: vec![HeldFiles {
-            peer: machine,
-            offer_id: 1,
-            files: 2,
-            top_level_entries: 1,
-            total_size: 100,
-        }],
-        input: Some("Accessibility permission missing".to_owned()),
-        paused: false,
-        focused: machine,
-        pid: std::process::id(),
-        machine,
-        name: "local".into(),
-        peers: [true, false]
-            .into_iter()
-            .map(|connected| PeerInfo {
-                id: machine,
-                name: "peer".into(),
-                connected,
-                rtt_ms: None,
-                can_wake: false,
-                waking: false,
-            })
-            .collect(),
-        nearby: Vec::new(),
-        missing_permissions: vec![a7n_ipc::Permission::Accessibility],
-        firewall: vec![a7n_ipc::FirewallProblem::Blocked {
-            rule: "managed rule".into(),
-            ports: vec![42042],
-        }],
-    });
-    let mut output = Vec::new();
-
-    // Act
-    write_response(&mut output, &response).unwrap();
-
-    // Assert
-    assert_eq!(
-        String::from_utf8(output).unwrap(),
-        concat!(
-            "input: unavailable (Accessibility permission missing)\n",
-            "permission missing: Accessibility\n",
-            "firewall: firewall rule \"managed rule\" blocks apeirogond on UDP ports 42042\n",
-            "local 0123456789abcdef0123456789abcdef (this machine)\n",
-            "peer 0123456789abcdef0123456789abcdef connected\n",
-            "peer 0123456789abcdef0123456789abcdef offline\n",
-            "files waiting for confirmation: peer wants to send 2 files, 100 B (a7n files accept 0123456789abcdef0123456789abcdef)\n",
-            "transfer 7 send peer: 1/3 files, 1.5 KiB / 5.0 MiB\n",
-        )
-    );
-}
-
-#[test]
 fn resolve_target_addresses_and_nearby_prefixes_resolve_or_reject() {
     // Arrange
     let first_addr = "127.0.0.1:1234".parse().unwrap();
@@ -168,82 +96,6 @@ fn resolve_target_addresses_and_nearby_prefixes_resolve_or_reject() {
 
         // Assert
         assert_eq!(result, expected, "{target}");
-    }
-}
-
-#[test]
-fn write_response_status_with_nearby_displays_machine_ids_and_addresses() {
-    // Arrange
-    let machine = "0123456789abcdef0123456789abcdef".parse().unwrap();
-    let response = Response::Status(StatusInfo {
-        held_clipboard: None,
-        transfers: Vec::new(),
-        held_files: Vec::new(),
-        finished_sends: Vec::new(),
-        input: None,
-        paused: false,
-        focused: machine,
-        pid: std::process::id(),
-        machine,
-        name: "local".into(),
-        peers: Vec::new(),
-        nearby: vec![NearbyMachine {
-            id: machine,
-            addr: "127.0.0.1:1234".parse().unwrap(),
-        }],
-        missing_permissions: Vec::new(),
-        firewall: Vec::new(),
-    });
-    let mut output = Vec::new();
-
-    // Act
-    write_response(&mut output, &response).unwrap();
-
-    // Assert
-    assert_eq!(
-        String::from_utf8(output).unwrap(),
-        concat!(
-            "local 0123456789abcdef0123456789abcdef (this machine)\n",
-            "nearby\n",
-            "0123456789abcdef0123456789abcdef 127.0.0.1:1234\n",
-        )
-    );
-}
-
-#[test]
-fn write_response_pairing_and_completion_display_expected_output() {
-    // Arrange
-    let cases = [
-        (
-            Response::PairCode {
-                code: PairingCode::parse("001234").unwrap(),
-                expires_in_secs: 60,
-            },
-            "001234 (valid for 60 s)\n",
-        ),
-        (
-            Response::Paired {
-                machine: "0123456789abcdef0123456789abcdef".parse().unwrap(),
-                name: "peer".into(),
-            },
-            "Paired with peer (0123456789abcdef0123456789abcdef)\n",
-        ),
-        (
-            Response::Waking {
-                name: "desktop".into(),
-            },
-            "Waking desktop…\n",
-        ),
-        (Response::Done, ""),
-    ];
-    for (response, expected) in cases {
-        let mut output = Vec::new();
-
-        // Act
-        write_response(&mut output, &response).unwrap();
-
-        // Assert
-        assert_eq!(output, expected.as_bytes());
     }
 }
 

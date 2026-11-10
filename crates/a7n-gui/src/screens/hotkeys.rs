@@ -23,7 +23,11 @@ impl App {
                     "Lock",
                     "Keep input on the current machine; press again to unlock.",
                 ),
-                ("jump", "Jump", "Hold with 1–9 to jump to a machine."),
+                (
+                    "jump",
+                    "Jump",
+                    "Hold with 1–9 to jump to a paired machine. Unpaired slots do nothing; other numbers stay the same.",
+                ),
             ]
             .into_iter()
             .enumerate()
@@ -67,6 +71,12 @@ impl App {
                 },
             );
         });
+        if name == "jump" {
+            theme::small(
+                ui,
+                "Windows' Alt+Shift input-language hotkey also fires on this chord; turn it off under Settings > Time & language > Typing > Advanced keyboard settings > Input language hot keys, or pick other jump keys.",
+            );
+        }
     }
 
     fn record_trigger(&mut self, ui: &mut egui::Ui) {
@@ -89,10 +99,10 @@ impl App {
         theme::setting_row(
             ui,
             "Shake to return",
-            "Shake the mouse left and right this many times to return to this machine. 0 turns it off.",
+            "Shake the mouse left and right this many times to return to this machine. Enter zero to turn it off.",
             Some(key),
             |ui| {
-                if theme::text_input(ui, "Number of reversals", &mut value, "4", true).changed() {
+                if theme::text_input(ui, "Number of reversals", &mut value, "", true).changed() {
                     self.edit(key, &value, "");
                 }
             },

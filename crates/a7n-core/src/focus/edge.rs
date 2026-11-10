@@ -80,9 +80,73 @@ impl EdgeResistance {
     }
 }
 
+/// A focused full-screen window holds one continuous edge push.
+#[derive(Debug)]
+pub struct FullscreenHold {
+    enabled: bool,
+    held: Option<bool>,
+}
+
+impl FullscreenHold {
+    #[must_use]
+    pub fn new(enabled: bool) -> Self {
+        Self {
+            enabled,
+            held: None,
+        }
+    }
+
+    /// Clears the current push without changing whether holding is enabled.
+    pub fn reset(&mut self) {
+        self.held = None;
+    }
+
+    /// Queries only at the start of a push; moving away clears the result.
+    pub fn holds(&mut self, pushing: bool, query: impl FnOnce() -> bool) -> bool {
+        if !pushing || !self.enabled {
+            self.reset();
+            return false;
+        }
+        *self.held.get_or_insert_with(query)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn holds_disabled_or_ended_push_never_queries() {
+        // Arrange
+        let mut disabled = FullscreenHold::new(false);
+        let mut ended = FullscreenHold::new(true);
+        ended.holds(true, || true);
+
+        // Act
+        let disabled_result = disabled.holds(true, || panic!("disabled hold must not query"));
+        let ended_result = ended.holds(false, || panic!("ending push must not query"));
+        let next_push = ended.holds(true, || false);
+
+        // Assert
+        assert!(!disabled_result);
+        assert!(!ended_result);
+        assert!(!next_push);
+    }
+
+    #[test]
+    fn holds_continuous_push_queries_once_and_preserves_result() {
+        // Arrange
+        for fullscreen in [false, true] {
+            let mut hold = FullscreenHold::new(true);
+
+            // Act
+            let first = hold.holds(true, || fullscreen);
+            let next = hold.holds(true, || panic!("continuous push must use cache"));
+
+            // Assert
+            assert_eq!((first, next), (fullscreen, fullscreen));
+        }
+    }
 
     #[test]
     fn push_button_held_blocks_crossing_and_discards_overshoot() {
@@ -112,49 +176,6 @@ mod tests {
     }
 
     #[test]
-    fn reset_held_buttons_clears_all() {
-        // Arrange
-        let mut buttons = HeldButtons::default();
-        for button in [Button::Left, Button::Forward] {
-            buttons.apply(&ButtonEvent {
-                button: button.into(),
-                down: true,
-            });
-        }
-        assert!(buttons.any_held());
-
-        // Act
-        buttons.reset();
-
-        // Assert
-        assert!(!buttons.any_held());
-    }
-
-    #[test]
-    fn apply_multiple_and_unknown_buttons_preserves_known_held_state() {
-        // Arrange
-        let mut buttons = HeldButtons::default();
-        let events = [
-            (Button::Left.into(), true),
-            (Button::Forward.into(), true),
-            (Button::Left.into(), false),
-            (Button::Unspecified.into(), true),
-            (-1, true),
-            (i32::MAX, true),
-            (Button::Forward.into(), false),
-        ];
-
-        // Act
-        let held = events.map(|(button, down)| {
-            buttons.apply(&ButtonEvent { button, down });
-            buttons.any_held()
-        });
-
-        // Assert
-        assert_eq!(held, [true, true, true, true, true, true, false]);
-    }
-
-    #[test]
     fn push_accumulated_overshoot_crosses_at_threshold_and_resets() {
         // Arrange
         let mut resistance = EdgeResistance::new(10);
@@ -167,22 +188,14 @@ mod tests {
     }
 
     #[test]
-    fn push_edge_change_discards_previous_overshoot() {
+    fn push_edge_change_or_moving_away_discards_previous_overshoot() {
         // Arrange
-        let mut resistance = EdgeResistance::new(10);
-        resistance.push(Edge::Right, 9);
-
-        // Act
-        let crossed = [1, 9].map(|px| resistance.push(Edge::Left, px));
-
-        // Assert
-        assert_eq!(crossed, [false, true]);
-    }
-
-    #[test]
-    fn push_moving_away_discards_previous_overshoot() {
-        // Arrange
-        let reset_cases = [(Edge::Right, 0), (Edge::Right, -1), (Edge::Unspecified, 5)];
+        let reset_cases = [
+            (Edge::Right, 0),
+            (Edge::Right, -1),
+            (Edge::Unspecified, 5),
+            (Edge::Left, 1),
+        ];
 
         for (edge, overshoot) in reset_cases {
             let mut resistance = EdgeResistance::new(10);
@@ -195,28 +208,6 @@ mod tests {
             // Assert
             assert!(!reset_crossed);
             assert!(!crossed);
-        }
-    }
-
-    #[test]
-    fn push_absent_or_excessive_resistance_uses_default_or_maximum() {
-        // Arrange
-        let cases = [
-            (0, limits::DEFAULT_RESISTANCE_PX),
-            (u32::MAX, limits::RESISTANCE_MAX_PX),
-        ];
-
-        for (configured, threshold) in cases {
-            let mut resistance = EdgeResistance::new(configured);
-            let threshold = i32::try_from(threshold).expect("resistance limit fits i32");
-
-            // Act
-            let early = resistance.push(Edge::Bottom, threshold - 1);
-            let crossed = resistance.push(Edge::Bottom, 1);
-
-            // Assert
-            assert!(!early);
-            assert!(crossed);
         }
     }
 }

@@ -65,8 +65,30 @@ and secure desktops are out of scope; input must release there.
   press Scroll Lock, and press Ctrl+Alt+Shift+Home in separate runs; each
   returns focus home and releases held inputs on the peer.
 - [ ] Cursor lock: Ctrl+Alt+Shift+L prevents edge crossing; press it again
-  to unlock. Ctrl+Alt+Shift+1…9 jumps to an available layout machine.
+  to unlock. Ctrl+Alt+Shift+1…9 jumps to an available paired layout machine.
+  Windows' Alt+Shift input-language hotkey also fires on this chord; turn it off under Settings > Time & language > Typing > Advanced keyboard settings > Input language hot keys, or pick other jump keys.
+- [ ] Unpair a machine: it disappears from Paired machines immediately (it
+  may remain under Nearby machines). Its retained layout placement says
+  “Unpaired machine”; edge pushes and jumps skip it without a wake attempt.
+  Jumping to its slot does nothing; later machines keep their numbers.
 - [ ] Secure desktop: open a UAC prompt or press Ctrl+Alt+Del locally while
   driving, then repeat while this machine is driven. Remote control of
   these screens is out of scope; input must release, with local keyboard
   and pointer usable and no held inputs left after returning to the session.
+
+## Full-screen edge hold (#92)
+
+- [ ] Enable `input.fullscreen_hold` (or “Keep the pointer in full-screen apps”)
+  and verify a full-screen game, video and presentation each hold edge pushes,
+  both with local input and while driven. Windowed apps still allow crossing.
+- [ ] Shortcuts, jump keys, shake-to-return and lock still work while held.
+- [ ] A continuous held push logs `kind=edge_held_fullscreen` only once; moving
+  away and pushing again rechecks focus and full-screen state.
+- [ ] Full-screen `a7n-gui` does not hold edges.
+- [ ] With multiple monitors, full-screen on one monitor does not hold a push
+  on another; check displays with negative desktop coordinates and mixed scaling.
+- [ ] Disable the setting and reload: edge crossings work as before. Re-enable
+  and reload: holding works without restarting. Other machines keep their own setting.
+- [ ] The desktop, taskbar and shell windows do not hold edges.
+- [ ] A borderless game slightly larger than its monitor still holds. An ordinary
+  maximized window does not hold, including with an auto-hidden taskbar.

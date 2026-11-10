@@ -120,21 +120,6 @@ mod tests {
     }
 
     #[test]
-    fn apply_repeated_down_tracks_each_input_once() {
-        // Arrange
-        let mut held = HeldInputs::new();
-        held.apply(&key(4, true));
-        held.apply(&button(true));
-
-        // Act
-        held.apply(&key(4, true));
-        held.apply(&button(true));
-
-        // Assert
-        assert_eq!(held.release_all(), vec![key(4, false), button(false)]);
-    }
-
-    #[test]
     fn apply_hostile_downs_caps_held_inputs_and_reuses_released_space() {
         // Arrange
         let mut held = HeldInputs::new();

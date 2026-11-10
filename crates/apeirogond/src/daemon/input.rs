@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 use std::future::pending;
 use std::time::Instant;
 
-use a7n_core::focus::edge::{EdgeResistance, HeldButtons};
+use a7n_core::focus::edge::{EdgeResistance, FullscreenHold, HeldButtons};
 use a7n_core::focus::{Action, Cursor, Focus, Take};
 use a7n_core::hotkey::{HotkeyMatcher, SHAKE_DEFAULT, ShakeDetector};
-use a7n_core::input::{MotionCounter, MotionScale, MotionTracker, corner_push, edge_push};
+use a7n_core::input::{MotionCounter, MotionScale, MotionTracker};
 use a7n_platform::input::{Bounds, Capture, CaptureControl, Captured, Inject, Injector};
 use a7n_proto::v1::{Edge, Envelope, InputBatch, envelope::Body, input_event::Event};
 use a7n_proto::{MachineId, Route};
@@ -16,6 +16,7 @@ use tokio::sync::oneshot;
 use super::{Daemon, DaemonError};
 
 mod actions;
+mod crossing;
 mod gestures;
 mod hotkeys;
 mod landing;
@@ -38,7 +39,9 @@ pub(super) struct Input {
     pub(super) gestures: a7n_core::gestures::Bindings,
     pub(super) shake: ShakeDetector,
     pub(super) recording: recording::Recording,
+    pub(super) fullscreen_hold: FullscreenHold,
     resistance: EdgeResistance,
+    edge_no_target: Option<Edge>,
     buttons: HeldButtons,
     pub(super) failed: bool,
     lost: Vec<MachineId>,
@@ -67,12 +70,20 @@ impl Input {
             gestures: a7n_ipc::config::Config::default().gesture_bindings(),
             shake: ShakeDetector::new(SHAKE_DEFAULT),
             recording: recording::Recording::default(),
+            fullscreen_hold: FullscreenHold::new(false),
             resistance: EdgeResistance::new(0),
+            edge_no_target: None,
             buttons: HeldButtons::default(),
             failed: false,
             lost: Vec::new(),
             retried: None,
         }
+    }
+
+    fn reset_edge_state(&mut self) {
+        self.buttons.reset();
+        self.fullscreen_hold.reset();
+        self.edge_no_target = None;
     }
 
     pub(super) fn keepalive(&mut self) {
@@ -453,65 +464,6 @@ impl Daemon {
         {
             self.cross_edge(injector.bounds, x, y, dx, dy, true).await;
         }
-    }
-
-    async fn cross_edge(&mut self, bounds: Bounds, x: i32, y: i32, dx: i32, dy: i32, driven: bool) {
-        if self.input.buttons.any_held() {
-            self.input.resistance.push(Edge::Unspecified, 0);
-            return;
-        }
-        if self.input.paused || (!driven && self.input.focus.is_locked()) {
-            return;
-        }
-        let Some((edge, overshoot, along)) = edge_push(
-            (bounds.x, bounds.y, bounds.width, bounds.height),
-            x,
-            y,
-            dx,
-            dy,
-        ) else {
-            self.input.resistance.push(Edge::Unspecified, 0);
-            return;
-        };
-        if !self.input.resistance.push(edge, overshoot) {
-            return;
-        }
-        let Some((target, landing)) = self
-            .layout
-            .state
-            .exit(self.identity.machine_id, edge, along)
-            .or_else(|| {
-                let (edge, corner) = corner_push(
-                    (bounds.x, bounds.y, bounds.width, bounds.height),
-                    x,
-                    y,
-                    dx,
-                    dy,
-                )?;
-                self.layout
-                    .state
-                    .exit_corner(self.identity.machine_id, edge, corner)
-            })
-        else {
-            return;
-        };
-        let actions = if driven {
-            self.wol.pending = None;
-            self.input.focus.handover(target, Some(landing))
-        } else {
-            if !self.is_linked(target) {
-                if self
-                    .auto_wake(target, super::wol::WakeAction::Edge(landing), now())
-                    .is_err()
-                {
-                    crate::log::event!("kind=wake_failed");
-                }
-                return;
-            }
-            self.wol.pending = None;
-            self.take_peer(target, Some(landing), now())
-        };
-        self.input_actions(actions).await;
     }
 }
 
