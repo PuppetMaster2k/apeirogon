@@ -37,8 +37,17 @@ struct Cli {
     trace_input: bool,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    // First thing, so macOS windows get a main thread that runs a run loop.
+    a7n_platform::main_thread::run(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?
+            .block_on(async_main())
+    })
+}
+
+async fn async_main() -> Result<()> {
     let cli = Cli::parse();
     if cli.trace_input {
         log::event!("kind=trace_input_warning key codes will be logged; do not type secrets");

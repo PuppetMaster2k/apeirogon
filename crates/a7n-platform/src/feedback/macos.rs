@@ -2,15 +2,13 @@
 
 //! Edge glow, landing ring and haptic ticks on macOS; contract in [`super`].
 //!
-//! Two click-through, non-activating panels are owned by one UI thread that
-//! runs a `CFRunLoop`: a strip along the pushed edge and a ring around the
-//! landing point. A bridge thread blocks on the tokio receiver and wakes the
-//! run loop through a `CFRunLoopSource` when commands arrive, so nothing polls.
-//!
-//! `AppKit` expects windows on the process main thread, which the daemon keeps
-//! for tokio. The UI thread therefore asserts a `MainThreadMarker` itself and
-//! relies on the same dedicated-run-loop approach as the clipboard backend.
-//! Only plain panels are used (no delegates, no events, no key status).
+//! Two click-through, non-activating panels live on the process main thread,
+//! which [`crate::main_thread::run`] keeps in its `CFRunLoop` (`AppKit` only
+//! allows windows there). A bridge thread blocks on the tokio receiver, passes
+//! commands over a std channel and signals a run-loop source on the main loop,
+//! so nothing polls. The panels are created lazily inside that source's
+//! callback, on the main thread. Without `main_thread::run` there is no main
+//! run loop and [`start`] returns `None`, so tests never touch `AppKit`.
 
 use std::ffi::c_void;
 use std::sync::mpsc as sync;
@@ -20,21 +18,22 @@ use std::time::Duration;
 use objc2::MainThreadMarker;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2_app_kit::{
-    NSAnimatablePropertyContainer, NSAnimationContext, NSApplication,
-    NSApplicationActivationPolicy, NSBackingStoreType, NSBox, NSBoxType, NSColor, NSEvent,
-    NSHapticFeedbackManager, NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime,
-    NSHapticFeedbackPerformer, NSPanel, NSScreen, NSStatusWindowLevel, NSTitlePosition,
-    NSWindowCollectionBehavior, NSWindowSharingType, NSWindowStyleMask, NSWorkspace,
+    NSAnimatablePropertyContainer, NSAnimationContext, NSBackingStoreType, NSBox, NSBoxType,
+    NSColor, NSEvent, NSHapticFeedbackManager, NSHapticFeedbackPattern,
+    NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer, NSPanel, NSScreen,
+    NSStatusWindowLevel, NSTitlePosition, NSWindowCollectionBehavior, NSWindowSharingType,
+    NSWindowStyleMask, NSWorkspace,
 };
 use objc2_core_foundation::{
-    CFAbsoluteTimeGetCurrent, CFRetained, CFRunLoop, CFRunLoopSource, CFRunLoopSourceContext,
-    CFRunLoopTimer, CFRunLoopTimerContext, kCFRunLoopDefaultMode,
+    CFAbsoluteTimeGetCurrent, CFRetained, CFRunLoop, CFRunLoopTimer, CFRunLoopTimerContext,
+    kCFRunLoopDefaultMode,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use tokio::sync::mpsc;
 
 use super::macos_geometry::{self as geometry, LANDING_DIAMETER, Rect};
 use super::{Command, Feedback};
+use crate::main_thread::{self, Waker};
 
 const GLOW_ALPHA: f64 = 0.65;
 const LANDING_RING_WIDTH: f64 = 4.0;
@@ -46,51 +45,49 @@ const LANDING_STATIC_HOLD: Duration = Duration::from_millis(500);
 const TIMER_DISARMED_SECONDS: f64 = 1.0e12;
 const TIMER_NO_INTERVAL: f64 = 0.0;
 
-/// Everything the UI thread owns. Only touched from its run-loop callbacks.
+/// State of the main-thread callbacks. Leaked on purpose: it lives as long as
+/// the process and is only touched from main run-loop callbacks.
 struct Ui {
-    mtm: MainThreadMarker,
     commands: sync::Receiver<Command>,
+    panels: Option<Panels>,
+}
+
+struct Panels {
+    mtm: MainThreadMarker,
     glow: Retained<NSPanel>,
     landing: Retained<NSPanel>,
-    landing_timer: Option<CFRetained<CFRunLoopTimer>>,
-}
-
-/// Signals the UI thread's run loop from the bridge thread.
-struct Waker {
-    source: CFRetained<CFRunLoopSource>,
-    run_loop: CFRetained<CFRunLoop>,
-}
-
-// SAFETY: CFRunLoopSourceSignal and CFRunLoopWakeUp are documented as safe to
-// call from any thread; the Waker exposes nothing else.
-unsafe impl Send for Waker {}
-
-impl Waker {
-    fn wake(&self) {
-        self.source.signal();
-        self.run_loop.wake_up();
-    }
+    hide_landing: CFRetained<CFRunLoopTimer>,
 }
 
 pub(super) fn start() -> Option<Feedback> {
+    if !main_thread::active() {
+        return None;
+    }
     let (feedback, receiver) = super::channel();
     let (command_tx, command_rx) = sync::channel();
-    let (ready_tx, ready_rx) = sync::channel();
+    let ui = Box::leak(Box::new(Ui {
+        commands: command_rx,
+        panels: None,
+    }));
+    // SAFETY: `ui` is leaked, so the pointer is valid forever, and
+    // `drain_commands` only runs on the main thread, one callback at a time.
+    let waker = unsafe {
+        Waker::new(
+            CFRunLoop::main()?,
+            drain_commands,
+            std::ptr::from_mut(ui).cast(),
+        )
+    }?;
     thread::Builder::new()
         .name("a7n-macos-feedback".into())
-        .spawn(move || autoreleasepool(|_| run_ui(command_rx, &ready_tx)))
-        .ok()?;
-    let waker = ready_rx.recv().ok()??;
-    thread::Builder::new()
-        .name("a7n-macos-feedback-bridge".into())
-        .spawn(move || forward_commands(receiver, &command_tx, &waker))
+        .spawn(move || forward_commands(receiver, command_tx, &waker))
         .ok()?;
     Some(feedback)
 }
 
 fn forward_commands(
     mut receiver: mpsc::Receiver<Command>,
-    commands: &sync::Sender<Command>,
+    commands: sync::Sender<Command>,
     waker: &Waker,
 ) {
     while let Some(command) = receiver.blocking_recv() {
@@ -99,86 +96,22 @@ fn forward_commands(
         }
         waker.wake();
     }
-    // Waking with the sender gone tells the UI thread to stop.
+    // Waking with the sender gone lets the main thread hide the panels.
+    drop(commands);
     waker.wake();
-}
-
-fn run_ui(commands: sync::Receiver<Command>, ready: &sync::Sender<Option<Waker>>) {
-    let mut ui = Ui::new(commands);
-    let Some((waker, timer)) = install_run_loop_sources(&mut ui) else {
-        let _ = ready.send(None);
-        return;
-    };
-    ui.landing_timer = Some(timer);
-    if ready.send(Some(waker)).is_ok() {
-        CFRunLoop::run();
-    }
-    if let Some(timer) = ui.landing_timer.take() {
-        timer.invalidate();
-    }
-    ui.glow.orderOut(None);
-    ui.landing.orderOut(None);
-}
-
-/// Adds the wake-up source and the landing timer; both call back with `ui`,
-/// which outlives them because `run_ui` invalidates them before returning.
-fn install_run_loop_sources(ui: &mut Ui) -> Option<(Waker, CFRetained<CFRunLoopTimer>)> {
-    let run_loop = CFRunLoop::current()?;
-    let info: *mut c_void = std::ptr::from_mut(ui).cast();
-    let mut source_context = CFRunLoopSourceContext {
-        version: 0,
-        info,
-        retain: None,
-        release: None,
-        copyDescription: None,
-        equal: None,
-        hash: None,
-        schedule: None,
-        cancel: None,
-        perform: Some(drain_commands),
-    };
-    // SAFETY: The default allocator accepts None, the context is valid for
-    // the call and `info` points to the Ui that outlives the source.
-    let source = unsafe { CFRunLoopSource::new(None, 0, &raw mut source_context) }?;
-    let mut timer_context = CFRunLoopTimerContext {
-        version: 0,
-        info,
-        retain: None,
-        release: None,
-        copyDescription: None,
-    };
-    // SAFETY: As above; `hide_landing` is the callback this timer expects.
-    let timer = unsafe {
-        CFRunLoopTimer::new(
-            None,
-            CFAbsoluteTimeGetCurrent() + TIMER_DISARMED_SECONDS,
-            TIMER_NO_INTERVAL,
-            0,
-            0,
-            Some(hide_landing),
-            &raw mut timer_context,
-        )
-    }?;
-    // SAFETY: Core Foundation's default run-loop mode is an immutable global.
-    let mode = unsafe { kCFRunLoopDefaultMode };
-    run_loop.add_source(Some(&source), mode);
-    run_loop.add_timer(Some(&timer), mode);
-    Some((Waker { source, run_loop }, timer))
 }
 
 unsafe extern "C-unwind" fn drain_commands(info: *mut c_void) {
     autoreleasepool(|_| {
-        // SAFETY: install_run_loop_sources passes a live, exclusively owned Ui;
-        // run-loop callbacks run one at a time on the thread that owns it.
+        // SAFETY: start passes a leaked, process-long Ui; main run-loop
+        // callbacks run one at a time on the main thread.
         let ui = unsafe { &mut *info.cast::<Ui>() };
         loop {
             match ui.commands.try_recv() {
                 Ok(command) => ui.apply(command),
                 Err(sync::TryRecvError::Empty) => return,
                 Err(sync::TryRecvError::Disconnected) => {
-                    if let Some(run_loop) = CFRunLoop::current() {
-                        run_loop.stop();
-                    }
+                    ui.hide_all();
                     return;
                 }
             }
@@ -189,41 +122,89 @@ unsafe extern "C-unwind" fn drain_commands(info: *mut c_void) {
 unsafe extern "C-unwind" fn hide_landing(_: *mut CFRunLoopTimer, info: *mut c_void) {
     // SAFETY: Same contract as drain_commands.
     let ui = unsafe { &*info.cast::<Ui>() };
-    ui.landing.orderOut(None);
+    if let Some(panels) = &ui.panels {
+        panels.landing.orderOut(None);
+    }
 }
 
 impl Ui {
-    fn new(commands: sync::Receiver<Command>) -> Self {
-        // SAFETY: AppKit prefers the main thread, which tokio occupies in the
-        // daemon. The marker is only used to create plain panels and read
-        // screen frames on this thread, which owns them for its lifetime.
-        let mtm = unsafe { MainThreadMarker::new_unchecked() };
-        let app = NSApplication::sharedApplication(mtm);
-        // Without this a plain process would get a Dock icon and Cmd-Tab entry.
-        app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+    fn apply(&mut self, command: Command) {
+        match command {
+            Command::Tick => tick_haptics(),
+            Command::Clear => self.hide_glow(),
+            Command::Edge { edge, progress, .. } => {
+                if let Some(panels) = self.panels() {
+                    panels.show_glow(edge, progress);
+                }
+            }
+            Command::Landing { x, y } => {
+                if let Some(panels) = self.panels() {
+                    panels.show_landing(x, y);
+                }
+            }
+        }
+    }
+
+    fn hide_glow(&self) {
+        if let Some(panels) = &self.panels {
+            panels.glow.orderOut(None);
+        }
+    }
+
+    fn hide_all(&self) {
+        self.hide_glow();
+        if let Some(panels) = &self.panels {
+            panels.landing.orderOut(None);
+            panels.hide_landing.invalidate();
+        }
+    }
+
+    /// The panels, created on first use; callbacks run on the main thread.
+    fn panels(&mut self) -> Option<&Panels> {
+        if self.panels.is_none() {
+            let info = std::ptr::from_mut(self).cast();
+            self.panels = Panels::new(MainThreadMarker::new()?, info);
+        }
+        self.panels.as_ref()
+    }
+}
+
+impl Panels {
+    fn new(mtm: MainThreadMarker, timer_info: *mut c_void) -> Option<Self> {
         let accent = NSColor::controlAccentColor();
         let glow = make_panel(
             mtm,
             &filled_box(mtm, &accent.colorWithAlphaComponent(GLOW_ALPHA)),
         );
-        let ring = ring_box(mtm, &accent);
-        let landing = make_panel(mtm, &ring);
-        Self {
+        let landing = make_panel(mtm, &ring_box(mtm, &accent));
+        let mut timer_context = CFRunLoopTimerContext {
+            version: 0,
+            info: timer_info,
+            retain: None,
+            release: None,
+            copyDescription: None,
+        };
+        // SAFETY: The default allocator accepts None; `timer_info` is the
+        // leaked Ui that `hide_landing` expects and the context is copied.
+        let hide_landing = unsafe {
+            CFRunLoopTimer::new(
+                None,
+                CFAbsoluteTimeGetCurrent() + TIMER_DISARMED_SECONDS,
+                TIMER_NO_INTERVAL,
+                0,
+                0,
+                Some(hide_landing),
+                &raw mut timer_context,
+            )
+        }?;
+        // SAFETY: Core Foundation's default run-loop mode is an immutable global.
+        CFRunLoop::current()?.add_timer(Some(&hide_landing), unsafe { kCFRunLoopDefaultMode });
+        Some(Self {
             mtm,
-            commands,
             glow,
             landing,
-            landing_timer: None,
-        }
-    }
-
-    fn apply(&mut self, command: Command) {
-        match command {
-            Command::Edge { edge, progress, .. } => self.show_glow(edge, progress),
-            Command::Clear => self.glow.orderOut(None),
-            Command::Landing { x, y } => self.show_landing(x, y),
-            Command::Tick => tick_haptics(),
-        }
+            hide_landing,
+        })
     }
 
     fn show_glow(&self, edge: a7n_proto::v1::Edge, progress: u16) {
@@ -254,9 +235,8 @@ impl Ui {
             set_alpha(&self.landing, 0.0, LANDING_FADE);
             LANDING_FADE
         };
-        if let Some(timer) = &self.landing_timer {
-            timer.set_next_fire_date(CFAbsoluteTimeGetCurrent() + visible_for.as_secs_f64());
-        }
+        self.hide_landing
+            .set_next_fire_date(CFAbsoluteTimeGetCurrent() + visible_for.as_secs_f64());
     }
 }
 
