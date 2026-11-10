@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.22.0...v0.23.0) (2026-11-10)
+
+
+### Features
+
+* edge push progress and landing feedback interface ([#188](https://github.com/PuppetMaster2k/apeirogon/issues/188)) ([4a48df2](https://github.com/PuppetMaster2k/apeirogon/commit/4a48df26a288889abf317376a33551e0d8244bc6))
+
 ## [0.22.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.21.1...v0.22.0) (2026-11-10)
 
 
