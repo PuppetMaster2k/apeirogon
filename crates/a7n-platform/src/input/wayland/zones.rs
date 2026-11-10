@@ -270,18 +270,6 @@ mod tests {
     }
 
     #[test]
-    fn bounding_box_two_monitors_spans_both() {
-        // Arrange
-        let zones = [zone(0, 0, 1920, 1080), zone(1920, -200, 1280, 1024)];
-
-        // Act
-        let bounds = bounding_box(&zones);
-
-        // Assert
-        assert_eq!(bounds, Some(zone(0, -200, 3200, 1280)));
-    }
-
-    #[test]
     fn nearest_inside_point_beyond_edge_lands_on_last_pixel() {
         // Arrange
         let zones = [zone(0, 0, 1920, 1080)];

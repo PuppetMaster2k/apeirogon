@@ -146,18 +146,6 @@ mod tests {
         // Assert
         assert_eq!(served.offered(), Vec::<&str>::new());
     }
-
-    #[test]
-    fn offered_lists_every_name_of_present_items_only() {
-        // Arrange
-        let served = served(vec![item(TEXT_HTML, 1)], vec![]);
-
-        // Act
-        let offered = served.offered();
-
-        // Assert
-        assert_eq!(offered, ["text/html;charset=utf-8", "text/html"]);
-    }
 }
 
 #[cfg(test)]

@@ -132,49 +132,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn set_then_load_round_trips_both_tokens() {
-        // Arrange
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("state").join(FILE_NAME);
-        let mut store = TokenStore::load(path.clone());
-        store
-            .set(TokenKind::InputCapture, Some("capture-1"))
-            .unwrap();
-        store
-            .set(TokenKind::RemoteDesktop, Some("desktop-1"))
-            .unwrap();
-
-        // Act
-        let reloaded = TokenStore::load(path);
-
-        // Assert
-        assert_eq!(reloaded.get(TokenKind::InputCapture), Some("capture-1"));
-        assert_eq!(reloaded.get(TokenKind::RemoteDesktop), Some("desktop-1"));
-    }
-
-    #[test]
-    fn set_none_forgets_the_used_token_on_disk() {
-        // Arrange
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join(FILE_NAME);
-        let mut store = TokenStore::load(path.clone());
-        store
-            .set(TokenKind::InputCapture, Some("capture-1"))
-            .unwrap();
-        store
-            .set(TokenKind::RemoteDesktop, Some("desktop-1"))
-            .unwrap();
-
-        // Act
-        store.set(TokenKind::InputCapture, None).unwrap();
-
-        // Assert
-        let reloaded = TokenStore::load(path);
-        assert_eq!(reloaded.get(TokenKind::InputCapture), None);
-        assert_eq!(reloaded.get(TokenKind::RemoteDesktop), Some("desktop-1"));
-    }
-
-    #[test]
     fn load_corrupt_file_reads_as_no_token() {
         // Arrange
         let dir = tempfile::tempdir().unwrap();

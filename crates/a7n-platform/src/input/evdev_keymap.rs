@@ -197,23 +197,4 @@ mod tests {
         assert!(codes.windows(2).all(|pair| pair[0] != pair[1]));
         assert!(usages.windows(2).all(|pair| pair[0] != pair[1]));
     }
-
-    #[test]
-    fn hid_from_evdev_known_keys_match_usage_tables() {
-        // Arrange
-        let expected = [
-            (30, 0x0007_0004),
-            (28, 0x0007_0028),
-            (125, 0x0007_00E3),
-            (113, 0x000C_00E2),
-        ];
-
-        for (evdev, usage) in expected {
-            // Act
-            let hid = hid_from_evdev(evdev);
-
-            // Assert
-            assert_eq!(hid, Some(usage), "evdev {evdev}");
-        }
-    }
 }

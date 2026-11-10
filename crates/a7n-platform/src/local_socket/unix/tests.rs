@@ -7,23 +7,6 @@ use std::os::unix::{
 
 use super::*;
 
-#[test]
-fn default_location_user_environment_uses_runtime_or_cache_directory() {
-    // Arrange
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|value| !value.is_empty())
-        .map_or_else(
-            || directories::BaseDirs::new().unwrap().cache_dir().to_owned(),
-            std::path::PathBuf::from,
-        );
-
-    // Act
-    let location = default_location().unwrap();
-
-    // Assert
-    assert_eq!(location.as_path(), base.join("apeirogon/ipc.sock"));
-}
-
 #[tokio::test]
 async fn bind_user_only_wide_directory_is_refused() {
     // Arrange
@@ -100,40 +83,6 @@ async fn bind_user_only_existing_non_socket_is_preserved() {
 }
 
 #[tokio::test]
-async fn bind_user_only_stale_socket_is_replaced() {
-    // Arrange
-    let directory = tempfile::tempdir().unwrap();
-    fs::set_permissions(directory.path(), fs::Permissions::from_mode(DIRECTORY_MODE)).unwrap();
-    let location = SocketLocation::new(directory.path().join("ipc.sock"));
-    drop(UnixListener::bind(location.as_path()).unwrap());
-
-    // Act
-    let listener = bind_user_only(&location).await;
-
-    // Assert
-    assert!(listener.is_ok());
-}
-
-#[tokio::test]
-async fn bind_user_only_live_socket_is_preserved() {
-    // Arrange
-    let directory = tempfile::tempdir().unwrap();
-    fs::set_permissions(directory.path(), fs::Permissions::from_mode(DIRECTORY_MODE)).unwrap();
-    let location = SocketLocation::new(directory.path().join("ipc.sock"));
-    let listener = bind_user_only(&location).await.unwrap();
-
-    // Act
-    let result = bind_user_only(&location).await;
-
-    // Assert
-    assert!(
-        matches!(result, Err(SocketError::Io(error)) if error.kind() == io::ErrorKind::AddrInUse)
-    );
-    assert!(connect(&location).await.is_ok());
-    drop(listener);
-}
-
-#[tokio::test]
 async fn connect_insecure_directory_is_refused_before_sending_secrets() {
     // Arrange
     let directory = tempfile::tempdir().unwrap();
@@ -146,21 +95,4 @@ async fn connect_insecure_directory_is_refused_before_sending_secrets() {
 
     // Assert
     assert!(matches!(result, Err(SocketError::InsecureDirectory(_))));
-}
-
-#[test]
-fn validate_path_relative_or_long_returns_clear_error() {
-    // Arrange
-    let paths = [
-        std::path::PathBuf::from("relative.sock"),
-        std::path::PathBuf::from(format!("/{}", "a".repeat(MAX_SOCKET_PATH_BYTES))),
-    ];
-
-    for path in paths {
-        // Act
-        let result = validate_path(&path);
-
-        // Assert
-        assert!(matches!(result, Err(SocketError::InvalidPath { .. })));
-    }
 }

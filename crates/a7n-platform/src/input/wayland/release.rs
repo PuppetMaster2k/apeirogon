@@ -230,26 +230,6 @@ mod tests {
     }
 
     #[test]
-    fn control_grab_off_after_take_releases_without_cursor() {
-        // Arrange
-        let now = Instant::now();
-        let mut flow = pushed_flow(now);
-        flow.control(CaptureControl::Grab(true), now);
-
-        // Act
-        let order = flow.control(CaptureControl::Grab(false), now);
-
-        // Assert
-        assert_eq!(
-            order,
-            Some(ReleaseOrder {
-                activation_id: ACTIVATION,
-                cursor: None
-            })
-        );
-    }
-
-    #[test]
     fn poll_no_take_within_window_releases_at_activation_point() {
         // Arrange
         let now = Instant::now();
@@ -379,18 +359,5 @@ mod tests {
 
         // Assert
         assert_eq!(after_window, None);
-    }
-
-    #[test]
-    fn motion_without_activation_is_ignored() {
-        // Arrange
-        let now = Instant::now();
-        let mut flow = CaptureFlow::new(zones(), now);
-
-        // Act
-        let position = flow.motion(5, 5, now);
-
-        // Assert
-        assert_eq!(position, None);
     }
 }

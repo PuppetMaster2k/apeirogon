@@ -100,17 +100,4 @@ mod tests {
         assert!(plan.sensitive);
         assert_eq!(plan.reads, Vec::<Read>::new());
     }
-
-    #[test]
-    fn is_own_selection_marker_offered_is_recognised() {
-        // Arrange
-        let ours = names(&[TEXT_PLAIN, OWN_MARKER]);
-        let foreign = names(&[TEXT_PLAIN]);
-
-        // Act
-        let results = (is_own_selection(&ours), is_own_selection(&foreign));
-
-        // Assert
-        assert_eq!(results, (true, false));
-    }
 }

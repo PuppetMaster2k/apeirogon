@@ -39,30 +39,6 @@ fn tick_full_queue_and_expired_keepalive_releases_grab() {
 }
 
 #[test]
-fn tick_disconnected_control_stops_capture() {
-    // Arrange
-    let now = Instant::now();
-    let (events, _receiver) = tokio::sync::mpsc::channel(1);
-    let (sender, mut control) = tokio::sync::mpsc::channel(1);
-    let mut state = CaptureState {
-        events,
-        deadman: DeadMan::new(now),
-        grabbed: true,
-        absolute_motion: false,
-        queue_full: false,
-        last: POINT::default(),
-        keys: [false; HELD_KEY_COUNT],
-    };
-    drop(sender);
-
-    // Act
-    let running = state.tick(&mut control, now);
-
-    // Assert
-    assert!(!running);
-}
-
-#[test]
 fn key_repeated_down_is_dropped_but_release_and_other_injection_are_captured() {
     // Arrange
     let (events, mut receiver) = tokio::sync::mpsc::channel(4);

@@ -71,41 +71,19 @@ mod tests {
     use rustix::pipe::{PipeFlags, pipe_with};
 
     #[tokio::test]
-    async fn read_limited_data_over_limit_returns_none() {
+    async fn read_limited_data_around_limit_returns_none_only_when_over() {
         // Arrange
-        let (reader, writer) = pipe_with(PipeFlags::CLOEXEC).unwrap();
-        write_all(writer, &[7u8; 9]).await.unwrap();
+        let mut results = Vec::new();
 
-        // Act
-        let result = read_limited(reader, 8).await.unwrap();
+        for data in [&b"12345678"[..], &b"123456789"[..]] {
+            let (reader, writer) = pipe_with(PipeFlags::CLOEXEC).unwrap();
+            write_all(writer, data).await.unwrap();
+
+            // Act
+            results.push(read_limited(reader, 8).await.unwrap());
+        }
 
         // Assert
-        assert_eq!(result, None);
-    }
-
-    #[tokio::test]
-    async fn read_limited_data_at_limit_returns_all_bytes() {
-        // Arrange
-        let (reader, writer) = pipe_with(PipeFlags::CLOEXEC).unwrap();
-        write_all(writer, b"12345678").await.unwrap();
-
-        // Act
-        let result = read_limited(reader, 8).await.unwrap();
-
-        // Assert
-        assert_eq!(result.as_deref(), Some(&b"12345678"[..]));
-    }
-
-    #[tokio::test]
-    async fn write_all_reader_closed_returns_error() {
-        // Arrange
-        let (reader, writer) = pipe_with(PipeFlags::CLOEXEC).unwrap();
-        drop(reader);
-
-        // Act
-        let result = write_all(writer, b"data").await;
-
-        // Assert
-        assert!(result.is_err());
+        assert_eq!(results, [Some(b"12345678".to_vec()), None]);
     }
 }

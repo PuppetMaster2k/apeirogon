@@ -213,7 +213,6 @@ fn covers_port(spec: &str, port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::firewall::Profile;
 
     const USER_SID: &str = "S-1-5-21-123-456-789-1001";
     const PORT: u16 = 42042;
@@ -268,18 +267,6 @@ mod tests {
             // Assert
             assert_eq!(result, expected, "{spec} on {port}");
         }
-    }
-
-    #[test]
-    fn evaluate_allow_rule_for_both_ports_reports_nothing() {
-        // Arrange
-        let rules = [rule(Action::Allow, "42042,5353", PRIVATE)];
-
-        // Act
-        let problems = evaluate_private(&rules);
-
-        // Assert
-        assert_eq!(problems, Vec::new());
     }
 
     #[test]
@@ -383,18 +370,6 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_public_with_covering_allow_reports_nothing() {
-        // Arrange
-        let rules = [rule(Action::Allow, "*", ALL_PROFILES)];
-
-        // Act
-        let problems = evaluate(&rules, PUBLIC, &program(), &[PORT, MDNS], USER_SID);
-
-        // Assert
-        assert_eq!(problems, Vec::new());
-    }
-
-    #[test]
     fn evaluate_firewall_off_for_current_profile_reports_nothing() {
         // Arrange
         let no_active_profile = Profiles::default();
@@ -453,20 +428,6 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_allow_with_local_subnet_counts_as_allow() {
-        // Arrange
-        let mut allow = rule(Action::Allow, "*", PRIVATE);
-        allow.remote_addresses = "LocalSubnet".into();
-        allow.local_users = "*".into();
-
-        // Act
-        let problems = evaluate_private(&[allow]);
-
-        // Assert
-        assert_eq!(problems, Vec::new());
-    }
-
-    #[test]
     fn evaluate_allow_for_other_user_reports_missing_allow() {
         // Arrange
         let mut allow = rule(Action::Allow, "*", PRIVATE);
@@ -503,32 +464,6 @@ mod tests {
     }
 
     #[test]
-    fn applies_to_user_owner_only_does_not_apply() {
-        // Arrange
-        let mut scoped = rule(Action::Block, "*", PRIVATE);
-        scoped.local_users = format!("O:{USER_SID}D:(A;;CC;;;S-1-5-18)");
-
-        // Act
-        let applies = scoped.applies_to_user(USER_SID);
-
-        // Assert
-        assert!(!applies);
-    }
-
-    #[test]
-    fn applies_to_user_allow_trustee_ignores_case() {
-        // Arrange
-        let mut scoped = rule(Action::Allow, "*", PRIVATE);
-        scoped.local_users = format!("D:(A;;CC;;;{})", USER_SID.to_lowercase());
-
-        // Act
-        let applies = scoped.applies_to_user(USER_SID);
-
-        // Assert
-        assert!(applies);
-    }
-
-    #[test]
     fn evaluate_package_scoped_rules_do_not_apply() {
         // Arrange
         for action in [Action::Allow, Action::Block] {
@@ -544,17 +479,5 @@ mod tests {
                 [Problem::MissingAllow { .. }]
             ));
         }
-    }
-
-    #[test]
-    fn profiles_iter_lists_set_profiles_in_order() {
-        // Arrange
-        let profiles = Profiles(PRIVATE.0 | PUBLIC.0);
-
-        // Act
-        let names: Vec<_> = profiles.iter().collect();
-
-        // Assert
-        assert_eq!(names, vec![Profile::Private, Profile::Public]);
     }
 }

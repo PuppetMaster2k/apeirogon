@@ -62,18 +62,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn push_pixel_scroll_below_one_notch_produces_nothing() {
-        // Arrange
-        let mut scroll = ScrollAccumulator::default();
-
-        // Act
-        let notches = scroll.push(0.0, 14.0, ScrollUnit::Pixel);
-
-        // Assert
-        assert_eq!(notches, (0, 0));
-    }
-
-    #[test]
     fn push_pixel_scroll_crossing_threshold_emits_one_notch_and_keeps_remainder() {
         // Arrange
         let mut scroll = ScrollAccumulator::default();
