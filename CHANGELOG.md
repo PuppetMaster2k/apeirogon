@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.21.0...v0.21.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* **daemon:** never store a pin for this machine ([#181](https://github.com/PuppetMaster2k/apeirogon/issues/181)) ([43fe388](https://github.com/PuppetMaster2k/apeirogon/commit/43fe3889d47d01831e8f850bbf66cb6a49a5b900))
+
 ## [0.21.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.20.0...v0.21.0) (2026-11-09)
 
 
