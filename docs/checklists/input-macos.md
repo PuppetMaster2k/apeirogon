@@ -155,3 +155,26 @@ recovery are not covered by the guide.
 - [ ] Holding works without Screen Recording permission or a new permission prompt.
 - [ ] The front layer-zero window decides the hold; a full-screen window behind
   a windowed foreground window must not hold, even if both belong to the same app.
+
+## Edge glow, landing marker and haptics (#186)
+
+- [ ] Push the pointer against a linked edge: an accent-coloured strip appears
+  on that edge of the screen holding the pointer and grows as the push builds.
+  With several displays it stays on the pointer's display only.
+- [ ] The glow never takes focus (the frontmost app stays active, typing keeps
+  going there) and never intercepts clicks, drags or scrolling on the edge.
+- [ ] It shows over full-screen apps and on every Space, and follows you when
+  you switch Spaces mid-push.
+- [ ] It disappears at once on crossing, when you move away, pause, or turn
+  `feedback` off.
+- [ ] On landing, a ring appears around the landing point and fades out in
+  under a second without taking focus or clicks.
+- [ ] With System Settings → Accessibility → Display → Reduce motion on, the
+  ring does not fade: it stays briefly and then vanishes.
+- [ ] With `feedback.haptics` on and a Force Touch trackpad, a haptic tick is
+  felt at each quarter of the push; with it off there is none.
+- [ ] Neither window appears in screenshots, screen recordings or screen
+  sharing.
+- [ ] No Dock icon, no Cmd-Tab entry and no Mission Control window for the
+  daemon, and no new permission prompt (no Screen Recording, no Accessibility
+  beyond what input already needs).
