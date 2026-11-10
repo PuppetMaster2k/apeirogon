@@ -60,3 +60,18 @@ paired to a second machine. Every item must pass before a release.
 - [ ] An EWMH full-screen window without `_NET_WM_PID`, or with an unreadable
   `/proc/<pid>/exe`, still holds. A borderless game without the EWMH full-screen
   state does not hold.
+
+## Edge and landing feedback (#187)
+
+- [ ] Pushing against a screen edge with an edge crossing configured shows a
+  glow strip along that edge that grows (longer) as the push builds up.
+- [ ] The glow is click-through: clicking and scrolling at the strip reaches the
+  window underneath, and it never takes keyboard focus or changes the active window.
+- [ ] With several RandR monitors the glow appears on the monitor containing the
+  pointer, along its own edge.
+- [ ] The glow disappears on crossing, when the push stops, and when `feedback.edge` is turned off.
+- [ ] After a take, a small accent-coloured square marks the landing point and
+  disappears after about half a second; turning `feedback.landing` off hides it.
+- [ ] Neither window shows in the task bar, pager or window switcher, and both
+  appear above other windows including full-screen ones.
+- [ ] In a Wayland session the feedback settings show "Not available on Wayland".
