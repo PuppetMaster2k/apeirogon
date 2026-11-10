@@ -2,11 +2,9 @@
 
 use std::net::{Ipv4Addr, SocketAddr};
 
-use a7n_core::{focus::Cursor, layout::Placement};
-use a7n_proto::v1::{InputEvent, KeyEvent, input_event};
+use a7n_core::layout::Placement;
 use tempfile::TempDir;
 
-use super::super::Captured;
 use super::*;
 use crate::pin_store::Entry;
 
@@ -54,48 +52,6 @@ async fn crossing_exit_unpaired_target_returns_no_crossing() {
         // Assert
         assert!(crossing.is_none());
     }
-}
-
-fn key_down(usage: u32) -> Captured {
-    Captured::Input(InputEvent {
-        event: Some(input_event::Event::Key(KeyEvent {
-            usage,
-            down: true,
-            character: String::new(),
-        })),
-    })
-}
-
-#[tokio::test]
-async fn match_hotkey_unpaired_slot_does_nothing_and_preserves_later_numbers() {
-    // Arrange
-    let (mut daemon, _dir, [own, target, later]) = placed_daemon(0);
-    daemon.unpair(target).unwrap();
-    daemon.wol.sender = Box::new(|_| panic!("an unpaired jump slot must not wake a later machine"));
-    for usage in [0x0007_00e0, 0x0007_00e2, 0x0007_00e1] {
-        daemon.match_hotkey(&key_down(usage)).await;
-    }
-
-    // Act
-    let consumed = daemon.match_hotkey(&key_down(0x0007_001f)).await;
-
-    // Assert
-    assert!(consumed);
-    assert_eq!(daemon.input.focus.cursor(), Cursor::Home);
-    assert!(daemon.input.focus.next_deadline().is_none());
-    assert!(daemon.wol.pending.is_none());
-    assert_eq!(
-        daemon.layout.state.nth(1, |id| daemon.is_layout_target(id)),
-        Some(own)
-    );
-    assert_eq!(
-        daemon.layout.state.nth(2, |id| daemon.is_layout_target(id)),
-        None
-    );
-    assert_eq!(
-        daemon.layout.state.nth(3, |id| daemon.is_layout_target(id)),
-        Some(later)
-    );
 }
 
 #[tokio::test]

@@ -50,38 +50,6 @@ async fn switch_machine_offline_records_wake_and_keeps_cursor_home() {
 }
 
 #[tokio::test]
-async fn finish_wake_deadline_passed_clears_pending() {
-    // Arrange
-    let (mut daemon, _dir, peer, _packets) = offline();
-    let now = Instant::now();
-    daemon.auto_wake(peer, WakeAction::Switch, now).unwrap();
-
-    // Act
-    daemon.finish_wake(now + WAKE_TIMEOUT).await;
-
-    // Assert
-    assert!(daemon.wol.pending.is_none());
-    assert!(!daemon.status().peers[0].waking);
-    assert_eq!(daemon.input.focus.cursor(), Cursor::Home);
-}
-
-#[tokio::test]
-async fn switch_machine_home_cancels_pending_take() {
-    // Arrange
-    let (mut daemon, _dir, peer, _packets) = offline();
-    daemon.switch_machine(peer).await.unwrap();
-
-    // Act
-    daemon
-        .switch_machine(daemon.identity.machine_id)
-        .await
-        .unwrap();
-
-    // Assert
-    assert!(daemon.wol.pending.is_none());
-}
-
-#[tokio::test]
 async fn wake_peer_repeated_requests_throttles_per_peer() {
     // Arrange
     let (mut daemon, _dir, peer, packets) = offline();

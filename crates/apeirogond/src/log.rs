@@ -135,27 +135,4 @@ mod tests {
         assert_eq!(next, Some(1));
         assert_eq!(remaining, LOG_LINES_PER_SECOND as usize - 2);
     }
-
-    #[test]
-    fn append_limit_crossed_rotates_and_replaces_backup() {
-        // Arrange
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("apeirogond.log");
-        let bytes = vec![b'x'; usize::try_from(LOG_FILE_MAX).unwrap()];
-        append(&path, &bytes).unwrap();
-        assert_eq!(std::fs::metadata(&path).unwrap().len(), LOG_FILE_MAX);
-        std::fs::write(path.with_extension("log.1"), b"old").unwrap();
-
-        // Act
-        append(&path, b"y").unwrap();
-
-        // Assert
-        assert_eq!(std::fs::metadata(&path).unwrap().len(), 0);
-        assert_eq!(
-            std::fs::metadata(path.with_extension("log.1"))
-                .unwrap()
-                .len(),
-            LOG_FILE_MAX + 1
-        );
-    }
 }

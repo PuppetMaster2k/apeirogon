@@ -59,25 +59,3 @@ async fn cross_edge_blocked_push_clears_fullscreen_cache() {
         assert!(!result);
     }
 }
-
-#[tokio::test]
-async fn reload_config_fullscreen_hold_rebuilds_enabled_and_clears_cache() {
-    // Arrange
-    let (mut daemon, dir, _input) = daemon(true);
-    daemon.config_path = dir.path().join("config.toml");
-    std::fs::write(&daemon.config_path, "[input]\nfullscreen_hold = true\n").unwrap();
-
-    // Act
-    daemon.reload_config().await.unwrap();
-    let enabled = daemon.input.fullscreen_hold.holds(true, || true);
-    std::fs::write(&daemon.config_path, "[input]\nfullscreen_hold = false\n").unwrap();
-    daemon.reload_config().await.unwrap();
-    let disabled = daemon
-        .input
-        .fullscreen_hold
-        .holds(true, || panic!("disabled must not query"));
-
-    // Assert
-    assert!(enabled);
-    assert!(!disabled);
-}

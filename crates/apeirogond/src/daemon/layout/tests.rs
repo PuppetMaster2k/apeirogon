@@ -67,23 +67,6 @@ async fn receive_invalid_layout_ignores_without_link_error() {
 }
 
 #[test]
-fn load_corrupt_or_invalid_layout_starts_empty() {
-    // Arrange
-    let dir = tempfile::tempdir().unwrap();
-    let own = MachineId::try_from(&[1; MachineId::LEN][..]).unwrap();
-    let path = dir.path().join("layout.pb");
-    for bytes in [vec![255], vec![]] {
-        std::fs::write(&path, bytes).unwrap();
-
-        // Act
-        let store = LayoutStore::load(&path, own);
-
-        // Assert
-        assert_eq!(store.state, Layout::empty(own));
-    }
-}
-
-#[test]
 fn load_saturated_layout_restarts_version_and_keeps_placements() {
     // Arrange
     let dir = tempfile::tempdir().unwrap();

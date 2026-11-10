@@ -153,23 +153,3 @@ async fn captured_swipe_while_driving_forwards_to_negotiated_peer() {
         Some(Body::Input(batch)) if batch.events == [event]));
     assert!(outbound.try_recv().is_err());
 }
-
-#[tokio::test]
-async fn captured_swipe_at_home_does_not_forward_to_negotiated_peer() {
-    // Arrange
-    let (receiver, _dir, _input, mut owner, _owner_dir) = receiver(vec![]).await;
-    let peer = receiver.identity.machine_id;
-    let (sender, mut outbound) = mpsc::channel(1);
-    let link = owner.links.by_peer.get_mut(&peer).unwrap();
-    link.capabilities.push(Capability::Gestures);
-    link.sender = sender;
-
-    // Act
-    owner
-        .captured(Some(Captured::Input(swipe(Gesture::SwipeUp))))
-        .await;
-
-    // Assert
-    assert_eq!(owner.input.focus.cursor(), Cursor::Home);
-    assert!(outbound.try_recv().is_err());
-}

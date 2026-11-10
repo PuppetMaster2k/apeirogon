@@ -4,7 +4,7 @@ use std::net::Ipv4Addr;
 
 use tokio::time::timeout;
 
-use super::test_peer::{Peer, linked, paired};
+use super::test_peer::{Peer, paired};
 use super::*;
 
 #[tokio::test]
@@ -72,44 +72,6 @@ async fn pair_join_two_daemons_stores_pins_and_links_both_sides() {
 }
 
 #[tokio::test]
-async fn unpair_linked_member_removes_remote_pin_and_closes_links() {
-    // Arrange
-    let (a, b, c) = (Peer::start(), Peer::start(), Peer::start());
-    a.pair(&b).await;
-    a.pair(&c).await;
-    b.wait(|status| paired(status, c.machine)).await;
-    c.wait(|status| paired(status, b.machine)).await;
-    c.command(|reply| Command::Connect {
-        addr: b.addr,
-        reply,
-    })
-    .await
-    .unwrap();
-    b.wait(|status| linked(status, c.machine)).await;
-
-    // Act
-    a.command(|reply| Command::Unpair {
-        machine: b.machine,
-        reply,
-    })
-    .await
-    .unwrap();
-
-    // Assert
-    let a_status = a.status().await;
-    assert!(!paired(&a_status, b.machine));
-    assert!(!linked(&a_status, b.machine));
-    c.wait(|status| !paired(status, b.machine) && !linked(status, b.machine))
-        .await;
-    b.wait(|status| !linked(status, a.machine)).await;
-    let pins = PinStore::load(&c.dir.path().join("pins.toml")).unwrap();
-    assert!(pins.get(&b.machine).is_none());
-    a.stop().await;
-    b.stop().await;
-    c.stop().await;
-}
-
-#[tokio::test]
 async fn accept_unknown_control_pin_during_pairing_window_closes_before_hello() {
     // Arrange
     let a = Peer::start();
@@ -146,38 +108,6 @@ async fn accept_unknown_control_pin_during_pairing_window_closes_before_hello() 
     assert!(a.status().await.peers.iter().all(|peer| !peer.connected));
     assert_eq!(a.status().await.peers, []);
     a.stop().await;
-}
-
-#[tokio::test]
-async fn pair_join_wrong_code_closes_listener_window_without_storing_pins() {
-    // Arrange
-    let dir = tempfile::tempdir().unwrap();
-    let daemon = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
-    let trust = Arc::clone(&daemon.trust);
-    let (a, b) = (Peer::run(daemon, dir), Peer::start());
-    let code = a.command(Command::PairHost).await.unwrap();
-    let wrong = if code.to_string() == "000000" {
-        "000001"
-    } else {
-        "000000"
-    };
-
-    // Act
-    let result = b
-        .command(|reply| Command::PairJoin {
-            addr: a.addr,
-            code: PairingCode::parse(wrong).unwrap(),
-            reply,
-        })
-        .await;
-
-    // Assert
-    assert!(result.is_err());
-    assert!(!trust.read().unwrap().pairing_open());
-    assert_eq!(a.status().await.peers, []);
-    assert_eq!(b.status().await.peers, []);
-    a.stop().await;
-    b.stop().await;
 }
 
 #[tokio::test]

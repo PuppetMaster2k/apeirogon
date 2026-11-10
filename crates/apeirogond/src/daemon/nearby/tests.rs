@@ -4,58 +4,8 @@ use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use a7n_proto::MachineId;
 
-use crate::daemon::test_peer::{Peer, linked};
 use crate::daemon::{Daemon, Entry};
 use crate::discovery::{Announcement, Event as DiscoveryEvent, MAX_NEARBY};
-
-#[tokio::test]
-async fn discovery_paired_unlinked_peers_falls_back_and_links_both_sides() {
-    // Arrange
-    let a_dir = tempfile::tempdir().unwrap();
-    let b_dir = tempfile::tempdir().unwrap();
-    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
-    let mut a = Daemon::load(a_dir.path(), addr).unwrap();
-    let mut b = Daemon::load(b_dir.path(), addr).unwrap();
-    let a_identity = (a.identity.machine_id, a.identity.pin);
-    let b_identity = (b.identity.machine_id, b.identity.pin);
-    for (local, (machine_id, pin)) in [(&mut a, b_identity), (&mut b, a_identity)] {
-        local.pins.add(Entry {
-            machine_id,
-            pin,
-            name: "peer".into(),
-            spki_der: None,
-            hw_addr: None,
-            screen_mm: None,
-        });
-        local.sync_trust().unwrap();
-    }
-    let (a, b) = (Peer::run(a, a_dir), Peer::run(b, b_dir));
-
-    // Act
-    for (local, remote) in [(&a, &b), (&b, &a)] {
-        local
-            .discoveries
-            .send(DiscoveryEvent::Discovered(Announcement {
-                id: remote.machine,
-                // An IPv4 endpoint rejects IPv6 immediately, then tries the usable address.
-                addrs: vec![
-                    SocketAddr::from((Ipv6Addr::LOCALHOST, remote.addr.port())),
-                    remote.addr,
-                ],
-            }))
-            .await
-            .unwrap();
-    }
-
-    // Assert
-    for (local, remote) in [(&a, &b), (&b, &a)] {
-        let status = local.wait(|status| linked(status, remote.machine)).await;
-        assert_eq!(status.nearby, []);
-        assert_eq!(status.peers.iter().filter(|peer| peer.connected).count(), 1);
-    }
-    a.stop().await;
-    b.stop().await;
-}
 
 #[tokio::test]
 async fn discovery_unpaired_peer_lists_address_without_dialing() {

@@ -15,7 +15,7 @@ pub(super) const TEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(crate) struct Peer {
     pub(crate) sender: Option<mpsc::Sender<Command>>,
-    pub(super) discoveries: mpsc::Sender<crate::discovery::Event>,
+    _discoveries: mpsc::Sender<crate::discovery::Event>,
     task: JoinHandle<Result<(), DaemonError>>,
     pub(crate) machine: MachineId,
     pub(crate) addr: SocketAddr,
@@ -38,7 +38,7 @@ impl Peer {
         let task = tokio::spawn(daemon.run(receiver, discovery_rx));
         Self {
             sender: Some(sender),
-            discoveries,
+            _discoveries: discoveries,
             task,
             machine,
             addr,

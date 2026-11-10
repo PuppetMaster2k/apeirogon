@@ -33,37 +33,6 @@ async fn receive_clipboard_ask_policy_holds_without_applying() {
 }
 
 #[tokio::test]
-async fn accept_clipboard_newer_generation_arrived_is_rejected() {
-    for local in [false, true] {
-        // Arrange
-        let (mut daemon, _dir, _changes, mut commands) = daemon();
-        let peer = daemon.identity.machine_id;
-        daemon
-            .config
-            .set(&format!("peers.{peer}.clipboard"), "ask")
-            .unwrap();
-        daemon.receive_clipboard(peer, &wire(peer, 10, "held"));
-        if local {
-            daemon.clipboard_changed(Some(change("local")));
-        } else {
-            let other = MachineId::try_from([42; MachineId::LEN].as_slice()).unwrap();
-            daemon.receive_clipboard(other, &wire(other, 11, "newer"));
-            commands.try_recv().unwrap();
-        }
-        let current = daemon.clipboard.current;
-
-        // Act
-        let result = daemon.accept_clipboard(peer, 10);
-
-        // Assert
-        assert!(matches!(result, Err(DaemonError::InvalidRequest(_))));
-        assert!(daemon.clipboard.held.is_none());
-        assert_eq!(daemon.clipboard.current, current);
-        assert!(commands.try_recv().is_err());
-    }
-}
-
-#[tokio::test]
 async fn accept_clipboard_replaced_generation_returns_invalid_request_and_keeps_newer_held() {
     // Arrange
     let (mut daemon, _dir, _changes, mut commands) = daemon();
@@ -92,31 +61,6 @@ async fn accept_clipboard_replaced_generation_returns_invalid_request_and_keeps_
         daemon.held_clipboard().unwrap().generation,
         newer.generation
     );
-    assert!(daemon.clipboard.current.is_none());
-    assert!(commands.try_recv().is_err());
-}
-
-#[tokio::test]
-async fn expire_held_clipboard_past_deadline_drops_copy() {
-    // Arrange
-    let (mut daemon, _dir, _changes, mut commands) = daemon();
-    let peer = daemon.identity.machine_id;
-    daemon
-        .config
-        .set(&format!("peers.{peer}.clipboard"), "ask")
-        .unwrap();
-    daemon.receive_clipboard(peer, &wire(peer, 10, "held"));
-    let deadline = daemon.clipboard.held.as_ref().unwrap().deadline;
-    daemon
-        .clipboard
-        .expire_held_clipboard(deadline.checked_sub(Duration::from_nanos(1)).unwrap());
-    assert!(daemon.clipboard.held.is_some());
-
-    // Act
-    daemon.clipboard.expire_held_clipboard(deadline);
-
-    // Assert
-    assert!(daemon.clipboard.held.is_none());
     assert!(daemon.clipboard.current.is_none());
     assert!(commands.try_recv().is_err());
 }

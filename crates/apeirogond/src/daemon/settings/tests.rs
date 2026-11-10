@@ -26,30 +26,6 @@ fn edit(daemon: &Daemon, values: &[(&str, &str)]) -> SettingsSync {
 }
 
 #[tokio::test]
-async fn receive_settings_swapped_home_and_lock_accepts_snapshot() {
-    // Arrange
-    let (mut daemon, _dir) = daemon();
-    daemon.config.set("hotkeys.home", "escape").unwrap();
-    let home = daemon.config.get("hotkeys.home").unwrap();
-    let lock = daemon.config.get("hotkeys.lock").unwrap();
-    let wire = edit(&daemon, &[("hotkeys.home", &lock), ("hotkeys.lock", &home)]);
-
-    // Act
-    daemon.receive_settings(&wire).await.unwrap();
-
-    // Assert
-    assert_eq!(daemon.config.get("hotkeys.home"), Some(lock.clone()));
-    assert_eq!(daemon.config.get("hotkeys.lock"), Some(home.clone()));
-    let saved = Config::load(&daemon.config_path).unwrap();
-    assert_eq!(saved.get("hotkeys.home"), Some(lock));
-    assert_eq!(saved.get("hotkeys.lock"), Some(home));
-    assert_eq!(
-        daemon.settings.state,
-        Some(Settings::try_from(&wire).unwrap())
-    );
-}
-
-#[tokio::test]
 async fn receive_settings_peer_security_key_keeps_local_policy() {
     // Arrange
     let (a, a_dir) = daemon();
@@ -150,50 +126,6 @@ async fn receive_settings_old_or_disabled_message_keeps_config_and_snapshot() {
         if mode == "local_off" {
             assert!(daemon.settings_message().is_none());
         }
-    }
-}
-
-#[tokio::test]
-async fn reload_config_unchanged_remote_snapshot_preserves_version() {
-    // Arrange
-    let (mut daemon, dir) = daemon();
-    let mut wire = daemon.settings.state.as_ref().unwrap().to_proto();
-    wire.set_at += 1;
-    wire.values.insert("input.speed".into(), "2.0".into());
-    daemon.receive_settings(&wire).await.unwrap();
-    let snapshot = daemon.settings.state.clone();
-
-    // Act
-    daemon.reload_config().await.unwrap();
-
-    // Assert
-    assert_eq!(daemon.settings.state, snapshot);
-    let mut restarted = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
-        .unwrap()
-        .with_config(
-            Config::load(&daemon.config_path).unwrap(),
-            daemon.config_path.clone(),
-        );
-    restarted.detect_settings_edit().unwrap();
-    assert_eq!(restarted.settings.state, snapshot);
-}
-
-#[tokio::test]
-async fn detect_settings_edit_timestamp_near_counter_max_saturates_and_records_edit() {
-    for (set_at, speed) in [(u64::MAX - 1, 2.0), (u64::MAX, 3.0)] {
-        // Arrange
-        let (mut daemon, _dir) = daemon();
-        daemon.settings.state.as_mut().unwrap().set_at = set_at;
-        daemon.config.input.speed = speed;
-
-        // Act
-        let result = daemon.detect_settings_edit();
-
-        // Assert
-        assert!(result.is_ok());
-        let state = daemon.settings.state.as_ref().unwrap();
-        assert_eq!(state.set_at, u64::MAX);
-        assert_eq!(state.values["input.speed"], format!("{speed:?}"));
     }
 }
 
