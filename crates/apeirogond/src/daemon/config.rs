@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use a7n_core::focus::edge::FullscreenHold;
 use a7n_core::hotkey::{HotkeyMatcher, ShakeDetector};
 use a7n_core::input::MotionScale;
 use a7n_core::modifiers::default_modifier_remap;
@@ -20,6 +21,7 @@ impl Daemon {
             .or_else(a7n_platform::host_name)
             .unwrap_or_else(|| self.identity.machine_id.to_string());
         self.input.scale = MotionScale::new(config.input.speed);
+        self.input.fullscreen_hold = FullscreenHold::new(config.input.fullscreen_hold);
         self.input.hotkeys = HotkeyMatcher::new(config.bindings());
         self.input.gestures = config.gesture_bindings();
         self.input.shake = ShakeDetector::new(config.hotkeys.shake);
@@ -57,6 +59,9 @@ impl Daemon {
             .collect();
         if config.input.speed.to_bits() != self.config.input.speed.to_bits() {
             self.input.scale = MotionScale::new(config.input.speed);
+        }
+        if config.input.fullscreen_hold != self.config.input.fullscreen_hold {
+            self.input.fullscreen_hold = FullscreenHold::new(config.input.fullscreen_hold);
         }
         self.input.hotkeys = HotkeyMatcher::new(config.bindings());
         self.input.gestures = config.gesture_bindings();

@@ -217,6 +217,15 @@ crates/
 - **Edge resistance:** while any captured local button (or the remote owner's
   injected button on a driven machine) is held, edge pushes cannot cross and
   discard accumulated resistance; after release a full push is required again.
+  Local `input.fullscreen_hold` (default false, never synced) also blocks edge
+  crossings while the focused app is full-screen on the display at the pointer.
+  Its result is cached for one continuous push; moving away starts a new query.
+  It applies both locally and while driven, discards resistance while held, and
+  leaves shortcuts, jump keys, shake and lock unchanged. Our own GUI is excluded.
+  Windows, macOS and X11 support it; Wayland does not. Query failures allow crossing.
+  X11 detects only EWMH full-screen windows; borderless games without that state
+  are not held.
+
 - **Safety hotkeys** (all rebindable):
   - Return to the local machine: double-tap the trigger key (Right Alt / Right
     Option by default, within 400 ms), or Scroll Lock / `Ctrl+Alt+Shift+Home`.

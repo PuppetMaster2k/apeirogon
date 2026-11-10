@@ -84,6 +84,7 @@ impl Default for SyncConfig {
 pub struct InputConfig {
     pub speed: f64,
     pub natural_scrolling: bool,
+    pub fullscreen_hold: bool,
 }
 
 impl Default for InputConfig {
@@ -91,6 +92,7 @@ impl Default for InputConfig {
         Self {
             speed: 1.0,
             natural_scrolling: false,
+            fullscreen_hold: false,
         }
     }
 }
@@ -363,7 +365,7 @@ impl Config {
                 ["input", "speed"] => toml::Value::Float(value.parse().map_err(|_| {
                     ConfigError::Invalid("input.speed must be between 0.1 and 10.0".into())
                 })?),
-                ["input", "natural_scrolling"]
+                ["input", "natural_scrolling" | "fullscreen_hold"]
                 | ["notifications", "files"]
                 | ["peers", _, "allow_drive" | "wake"]
                 | ["sync", "settings"] => {

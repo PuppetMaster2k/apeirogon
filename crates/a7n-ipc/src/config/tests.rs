@@ -410,3 +410,20 @@ fn set_shake_count_accepts_only_off_or_safe_range() {
         }
     }
 }
+
+#[test]
+fn set_fullscreen_hold_round_trips_and_rejects_invalid_boolean() {
+    // Arrange
+    let mut config = Config::parse("[input]\nspeed = 1.0").unwrap();
+    let key = "input.fullscreen_hold";
+    assert_eq!(config.get(key).as_deref(), Some("false"));
+
+    // Act
+    config.set(key, "true").unwrap();
+    let loaded = Config::parse(&config.to_toml().unwrap()).unwrap();
+    let invalid = config.set(key, "yes");
+
+    // Assert
+    assert_eq!(loaded.get(key).as_deref(), Some("true"));
+    assert!(invalid.is_err());
+}

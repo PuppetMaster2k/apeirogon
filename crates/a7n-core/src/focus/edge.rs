@@ -80,9 +80,82 @@ impl EdgeResistance {
     }
 }
 
+/// A focused full-screen window holds one continuous edge push.
+#[derive(Debug)]
+pub struct FullscreenHold {
+    enabled: bool,
+    held: Option<bool>,
+}
+
+impl FullscreenHold {
+    #[must_use]
+    pub fn new(enabled: bool) -> Self {
+        Self {
+            enabled,
+            held: None,
+        }
+    }
+
+    /// Clears the current push without changing whether holding is enabled.
+    pub fn reset(&mut self) {
+        self.held = None;
+    }
+
+    /// Queries only at the start of a push; moving away clears the result.
+    pub fn holds(&mut self, pushing: bool, query: impl FnOnce() -> bool) -> bool {
+        if !pushing || !self.enabled {
+            self.reset();
+            return false;
+        }
+        *self.held.get_or_insert_with(query)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn holds_disabled_push_never_queries() {
+        // Arrange
+        let mut hold = FullscreenHold::new(false);
+
+        // Act
+        let result = hold.holds(true, || panic!("disabled hold must not query"));
+
+        // Assert
+        assert!(!result);
+    }
+
+    #[test]
+    fn holds_continuous_push_queries_once_and_preserves_result() {
+        // Arrange
+        for fullscreen in [false, true] {
+            let mut hold = FullscreenHold::new(true);
+
+            // Act
+            let first = hold.holds(true, || fullscreen);
+            let next = hold.holds(true, || panic!("continuous push must use cache"));
+
+            // Assert
+            assert_eq!((first, next), (fullscreen, fullscreen));
+        }
+    }
+
+    #[test]
+    fn holds_push_ends_clears_cached_result() {
+        // Arrange
+        let mut hold = FullscreenHold::new(true);
+        hold.holds(true, || true);
+
+        // Act
+        let ended = hold.holds(false, || panic!("ending push must not query"));
+        let next = hold.holds(true, || false);
+
+        // Assert
+        assert!(!ended);
+        assert!(!next);
+    }
 
     #[test]
     fn push_button_held_blocks_crossing_and_discards_overshoot() {
