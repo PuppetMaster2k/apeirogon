@@ -14,6 +14,77 @@ fn entry(identity: &Identity, name: &str) -> Entry {
 }
 
 #[test]
+fn merge_desk_containing_own_member_stores_only_peer_pins() {
+    // Arrange
+    let a_dir = tempfile::tempdir().unwrap();
+    let b_dir = tempfile::tempdir().unwrap();
+    let c_dir = tempfile::tempdir().unwrap();
+    let a = identity::load_or_create(a_dir.path()).unwrap();
+    let b = identity::load_or_create(b_dir.path()).unwrap();
+    let c = identity::load_or_create(c_dir.path()).unwrap();
+    let mut a_pins = PinStore::load(&a_dir.path().join("pins.toml")).unwrap();
+    let mut b_pins = PinStore::load(&b_dir.path().join("pins.toml")).unwrap();
+    b_pins.add(entry(&a, "a"));
+    let mut a_desk =
+        DeskStore::load(&a_dir.path().join("desk.pb"), a.machine_id, &mut a_pins).unwrap();
+    let path = b_dir.path().join("desk.pb");
+    let mut b_desk = DeskStore::load(&path, b.machine_id, &mut b_pins).unwrap();
+    a_desk.admit(&a, &mut a_pins, &entry(&b, "b"), 1).unwrap();
+    a_desk.admit(&a, &mut a_pins, &entry(&c, "c"), 2).unwrap();
+
+    // Act
+    let outcome = b_desk.merge(&b, &mut b_pins, &a_desk.to_desk()).unwrap();
+
+    // Assert
+    assert_eq!(outcome.admitted.len(), 2);
+    assert!(b_pins.get(&b.machine_id).is_none());
+    assert_eq!(b_pins.get(&a.machine_id), Some(&entry(&a, "a")));
+    assert_eq!(b_pins.get(&c.machine_id).unwrap().pin, c.pin);
+}
+
+#[test]
+fn admit_own_machine_rejects_without_storing_pin_or_desk() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let own = identity::load_or_create(dir.path()).unwrap();
+    let mut pins = PinStore::load(&dir.path().join("pins.toml")).unwrap();
+    let path = dir.path().join("desk.pb");
+    let mut desk = DeskStore::load(&path, own.machine_id, &mut pins).unwrap();
+
+    // Act
+    let result = desk.admit(&own, &mut pins, &entry(&own, "self"), 1);
+
+    // Assert
+    assert!(matches!(result, Err(DeskStoreError::Rejected)));
+    assert!(pins.get(&own.machine_id).is_none());
+    assert!(!path.exists());
+}
+
+#[test]
+fn apply_own_and_peer_revocations_removes_only_peer_pin() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let peer_dir = tempfile::tempdir().unwrap();
+    let own = identity::load_or_create(dir.path()).unwrap();
+    let peer = identity::load_or_create(peer_dir.path()).unwrap();
+    let mut pins = PinStore::load(&dir.path().join("pins.toml")).unwrap();
+    pins.add(entry(&own, "self"));
+    pins.add(entry(&peer, "peer"));
+    let outcome = MergeOutcome {
+        revoked: vec![own.machine_id, peer.machine_id],
+        self_revoked: true,
+        ..MergeOutcome::default()
+    };
+
+    // Act
+    DeskStore::apply(&mut pins, &outcome, own.machine_id).unwrap();
+
+    // Assert
+    assert_eq!(pins.get(&own.machine_id), Some(&entry(&own, "self")));
+    assert!(pins.get(&peer.machine_id).is_none());
+}
+
+#[test]
 fn merge_admission_then_revocation_survives_reload_and_stale_desk() {
     // Arrange
     let a_dir = tempfile::tempdir().unwrap();

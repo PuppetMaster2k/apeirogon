@@ -165,6 +165,7 @@ impl Daemon {
         std::fs::create_dir_all(path)?;
         let identity = identity::load_or_create(path)?;
         let mut pins = PinStore::load(&path.join("pins.toml"))?;
+        remove_self_pin(&mut pins, identity.machine_id)?;
         let desk = DeskStore::load(&path.join("desk.pb"), identity.machine_id, &mut pins)?;
         let layout = LayoutStore::load(&path.join("layout.pb"), identity.machine_id);
         let trust = Arc::new(RwLock::new(TrustSnapshot {
@@ -356,6 +357,14 @@ impl Daemon {
             .get(&peer)
             .is_some_and(|handle| handle.connection.stable_id() == id)
     }
+}
+
+fn remove_self_pin(pins: &mut PinStore, own_id: MachineId) -> Result<(), DaemonError> {
+    if pins.remove(&own_id).is_some() {
+        pins.save()?;
+        crate::log::event!("kind=self_pin_removed");
+    }
+    Ok(())
 }
 
 impl Drop for Daemon {

@@ -8,6 +8,44 @@ use super::test_peer::{Peer, linked, paired};
 use super::*;
 
 #[tokio::test]
+async fn load_existing_self_pin_removes_it_from_memory_and_disk() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let peer_dir = tempfile::tempdir().unwrap();
+    let own = identity::load_or_create(dir.path()).unwrap();
+    let peer = identity::load_or_create(peer_dir.path()).unwrap();
+    let path = dir.path().join("pins.toml");
+    let mut pins = PinStore::load(&path).unwrap();
+    for (identity, name) in [(&own, "self"), (&peer, "peer")] {
+        pins.add(Entry {
+            machine_id: identity.machine_id,
+            pin: identity.pin,
+            name: name.into(),
+            spki_der: Some(identity::spki_of(&identity.cert_der).unwrap()),
+            hw_addr: None,
+            screen_mm: None,
+        });
+    }
+    pins.save().unwrap();
+    let peer_entry = pins.get(&peer.machine_id).unwrap().clone();
+    let own_entry = pins.get(&own.machine_id).unwrap().clone();
+    let mut peer_pins = PinStore::load(&peer_dir.path().join("pins.toml")).unwrap();
+    let mut desk =
+        DeskStore::load(&dir.path().join("desk.pb"), peer.machine_id, &mut peer_pins).unwrap();
+    desk.admit(&peer, &mut peer_pins, &own_entry, 1).unwrap();
+
+    // Act
+    let daemon = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+
+    // Assert
+    assert!(daemon.pins.get(&own.machine_id).is_none());
+    assert_eq!(daemon.pins.get(&peer.machine_id), Some(&peer_entry));
+    let reloaded = PinStore::load(&path).unwrap();
+    assert!(reloaded.get(&own.machine_id).is_none());
+    assert_eq!(reloaded.get(&peer.machine_id), Some(&peer_entry));
+}
+
+#[tokio::test]
 async fn pair_join_two_daemons_stores_pins_and_links_both_sides() {
     // Arrange
     let a_dir = tempfile::tempdir().unwrap();

@@ -15,6 +15,34 @@ use crate::pairing::{self as exchange, PairingError};
 const RESPONSIVE_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[tokio::test]
+async fn store_peer_own_machine_refuses_without_storing_pin_or_trust() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let mut daemon = Daemon::load(dir.path(), SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+    let own_id = daemon.identity.machine_id;
+    let entry = Entry {
+        machine_id: own_id,
+        pin: daemon.identity.pin,
+        name: "self".into(),
+        spki_der: None,
+        hw_addr: None,
+        screen_mm: None,
+    };
+
+    // Act
+    let result = daemon.store_peer(entry);
+
+    // Assert
+    assert!(matches!(
+        result,
+        Err(DaemonError::Pairing(PairingError::Refused))
+    ));
+    assert!(daemon.pins.get(&own_id).is_none());
+    assert!(!dir.path().join("pins.toml").exists());
+    assert!(daemon.trust.read().unwrap().pins.is_empty());
+}
+
+#[tokio::test]
 async fn pair_join_expired_code_stores_nothing() {
     // Arrange
     let dir = tempfile::tempdir().unwrap();
