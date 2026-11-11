@@ -23,6 +23,7 @@ jobs:
             # --locked fails on a stale Cargo.lock, as the release build does,
             # so a release PR without its lockfile commit cannot merge.
             - if: env.RELEASE_PR == 'true'
+              shell: bash
               run: cargo metadata --locked --format-version 1 > /dev/null
             - if: env.RELEASE_PR != 'true'
               uses: Swatinem/rust-cache@v2
