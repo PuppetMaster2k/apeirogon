@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.30.0...v0.30.1) (2026-11-11)
+
+
+### Bug Fixes
+
+* **daemon:** keep a re-paired host's pin across restarts ([#226](https://github.com/PuppetMaster2k/apeirogon/issues/226)) ([d5dc724](https://github.com/PuppetMaster2k/apeirogon/commit/d5dc7241fdc25f9f172286f2fe715f59c1c34b2d))
+
 ## [0.30.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.29.0...v0.30.0) (2026-11-11)
 
 
