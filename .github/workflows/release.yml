@@ -24,11 +24,12 @@ jobs:
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
               run: echo "enabled=${{ env.CARGO_REGISTRY_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+            # Runs with github.token on purpose: its version-bump commit lacks the
+            # Cargo.lock update and must not trigger CI (it would fail --locked).
+            # The lockfile commit below is pushed with RELEASE_TOKEN, so CI runs
+            # once, on the commit that is actually merged.
             - uses: googleapis/release-please-action@v5
               id: release
-              with:
-                  # PRs opened with github.token do not trigger CI.
-                  token: ${{ secrets.RELEASE_TOKEN }}
             # GenericToml tags scalar values, so filters on package names cannot match.
             - uses: actions/checkout@v7
               if: steps.release.outputs.prs_created == 'true'
