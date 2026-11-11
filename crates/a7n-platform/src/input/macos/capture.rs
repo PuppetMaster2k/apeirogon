@@ -25,6 +25,7 @@ use super::{
     INJECTION_MARKER, MEDIA_DOWN, MEDIA_EVENT, MEDIA_SUBTYPE, MEDIA_UP, check, keymap,
     pointer_position,
 };
+use crate::input::local_key::LocalKey;
 use crate::input::{CaptureControl, Captured, DeadMan, InputError};
 use crate::permissions;
 
@@ -46,7 +47,7 @@ struct State {
     queue_full: bool,
     disabled: bool,
     permission_checked: Instant,
-    keys: [bool; KEY_COUNT],
+    keys: [LocalKey; KEY_COUNT],
     anchor: CGPoint,
     swipes: Swipes,
 }
@@ -66,7 +67,7 @@ pub(super) fn spawn(
                 queue_full: false,
                 disabled: false,
                 permission_checked: Instant::now(),
-                keys: [false; KEY_COUNT],
+                keys: [LocalKey::default(); KEY_COUNT],
                 anchor: CGPoint::new(0.0, 0.0),
                 swipes: Swipes::default(),
             });
@@ -195,6 +196,7 @@ impl State {
             return false;
         }
         let field = |field| CGEvent::integer_value_field(Some(event), field);
+        let mut swallow = self.grabbed;
         let translated = match ty {
             CGEventType::KeyDown | CGEventType::KeyUp | CGEventType::FlagsChanged => {
                 let Ok(code) = u16::try_from(field(CGEventField::KeyboardEventKeycode)) else {
@@ -208,10 +210,11 @@ impl State {
                 let Some(held) = self.keys.get_mut(usize::from(code)) else {
                     return self.grabbed;
                 };
-                if *held == down {
-                    return self.grabbed;
+                let repeat = held.held == down;
+                swallow = held.swallow(down, self.grabbed);
+                if repeat {
+                    return swallow;
                 }
-                *held = down;
                 keymap::hid_from_key(code).map(|usage| key_event(usage, down))
             }
             CGEventType::MouseMoved
@@ -268,7 +271,7 @@ impl State {
         if let Some(event) = translated {
             self.emit(Captured::Input(InputEvent { event: Some(event) }));
         }
-        self.grabbed
+        swallow
     }
 }
 
@@ -372,7 +375,7 @@ mod tests {
             queue_full: false,
             disabled: false,
             permission_checked: start,
-            keys: [false; KEY_COUNT],
+            keys: [LocalKey::default(); KEY_COUNT],
             anchor: CGPoint::new(0.0, 0.0),
             swipes: Swipes::default(),
         };

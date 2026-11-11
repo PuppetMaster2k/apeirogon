@@ -53,10 +53,12 @@ async fn serve_connection(mut connection: IpcConnection, commands: mpsc::Sender<
 async fn dispatch(request: Request, commands: &mpsc::Sender<Command>) -> Response {
     match request {
         Request::Shutdown => execute(commands, Command::Shutdown, |()| Response::Done).await,
-        Request::RecordTriggerKey => {
-            execute(commands, Command::RecordTriggerKey, |name| {
-                Response::TriggerKey { name }
-            })
+        Request::RecordHotkey { kind } => {
+            execute(
+                commands,
+                |reply| Command::RecordHotkey { kind, reply },
+                |value| Response::Recorded { value },
+            )
             .await
         }
         Request::Status => execute(commands, Command::Status, Response::Status).await,
@@ -281,9 +283,9 @@ fn error_response(error: &DaemonError) -> Response {
         DaemonError::Config(_) => ErrorKind::InvalidConfig,
         DaemonError::Layout(_) => ErrorKind::InvalidLayout,
         DaemonError::PairingBusy | DaemonError::Paused => ErrorKind::Busy,
-        DaemonError::InvalidRequest(_) | DaemonError::Permission(PermissionError::Unsupported) => {
-            ErrorKind::InvalidRequest
-        }
+        DaemonError::InvalidRequest(_)
+        | DaemonError::Hotkey(_)
+        | DaemonError::Permission(PermissionError::Unsupported) => ErrorKind::InvalidRequest,
         DaemonError::NotConnected => ErrorKind::NotConnected,
         DaemonError::NoSpace => ErrorKind::NoSpace,
         DaemonError::NotPaired => ErrorKind::NotPaired,

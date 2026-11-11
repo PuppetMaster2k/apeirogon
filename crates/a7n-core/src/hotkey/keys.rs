@@ -2,6 +2,12 @@
 
 use super::{KEYBOARD_PAGE, modifier_bit};
 
+const LETTER_FIRST: u32 = 0x04;
+const LETTER_LAST: u32 = 0x1d;
+const DIGIT_FIRST: u32 = 0x1e;
+const DIGIT_LAST: u32 = 0x26;
+const DIGIT_ZERO: u32 = 0x27;
+
 const KEYS: &[(&str, u32)] = &[
     ("f1", 0x3a),
     ("f2", 0x3b),
@@ -54,9 +60,9 @@ const KEYS: &[(&str, u32)] = &[
 
 pub(super) fn key_usage(token: &str) -> Option<u32> {
     let key = match token.as_bytes() {
-        [letter @ b'a'..=b'z'] => u32::from(letter - b'a') + 0x04,
-        [digit @ b'1'..=b'9'] => u32::from(digit - b'1') + 0x1e,
-        [b'0'] => 0x27,
+        [letter @ b'a'..=b'z'] => u32::from(letter - b'a') + LETTER_FIRST,
+        [digit @ b'1'..=b'9'] => u32::from(digit - b'1') + DIGIT_FIRST,
+        [b'0'] => DIGIT_ZERO,
         _ => KEYS.iter().find(|(name, _)| *name == token)?.1,
     };
     Some(KEYBOARD_PAGE | key)
@@ -71,4 +77,19 @@ pub fn trigger_name(usage: u32) -> Option<&'static str> {
         || matches!(name, "scroll_lock" | "pause" | "menu")
         || modifier_bit(usage).is_some())
     .then_some(name)
+}
+
+pub(super) fn key_name(usage: u32) -> Option<String> {
+    let key = usage.checked_sub(KEYBOARD_PAGE)?;
+    let character = match key {
+        LETTER_FIRST..=LETTER_LAST => char::from_u32(u32::from(b'a') + key - LETTER_FIRST),
+        DIGIT_FIRST..=DIGIT_LAST => char::from_u32(u32::from(b'1') + key - DIGIT_FIRST),
+        DIGIT_ZERO => Some('0'),
+        _ => None,
+    };
+    character.map(|value| value.to_string()).or_else(|| {
+        KEYS.iter()
+            .find(|(_, value)| *value == key)
+            .map(|(name, _)| (*name).to_owned())
+    })
 }

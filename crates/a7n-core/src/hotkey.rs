@@ -9,11 +9,13 @@ const MODIFIER_START: u32 = 0xe0;
 const MODIFIER_COUNT: u32 = 8;
 const KEY_COUNT: usize = 256;
 mod keys;
+mod recording;
 mod shake;
 mod trigger;
 
 use keys::key_usage;
 pub use keys::trigger_name;
+pub use recording::{recorded_chord, recorded_modifiers, recorded_trigger};
 pub use shake::{
     SHAKE_DEFAULT, SHAKE_MAX, SHAKE_MIN, SHAKE_MIN_TRAVEL, SHAKE_WINDOW, ShakeDetector,
 };

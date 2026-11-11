@@ -246,7 +246,7 @@ crates/
     `hotkeys.hold_ms` defaults to 800 ms (300–3000 ms); releasing the trigger
     or pressing another key cancels a hold. Repeats do not restart it.
     Non-modifier trigger keys are consumed; modifier triggers keep forwarding.
-    The GUI can record a trigger key from local capture before saving it.
+    The GUI can record trigger keys, home/lock chords and jump modifiers from local capture before saving them.
   - Shake the mouse left and right while driving a peer to return home: by
     default 6 horizontal reversals within 600 ms, each after at least 80 px
     of travel. `hotkeys.shake` accepts 3–10 reversals, or 0 to turn it off.
@@ -359,6 +359,15 @@ do not.
     them. Only a missing allow offers an elevated `netsh advfirewall` command
     to add our own rule. The daemon never creates rules or asks for elevation.
     Other platforms report nothing.
+  - Local IPC version 12 replaces `RecordTriggerKey` with `RecordHotkey { kind }`
+    (`trigger`, `chord`, or `modifiers`) and replies with `Recorded { value }`.
+    Recording collects key-downs until all recorded keys are released or 10 s
+    elapse. Every recorded key is consumed through release without firing
+    hotkeys, including keys still held after timeout. Invalid combinations
+    return `invalid_request` with an explanation. Trigger values name one
+    allowed physical key; chords use generic modifiers plus exactly one key;
+    jump values contain generic modifiers only. Update the daemon and local
+    clients together; the peer protocol is unchanged.
   - Local IPC version 10 adds `RecordTriggerKey` and `TriggerKey { name }`.
     Recording waits up to 10 seconds for the next captured local key-down,
     consumes that key through release, and returns its trigger name or an

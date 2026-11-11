@@ -10,12 +10,23 @@ use serde::{Deserialize, Serialize};
 use crate::FirewallProblem;
 use crate::config::ClipboardPolicy;
 
+/// The config value to collect from local key capture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HotkeyKind {
+    Trigger,
+    Chord,
+    Modifiers,
+}
+
 /// Commands accepted after the version handshake.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
     ReloadConfig,
-    RecordTriggerKey,
+    RecordHotkey {
+        kind: HotkeyKind,
+    },
     Shutdown,
     SetPaused {
         paused: bool,
@@ -81,8 +92,8 @@ pub enum Request {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Response {
     Status(StatusInfo),
-    TriggerKey {
-        name: String,
+    Recorded {
+        value: String,
     },
     Clipboard(ClipboardInfo),
     Layout(LayoutInfo),

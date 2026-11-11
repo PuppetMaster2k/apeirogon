@@ -22,6 +22,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use super::{INJECTION_MARKER, keymap, mouse, pointer_position};
+use crate::input::local_key::LocalKey;
 use crate::input::{CaptureControl, Captured, DeadMan, InputError};
 
 mod raw_input;
@@ -42,7 +43,7 @@ struct CaptureState {
     absolute_motion: bool,
     queue_full: bool,
     last: POINT,
-    keys: [bool; HELD_KEY_COUNT],
+    keys: [LocalKey; HELD_KEY_COUNT],
 }
 
 pub(super) fn spawn(
@@ -62,7 +63,7 @@ pub(super) fn spawn(
                         absolute_motion: false,
                         queue_full: false,
                         last,
-                        keys: [false; HELD_KEY_COUNT],
+                        keys: [LocalKey::default(); HELD_KEY_COUNT],
                     });
                 });
                 Hooks::install()
@@ -239,11 +240,12 @@ impl CaptureState {
                     }
                 })
         };
+        let mut swallow = self.grabbed;
         if let (Some(usage), Some(held)) = (usage, index.and_then(|index| self.keys.get_mut(index)))
         {
             let down = key.flags & LLKHF_UP == 0;
-            let repeat = down && *held;
-            *held = down;
+            let repeat = down && held.held;
+            swallow = held.swallow(down, self.grabbed);
             if !repeat {
                 self.emit(Captured::Input(InputEvent {
                     event: Some(input_event::Event::Key(KeyEvent {
@@ -254,7 +256,7 @@ impl CaptureState {
                 }));
             }
         }
-        self.grabbed
+        swallow
     }
 
     fn mouse(&mut self, message: u32, mouse: &MSLLHOOKSTRUCT) -> bool {
