@@ -15,7 +15,7 @@ fn tick_full_queue_and_expired_keepalive_releases_grab() {
         absolute_motion: false,
         queue_full: false,
         last: POINT { x: 100, y: 200 },
-        keys: [false; HELD_KEY_COUNT],
+        keys: [LocalKey::default(); HELD_KEY_COUNT],
     };
     state.emit(Captured::Pointer {
         x: 100,
@@ -49,7 +49,7 @@ fn key_repeated_down_is_dropped_but_release_and_other_injection_are_captured() {
         absolute_motion: false,
         queue_full: false,
         last: POINT::default(),
-        keys: [false; HELD_KEY_COUNT],
+        keys: [LocalKey::default(); HELD_KEY_COUNT],
     };
     let key = KBDLLHOOKSTRUCT {
         vkCode: 0x41,
@@ -128,4 +128,42 @@ fn select_delta_capture_modes_choose_one_motion_source() {
         // Assert
         assert_eq!(deltas, expected.map(|selected| selected.then_some((3, -2))));
     }
+}
+
+#[test]
+fn key_down_before_grab_release_passes_through() {
+    // Arrange
+    let (events, mut receiver) = tokio::sync::mpsc::channel(2);
+    let mut state = CaptureState {
+        events,
+        deadman: DeadMan::new(Instant::now()),
+        grabbed: false,
+        absolute_motion: false,
+        queue_full: false,
+        last: POINT::default(),
+        keys: [LocalKey::default(); HELD_KEY_COUNT],
+    };
+    let key = KBDLLHOOKSTRUCT {
+        scanCode: 0x1d, // Left Ctrl.
+        ..KBDLLHOOKSTRUCT::default()
+    };
+    assert!(!state.key(&key));
+    state.grabbed = true;
+
+    // Act
+    let swallowed = state.key(&KBDLLHOOKSTRUCT {
+        flags: LLKHF_UP,
+        ..key
+    });
+
+    // Assert
+    assert!(!swallowed);
+    for down in [true, false] {
+        assert!(
+            matches!(receiver.try_recv(), Ok(Captured::Input(InputEvent {
+            event: Some(input_event::Event::Key(key))
+        })) if key.down == down)
+        );
+    }
+    assert!(state.key(&key));
 }

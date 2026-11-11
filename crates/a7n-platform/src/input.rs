@@ -11,6 +11,8 @@ use tokio::sync::mpsc;
 mod accumulate;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod evdev_keymap;
+#[cfg(any(windows, target_os = "macos"))]
+mod local_key;
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
 #[cfg(all(test, not(target_os = "macos")))]
