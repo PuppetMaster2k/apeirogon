@@ -117,15 +117,13 @@ fn select_delta_capture_modes_choose_one_motion_source() {
         },
     ];
     let cases = [
-        (false, false, [true, false, false, false, false]),
-        (false, true, [true, false, false, false, false]),
-        (true, false, [false, true, false, false, false]),
-        (true, true, [true, true, false, false, false]),
+        (false, [false, true, false, false, false]),
+        (true, [true, true, false, false, false]),
     ];
 
-    for (grabbed, absolute, expected) in cases {
+    for (absolute, expected) in cases {
         // Act
-        let deltas = sources.map(|source| select_delta(grabbed, absolute, source, (3, -2)));
+        let deltas = sources.map(|source| select_delta(absolute, source, (3, -2)));
 
         // Assert
         assert_eq!(deltas, expected.map(|selected| selected.then_some((3, -2))));
