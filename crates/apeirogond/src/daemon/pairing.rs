@@ -101,17 +101,7 @@ impl Daemon {
         entry: &Entry,
         paired: Paired,
     ) -> Result<PairDone, PairingError> {
-        let result = unix_seconds().and_then(|now| {
-            self.desk
-                .admit(&self.identity, &mut self.pins, entry, now)?;
-            Ok(())
-        });
-        let trust = self.sync_trust();
-        self.drop_untrusted();
-        self.broadcast(&a7n_proto::v1::Envelope {
-            body: Some(a7n_proto::v1::envelope::Body::Desk(self.desk.to_desk())),
-        });
-        if result.is_err() || trust.is_err() {
+        if self.store_peer(entry).is_err() {
             crate::log::event!("kind=pairing_store_failed");
             return Err(PairingError::Refused);
         }
@@ -154,7 +144,7 @@ impl Daemon {
         reply: Reply<Entry>,
     ) {
         let result = result.map_err(DaemonError::from).and_then(|entry| {
-            self.store_peer(entry.clone())?;
+            self.store_peer(&entry)?;
             Ok(entry)
         });
         match result {
@@ -174,14 +164,17 @@ impl Daemon {
         }
     }
 
-    pub(super) fn store_peer(&mut self, entry: Entry) -> Result<(), DaemonError> {
-        if entry.machine_id == self.identity.machine_id {
-            return Err(PairingError::Refused.into());
-        }
-        let mut staged = self.pins.clone();
-        staged.add(entry);
-        staged.save()?;
-        self.pins = staged;
-        self.sync_trust()
+    pub(super) fn store_peer(&mut self, entry: &Entry) -> Result<(), DaemonError> {
+        let result = unix_seconds().and_then(|now| {
+            self.desk
+                .admit(&self.identity, &mut self.pins, entry, now)?;
+            Ok(())
+        });
+        let trust = self.sync_trust();
+        self.drop_untrusted();
+        self.broadcast(&a7n_proto::v1::Envelope {
+            body: Some(a7n_proto::v1::envelope::Body::Desk(self.desk.to_desk())),
+        });
+        result.and(trust)
     }
 }

@@ -85,7 +85,16 @@ impl DeskStore {
                 outcome.revoked.push(id);
             }
         }
-        Self::apply(pins, &outcome, own_id)?;
+        let revoked_count = outcome
+            .revoked
+            .iter()
+            .filter(|id| **id != own_id && pins.contains_key(id))
+            .count();
+        let result = Self::apply(pins, &outcome, own_id);
+        if revoked_count > 0 {
+            crate::log::event!("kind=pin_revoked_on_load count={revoked_count}");
+        }
+        result?;
         Ok(store)
     }
 

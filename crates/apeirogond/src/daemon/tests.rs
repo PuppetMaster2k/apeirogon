@@ -8,6 +8,58 @@ use super::test_peer::{Peer, paired};
 use super::*;
 
 #[tokio::test]
+async fn joined_previously_revoked_host_keeps_pin_after_reload() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let host_dir = tempfile::tempdir().unwrap();
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
+    let mut joiner = Daemon::load(dir.path(), addr).unwrap();
+    let host = identity::load_or_create(host_dir.path()).unwrap();
+    let entry = Entry {
+        machine_id: host.machine_id,
+        pin: host.pin,
+        name: "host".into(),
+        spki_der: Some(identity::spki_of(&host.cert_der).unwrap()),
+        hw_addr: None,
+        screen_mm: None,
+    };
+    joiner.pins.add(entry.clone());
+    let revoked_at = 1;
+    joiner
+        .desk
+        .revoke(
+            &joiner.identity,
+            &mut joiner.pins,
+            host.machine_id,
+            revoked_at,
+        )
+        .unwrap();
+    let own_id = joiner.identity.machine_id;
+    let (reply, _receiver) = oneshot::channel();
+
+    // Act
+    joiner.joined(Ok(entry.clone()), addr, reply);
+    // Abort before yielding so the post-pair connection never runs.
+    joiner.tasks.abort_all();
+    drop(joiner);
+    let pins_path = dir.path().join("pins.toml");
+    let mut pins = PinStore::load(&pins_path).unwrap();
+    let desk = DeskStore::load(&dir.path().join("desk.pb"), own_id, &mut pins).unwrap();
+
+    // Assert
+    assert_eq!(pins.get(&host.machine_id), Some(&entry));
+    assert_eq!(
+        PinStore::load(&pins_path).unwrap().get(&host.machine_id),
+        Some(&entry)
+    );
+    assert!(
+        desk.to_desk().members.iter().any(|member| {
+            member.id == host.machine_id.as_bytes() && member.added_at > revoked_at
+        })
+    );
+}
+
+#[tokio::test]
 async fn load_existing_self_pin_removes_it_from_memory_and_disk() {
     // Arrange
     let dir = tempfile::tempdir().unwrap();
