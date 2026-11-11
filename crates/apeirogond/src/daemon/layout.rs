@@ -12,7 +12,8 @@ use super::{Daemon, DaemonError};
 impl Daemon {
     pub(super) fn is_layout_target(&self, machine: MachineId) -> bool {
         // Stored placements outlive pairing; only current pins authorize remote targets.
-        machine == self.identity.machine_id || self.pins.contains_key(&machine)
+        machine == self.identity.machine_id
+            || (self.pins.contains_key(&machine) && self.drive_peer(machine))
     }
 
     pub(super) fn layout_info(&self) -> LayoutInfo {

@@ -98,6 +98,11 @@ impl Daemon {
         if self.input.paused && target != self.identity.machine_id {
             return Err(crate::daemon::DaemonError::Paused);
         }
+        if target != self.identity.machine_id && !self.drive_peer(target) {
+            return Err(crate::daemon::DaemonError::InvalidRequest(
+                "driving this machine is disabled by peers.<id>.drive_peer",
+            ));
+        }
         let actions = if target == self.identity.machine_id {
             self.input.focus.go_home()
         } else if self.is_linked(target) {

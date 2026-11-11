@@ -131,8 +131,10 @@ impl Default for FeedbackConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+#[allow(clippy::struct_excessive_bools)] // Independent per-peer config toggles, not state-machine flags.
 pub struct PeerConfig {
     pub allow_drive: bool,
+    pub drive_peer: bool,
     pub wake: bool,
     pub pointer_speed: f64,
     pub scroll_speed: f64,
@@ -147,6 +149,7 @@ impl Default for PeerConfig {
     fn default() -> Self {
         Self {
             allow_drive: true,
+            drive_peer: true,
             wake: true,
             pointer_speed: 1.0,
             scroll_speed: 1.0,
@@ -424,7 +427,11 @@ impl Config {
                 | ["feedback", "edge" | "landing" | "haptics"]
                 | ["notifications", "files"]
                 | ["gui", "hide_addresses"]
-                | ["peers", _, "allow_drive" | "wake" | "reverse_scroll"]
+                | [
+                    "peers",
+                    _,
+                    "allow_drive" | "drive_peer" | "wake" | "reverse_scroll",
+                ]
                 | ["sync", "settings"] => {
                     toml::Value::Boolean(value.parse().map_err(|_| {
                         ConfigError::Invalid(format!("{key} must be true or false"))

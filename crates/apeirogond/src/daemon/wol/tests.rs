@@ -34,6 +34,27 @@ fn offline() -> (Daemon, TempDir, MachineId, mpsc::Receiver<[u8; 6]>) {
 }
 
 #[tokio::test]
+async fn switch_machine_drive_peer_disabled_refuses_and_keeps_cursor_home() {
+    // Arrange
+    let (mut daemon, _dir, peer, packets) = offline();
+    daemon
+        .config
+        .set(&format!("peers.{peer}.drive_peer"), "false")
+        .unwrap();
+
+    // Act
+    let result = daemon.switch_machine(peer).await;
+
+    // Assert
+    assert!(
+        matches!(result, Err(DaemonError::InvalidRequest(message)) if message.contains("drive_peer"))
+    );
+    assert_eq!(daemon.input.focus.cursor(), Cursor::Home);
+    assert!(daemon.wol.pending.is_none());
+    assert!(packets.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn switch_machine_offline_records_wake_and_keeps_cursor_home() {
     // Arrange
     let (mut daemon, _dir, peer, packets) = offline();
