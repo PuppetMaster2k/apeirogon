@@ -42,7 +42,7 @@ pub(super) struct Input {
     pub(super) shake: ShakeDetector,
     pub(super) recording: recording::Recording,
     pub(super) fullscreen_hold: FullscreenHold,
-    resistance: EdgeResistance,
+    pub(super) resistance: EdgeResistance,
     pub(super) sink: FeedbackSink,
     edge_no_target: Option<Edge>,
     buttons: HeldButtons,
@@ -89,6 +89,15 @@ impl Input {
         self.fullscreen_hold.reset();
         self.sink.clear();
         self.edge_no_target = None;
+    }
+
+    pub(super) fn poll_edge_pressure(&mut self) {
+        self.resistance.poll(now());
+        if self.paused || (!self.focus.is_driven() && self.focus.is_locked()) {
+            self.sink.clear();
+            return;
+        }
+        self.sink.fade(self.resistance.progress());
     }
 
     pub(super) fn keepalive(&mut self) {

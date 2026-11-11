@@ -28,8 +28,8 @@ fn drain(commands: &mut mpsc::Receiver<Command>) -> Vec<Command> {
     std::iter::from_fn(|| commands.try_recv().ok()).collect()
 }
 
-#[tokio::test]
-async fn cross_edge_push_reports_rising_progress_then_clears_when_it_stops() {
+#[tokio::test(start_paused = true)]
+async fn cross_edge_inward_travel_reports_reduced_pressure() {
     // Arrange
     let config = FeedbackConfig {
         edge: true,
@@ -62,12 +62,12 @@ async fn cross_edge_push_reports_rising_progress_then_clears_when_it_stops() {
             Command::Tick,
             edge(600),
             Command::Tick,
-            Command::Clear
+            edge(500)
         ]
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn input_actions_driven_landing_sends_landing_and_edge_off_sends_no_edge() {
     // Arrange
     let config = FeedbackConfig {
@@ -192,4 +192,130 @@ async fn input_actions_bbox_landing_projects_warp_and_mark_onto_monitor() {
         drain(&mut commands),
         [Command::Landing { x: 1920, y: 1295 }]
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn poll_edge_pressure_resting_pointer_fades_and_clears_without_haptics() {
+    // Arrange
+    let config = FeedbackConfig {
+        edge: true,
+        landing: false,
+        haptics: true,
+    };
+    let (mut daemon, _dir, mut commands) = daemon_with_feedback(config);
+    daemon
+        .cross_edge(DISPLAY, &[DISPLAY], (99, 50), (60, 0), false)
+        .await;
+    drain(&mut commands);
+    let deadline = daemon.input.resistance.next_deadline().unwrap();
+
+    // Act
+    super::super::deadline(Some(deadline)).await;
+    daemon.input.poll_edge_pressure();
+    let faded = drain(&mut commands);
+    tokio::time::advance(std::time::Duration::from_secs(1)).await;
+    daemon.input.poll_edge_pressure();
+
+    // Assert
+    assert_eq!(
+        faded,
+        [Command::Edge {
+            display: DISPLAY,
+            edge: Edge::Right,
+            progress: 540
+        }]
+    );
+    assert_eq!(drain(&mut commands), [Command::Clear]);
+    assert_eq!(daemon.input.resistance.next_deadline(), None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn poll_edge_pressure_inset_monitor_fades_on_pushed_display() {
+    // Arrange
+    let (mut daemon, _dir, mut commands) = daemon_with_feedback(FeedbackConfig {
+        edge: true,
+        landing: false,
+        haptics: false,
+    });
+    let laptop = Bounds::from((0, 0, 1920, 1200));
+    let monitors = vec![laptop, (1920, 0, 2560, 1440).into()];
+    let capture = daemon.input.capture.as_mut().unwrap();
+    capture.bounds = (0, 0, 4480, 1440).into();
+    capture.monitors = monitors.into();
+    daemon
+        .captured(Some(Captured::Pointer {
+            x: 100,
+            y: 1199,
+            dx: 0,
+            dy: 60,
+        }))
+        .await;
+    drain(&mut commands);
+    let deadline = daemon.input.resistance.next_deadline().unwrap();
+
+    // Act
+    super::super::deadline(Some(deadline)).await;
+    daemon.input.poll_edge_pressure();
+
+    // Assert
+    assert_eq!(
+        drain(&mut commands),
+        [Command::Edge {
+            display: laptop,
+            edge: Edge::Bottom,
+            progress: 540
+        }]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn cross_edge_non_outward_motion_subtracts_only_inward_component() {
+    // Arrange
+    for (edge, x, y, dx, dy) in [
+        (Edge::Left, 0, 50, 10, 40),
+        (Edge::Right, 99, 50, -10, 40),
+        (Edge::Top, 50, 0, 40, 10),
+        (Edge::Bottom, 50, 99, 40, -10),
+        (Edge::Right, 99, 50, 0, 10),
+        (Edge::Right, 50, 50, 10, 0),
+    ] {
+        let (mut daemon, _dir, _commands) = daemon_with_feedback(FeedbackConfig::default());
+        daemon.input.resistance.push(edge, 60, now());
+
+        // Act
+        daemon
+            .cross_edge(DISPLAY, &[DISPLAY], (x, y), (dx, dy), false)
+            .await;
+
+        // Assert
+        let expected = if edge == Edge::Right && dx >= 0 {
+            600
+        } else {
+            500
+        };
+        assert_eq!(daemon.input.resistance.progress(), Some((edge, expected)));
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn poll_edge_pressure_paused_or_locked_keeps_feedback_clear() {
+    // Arrange
+    for (paused, locked) in [(true, false), (false, true)] {
+        let (mut daemon, _dir, mut commands) = daemon_with_feedback(FeedbackConfig::default());
+        daemon
+            .cross_edge(DISPLAY, &[DISPLAY], (99, 50), (60, 0), false)
+            .await;
+        drain(&mut commands);
+        daemon.input.paused = paused;
+        daemon.input.focus.set_locked(locked);
+
+        // Act
+        daemon
+            .cross_edge(DISPLAY, &[DISPLAY], (99, 50), (1, 0), false)
+            .await;
+        daemon.input.poll_edge_pressure();
+
+        // Assert
+        assert_eq!(drain(&mut commands), [Command::Clear]);
+    }
 }
