@@ -20,6 +20,7 @@ mod gestures;
 mod hotkeys;
 mod local_keys;
 mod pause;
+mod speed;
 
 struct FakeInput {
     capture: mpsc::Sender<Captured>,

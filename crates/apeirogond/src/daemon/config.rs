@@ -5,9 +5,9 @@ use std::path::PathBuf;
 
 use a7n_core::focus::edge::FullscreenHold;
 use a7n_core::hotkey::{HotkeyMatcher, ShakeDetector};
-use a7n_core::input::MotionScale;
+use a7n_core::input::{MotionScale, ScrollScale};
 use a7n_core::modifiers::default_modifier_remap;
-use a7n_ipc::config::{Config, ModifierMode};
+use a7n_ipc::config::{Config, MAX_SPEED, MIN_SPEED, ModifierMode};
 use a7n_proto::MachineId;
 use a7n_proto::v1::{Accepts, InputEvent, envelope::Body, input_event};
 
@@ -67,9 +67,10 @@ impl Daemon {
             .keys()
             .map(|peer| (*peer, self.allow_drive(*peer)))
             .collect();
-        if config.input.speed.to_bits() != self.config.input.speed.to_bits() {
-            self.input.scale = MotionScale::new(config.input.speed);
-        }
+        let driver = self.input.focus.driven_by();
+        let scales_changed = driver.is_some_and(|peer| {
+            Self::input_speeds(&config, peer) != Self::input_speeds(&self.config, peer)
+        });
         if config.input.fullscreen_hold != self.config.input.fullscreen_hold {
             self.input.fullscreen_hold = FullscreenHold::new(config.input.fullscreen_hold);
         }
@@ -81,6 +82,9 @@ impl Daemon {
             .local_inputs()
             .expect("local input settings have been validated");
         self.config = config;
+        if scales_changed {
+            self.configure_input_scales(driver.expect("scale changes require an active driver"));
+        }
         self.sync_local_inputs().await;
         self.recheck_files_policy();
         for (peer, was_allowed) in before {
@@ -95,6 +99,22 @@ impl Daemon {
             }
             self.send_input(peer, Body::Accepts(Accepts { accepts }));
         }
+    }
+
+    fn input_speeds(config: &Config, peer: MachineId) -> (f64, f64, bool) {
+        let policy = config.peer(&peer);
+        (
+            (config.input.speed * policy.map_or(1.0, |p| p.pointer_speed))
+                .clamp(MIN_SPEED, MAX_SPEED),
+            policy.map_or(1.0, |p| p.scroll_speed),
+            policy.is_some_and(|p| p.reverse_scroll),
+        )
+    }
+
+    pub(super) fn configure_input_scales(&mut self, peer: MachineId) {
+        let (pointer, scroll, reverse) = Self::input_speeds(&self.config, peer);
+        self.input.scale = MotionScale::new(pointer);
+        self.input.scroll_scale = ScrollScale::new(scroll, reverse);
     }
 
     pub(super) fn snapshot_remap(&mut self, peer: MachineId) {

@@ -22,6 +22,18 @@ fn try_from_unknown_and_security_keys_drops_everything_outside_allow_list() {
             "peers.01010101010101010101010101010101.allow_drive".into(),
             "false".into(),
         ),
+        (
+            "peers.01010101010101010101010101010101.pointer_speed".into(),
+            "4".into(),
+        ),
+        (
+            "peers.01010101010101010101010101010101.scroll_speed".into(),
+            "4".into(),
+        ),
+        (
+            "peers.01010101010101010101010101010101.reverse_scroll".into(),
+            "true".into(),
+        ),
         ("name".into(), "remote".into()),
         ("sync.settings".into(), "false".into()),
         ("clipboard.policy".into(), "allow".into()),

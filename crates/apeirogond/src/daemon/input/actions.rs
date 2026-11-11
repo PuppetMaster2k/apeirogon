@@ -2,7 +2,7 @@
 
 use a7n_core::hotkey::{HotkeyMatcher, ShakeDetector};
 
-use super::{Action, Cursor, Daemon, EdgeResistance, Inject, MotionScale, landing_point};
+use super::{Action, Cursor, Daemon, EdgeResistance, Inject, landing_point};
 
 impl Daemon {
     pub(in crate::daemon) async fn sync_grab(&mut self) {
@@ -58,16 +58,16 @@ impl Daemon {
                     self.sync_grab().await;
                 }
                 Action::Driven {
+                    owner,
                     landing,
                     resistance_px,
-                    ..
                 } => {
                     self.input.show_cursor().await;
                     self.input.reset_edge_state();
                     self.input.hotkeys = HotkeyMatcher::new(self.config.bindings());
                     self.input.shake = ShakeDetector::new(self.config.hotkeys.shake);
                     self.input.tracker.reset();
-                    self.input.scale = MotionScale::new(self.config.input.speed);
+                    self.configure_input_scales(owner);
                     self.input.resistance = EdgeResistance::new(resistance_px);
                     self.sync_grab().await;
                     if let (Some(landing), Some(injector)) = (landing, &self.input.injector) {
