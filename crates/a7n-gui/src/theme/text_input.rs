@@ -12,6 +12,17 @@ pub(crate) fn text_input(
     hint: &str,
     mono: bool,
 ) -> Response {
+    masked_text_input(ui, label, value, hint, mono, false)
+}
+
+pub(crate) fn masked_text_input(
+    ui: &mut Ui,
+    label: &str,
+    value: &mut String,
+    hint: &str,
+    mono: bool,
+    hidden: bool,
+) -> Response {
     let p = Palette::of(ui.ctx());
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 6.0;
@@ -23,6 +34,7 @@ pub(crate) fn text_input(
         };
         ui.add(
             TextEdit::singleline(value)
+                .password(hidden)
                 .hint_text(WidgetText::from(RichText::new(hint).color(p.text3)))
                 .font(font)
                 .margin(Margin::symmetric(10, 7))

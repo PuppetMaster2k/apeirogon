@@ -423,6 +423,7 @@ impl Config {
                 ]
                 | ["feedback", "edge" | "landing" | "haptics"]
                 | ["notifications", "files"]
+                | ["gui", "hide_addresses"]
                 | ["peers", _, "allow_drive" | "wake" | "reverse_scroll"]
                 | ["sync", "settings"] => {
                     toml::Value::Boolean(value.parse().map_err(|_| {

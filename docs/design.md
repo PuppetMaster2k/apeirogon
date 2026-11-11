@@ -372,6 +372,7 @@ do not.
 - **GUI** (`a7n-gui`, egui/eframe) for Windows and macOS:
   - Thin client of the daemon over `a7n-ipc`; no logic of its own.
   - Window appearance is local `gui.appearance`: `system` (default), `light`, or `dark`; changes preview immediately and never sync.
+  - Local `gui.hide_addresses` (default `false`) masks GUI IP addresses and ports, including the editable join field; it never syncs.
   - Pause returns outgoing focus home and blocks edge, hotkey and explicit
     switches to peers until resumed. Receiving input remains governed by
     `allow_drive`. Pause is session state and resets at daemon startup.

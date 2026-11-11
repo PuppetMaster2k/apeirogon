@@ -48,6 +48,17 @@ impl App {
                 },
             );
         });
+        self.toggle_card(
+            ui,
+            None,
+            &[Toggle {
+                key: "gui.hide_addresses",
+                title: "Hide addresses",
+                help: "Mask IP addresses and ports in this window.",
+                default: "false",
+                unavailable: None,
+            }],
+        );
     }
 
     pub(super) fn input_options(&mut self, ui: &mut egui::Ui) {

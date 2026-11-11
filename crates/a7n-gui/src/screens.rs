@@ -16,6 +16,10 @@ mod peers;
 mod permissions;
 
 impl App {
+    fn hide_addresses(&self) -> bool {
+        self.value("gui.hide_addresses", "false") == "true"
+    }
+
     pub(super) fn settings(&mut self, ui: &mut egui::Ui) {
         let (title, subtitle) = if self.screen == Screen::Hotkeys {
             (
@@ -250,6 +254,14 @@ impl App {
                 "Reload to request the desk layout.",
             );
         }
+    }
+}
+
+fn address_text(value: &impl ToString, hidden: bool) -> String {
+    if hidden {
+        "Address hidden".to_owned()
+    } else {
+        value.to_string()
     }
 }
 
