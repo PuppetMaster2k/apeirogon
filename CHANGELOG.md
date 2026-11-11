@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.3](https://github.com/PuppetMaster2k/apeirogon/compare/v0.26.2...v0.26.3) (2026-11-11)
+
+
+### Bug Fixes
+
+* cross and land on each monitor's outer edge ([#215](https://github.com/PuppetMaster2k/apeirogon/issues/215)) ([d7d6162](https://github.com/PuppetMaster2k/apeirogon/commit/d7d6162a0cf5feb85130012a18b38857c4d7ef63))
+
 ## [0.26.2](https://github.com/PuppetMaster2k/apeirogon/compare/v0.26.1...v0.26.2) (2026-11-11)
 
 

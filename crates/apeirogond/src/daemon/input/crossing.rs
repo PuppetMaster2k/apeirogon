@@ -9,15 +9,14 @@ impl Daemon {
     pub(super) async fn cross_edge(
         &mut self,
         bounds: Bounds,
-        x: i32,
-        y: i32,
-        dx: i32,
-        dy: i32,
+        monitors: &[Bounds],
+        (x, y): (i32, i32),
+        (dx, dy): (i32, i32),
         driven: bool,
     ) {
-        let display = bounds;
         let bounds = (bounds.x, bounds.y, bounds.width, bounds.height);
-        let Some((edge, overshoot, along)) = self.crossing_push(bounds, (x, y), (dx, dy), driven)
+        let Some((edge, overshoot, along, display)) =
+            self.crossing_push(bounds, monitors, (x, y), (dx, dy), driven)
         else {
             self.input.poll_edge_pressure();
             return;
@@ -28,7 +27,8 @@ impl Daemon {
             return;
         }
         self.input.sink.clear();
-        let Some((target, landing)) = self.crossing_exit(bounds, (x, y), (dx, dy), edge, along)
+        let Some((target, landing)) =
+            self.crossing_exit(bounds, monitors, (x, y), (dx, dy), (edge, along))
         else {
             if !driven && self.input.edge_no_target.replace(edge) != Some(edge) {
                 crate::log::event!("kind=edge_no_target");
@@ -42,10 +42,11 @@ impl Daemon {
     fn crossing_push(
         &mut self,
         bounds: (i32, i32, u32, u32),
+        monitors: &[Bounds],
         (x, y): (i32, i32),
         (dx, dy): (i32, i32),
         driven: bool,
-    ) -> Option<(Edge, i32, f32)> {
+    ) -> Option<(Edge, i32, f32, Bounds)> {
         self.input.resistance.poll(now());
         if self.input.buttons.any_held() {
             self.input.fullscreen_hold.reset();
@@ -56,7 +57,7 @@ impl Daemon {
             self.input.fullscreen_hold.reset();
             return None;
         }
-        let Some(push) = edge_push(bounds, x, y, dx, dy) else {
+        let Some(push) = edge_push(bounds, monitors, x, y, dx, dy) else {
             self.input.fullscreen_hold.reset();
             if let Some((edge, _)) = self.input.resistance.progress() {
                 let inward = match edge {
@@ -75,7 +76,7 @@ impl Daemon {
         if self
             .input
             .fullscreen_hold
-            .holds(true, || focused_fullscreen_at(bounds, x, y))
+            .holds(true, || focused_fullscreen_at(push.3.rect(), x, y))
         {
             self.input.resistance.push(Edge::Unspecified, 0, now());
             return None;
@@ -86,17 +87,17 @@ impl Daemon {
     fn crossing_exit(
         &self,
         bounds: (i32, i32, u32, u32),
+        monitors: &[Bounds],
         (x, y): (i32, i32),
         (dx, dy): (i32, i32),
-        edge: Edge,
-        along: f32,
+        (edge, along): (Edge, f32),
     ) -> Option<(MachineId, Landing)> {
         let own = self.identity.machine_id;
         self.layout
             .state
             .exit(own, edge, along, |id| self.is_layout_target(id))
             .or_else(|| {
-                let (edge, corner) = corner_push(bounds, x, y, dx, dy)?;
+                let (edge, corner) = corner_push(bounds, monitors, x, y, dx, dy)?;
                 self.layout
                     .state
                     .exit_corner(own, edge, corner, |id| self.is_layout_target(id))

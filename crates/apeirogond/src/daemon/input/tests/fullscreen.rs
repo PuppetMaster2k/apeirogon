@@ -14,7 +14,9 @@ async fn cross_edge_fullscreen_local_and_driven_push_discards_resistance() {
         daemon.input.fullscreen_hold.holds(true, || true);
 
         // Act
-        daemon.cross_edge(bounds, 99, 50, 1, 0, driven).await;
+        daemon
+            .cross_edge(bounds, &[bounds], (99, 50), (1, 0), driven)
+            .await;
         let crossed = daemon.input.resistance.push(Edge::Right, 1, now());
 
         // Assert
@@ -52,7 +54,9 @@ async fn cross_edge_blocked_push_clears_fullscreen_cache() {
         }
 
         // Act
-        daemon.cross_edge(bounds, x, 50, 1, 0, driven).await;
+        daemon
+            .cross_edge(bounds, &[bounds], (x, 50), (1, 0), driven)
+            .await;
         let result = daemon.input.fullscreen_hold.holds(true, || false);
 
         // Assert

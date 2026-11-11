@@ -7,6 +7,9 @@ use a7n_proto::v1::{Edge, Motion};
 
 use crate::layout::Corner;
 
+mod geometry;
+pub use geometry::{Bounds, landing_point};
+
 /// Maximum distance in pixels from an edge end for a diagonal crossing.
 pub const CORNER_BOX: i64 = 8;
 
@@ -124,44 +127,64 @@ pub fn clamp_position(
 #[allow(clippy::cast_possible_truncation)] // Normalized fractions in 0..=1 fit f32.
 pub fn edge_push(
     bounds @ (left, top, width, height): (i32, i32, u32, u32),
+    monitors: &[Bounds],
     x: i32,
     y: i32,
     dx: i32,
     dy: i32,
-) -> Option<(Edge, i32, f32)> {
+) -> Option<(Edge, i32, f32, Bounds)> {
     if width == 0 || height == 0 {
         return None;
     }
-    let (x, y) = clamp_position(bounds, x, y);
-    let right = i64::from(left) + i64::from(width) - 1;
-    let bottom = i64::from(top) + i64::from(height) - 1;
-    let (edge, overshoot, position, start, length) = if x == left && dx < 0 {
-        (Edge::Left, dx.saturating_neg(), y, top, height)
-    } else if i64::from(x) == right && dx > 0 {
-        (Edge::Right, dx, y, top, height)
-    } else if y == top && dy < 0 {
-        (Edge::Top, dy.saturating_neg(), x, left, width)
-    } else if i64::from(y) == bottom && dy > 0 {
-        (Edge::Bottom, dy, x, left, width)
-    } else {
-        return None;
-    };
+    let monitor = geometry::nearest_monitor(bounds, monitors, x, y);
+    let (x, y) = clamp_position(monitor.rect(), x, y);
+    let (ml, mt, mw, mh) = monitor.rect();
+    let right = i64::from(ml) + i64::from(mw) - 1;
+    let bottom = i64::from(mt) + i64::from(mh) - 1;
+    let outside = |px, py| !monitors.iter().any(|m| m.contains(px, py));
+    let (edge, overshoot, position, start, length) =
+        if x == ml && dx < 0 && outside(i64::from(x) - 1, i64::from(y)) {
+            (Edge::Left, dx.saturating_neg(), y, top, height)
+        } else if i64::from(x) == right && dx > 0 && outside(right + 1, i64::from(y)) {
+            (Edge::Right, dx, y, top, height)
+        } else if y == mt && dy < 0 && outside(i64::from(x), i64::from(y) - 1) {
+            (Edge::Top, dy.saturating_neg(), x, left, width)
+        } else if i64::from(y) == bottom && dy > 0 && outside(i64::from(x), bottom + 1) {
+            (Edge::Bottom, dy, x, left, width)
+        } else {
+            return None;
+        };
     let along =
         (f64::from(position) - f64::from(start)) / f64::from(length.saturating_sub(1).max(1));
-    Some((edge, overshoot, along as f32))
+    Some((edge, overshoot, along as f32, monitor))
 }
 
 /// Detect an edge push whose other axis points toward a nearby corner.
 #[must_use]
 pub fn corner_push(
     bounds @ (left, top, width, height): (i32, i32, u32, u32),
+    monitors: &[Bounds],
     x: i32,
     y: i32,
     dx: i32,
     dy: i32,
 ) -> Option<(Edge, Corner)> {
-    let (edge, _, _) = edge_push(bounds, x, y, dx, dy)?;
-    let (x, y) = clamp_position(bounds, x, y);
+    let (edge, _, _, monitor) = edge_push(bounds, monitors, x, y, dx, dy)?;
+    let (x, y) = clamp_position(monitor.rect(), x, y);
+    let on_bbox = match edge {
+        Edge::Left => monitor.x == left,
+        Edge::Right => {
+            i64::from(monitor.x) + i64::from(monitor.width) == i64::from(left) + i64::from(width)
+        }
+        Edge::Top => monitor.y == top,
+        Edge::Bottom => {
+            i64::from(monitor.y) + i64::from(monitor.height) == i64::from(top) + i64::from(height)
+        }
+        Edge::Unspecified => false,
+    };
+    if !on_bbox {
+        return None;
+    }
     let right = i64::from(left) + i64::from(width) - 1;
     let bottom = i64::from(top) + i64::from(height) - 1;
     let (position, start, end, delta) = match edge {

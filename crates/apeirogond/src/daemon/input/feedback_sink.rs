@@ -16,7 +16,7 @@ pub(in crate::daemon) struct FeedbackSink {
     backend: Option<Feedback>,
     config: FeedbackConfig,
     /// What the backend last drew; `Some` means a `Clear` is owed.
-    last: Option<(Edge, u16)>,
+    last: Option<(Bounds, Edge, u16)>,
 }
 
 impl FeedbackSink {
@@ -38,12 +38,14 @@ impl FeedbackSink {
             self.clear();
             return;
         };
-        let previous = self.last.filter(|(last_edge, _)| *last_edge == edge);
-        let from = previous.map_or(0, |(_, last_value)| last_value);
+        let previous = self
+            .last
+            .filter(|(last_display, last_edge, _)| *last_display == display && *last_edge == edge);
+        let from = previous.map_or(0, |(_, _, last_value)| last_value);
         if previous.is_some() && value.abs_diff(from) < FEEDBACK_STEP_PERMILLE {
             return;
         }
-        self.last = Some((edge, value));
+        self.last = Some((display, edge, value));
         if self.config.edge {
             self.send(Command::Edge {
                 display,
@@ -53,6 +55,14 @@ impl FeedbackSink {
         }
         if self.config.haptics && quarter_crossed(from, value) {
             self.send(Command::Tick);
+        }
+    }
+
+    pub(super) fn fade(&mut self, progress: Option<(Edge, u16)>) {
+        if let Some((display, _, _)) = self.last {
+            self.push(display, progress);
+        } else {
+            self.clear();
         }
     }
 

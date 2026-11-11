@@ -21,11 +21,10 @@ mod crossing;
 pub(in crate::daemon) mod feedback_sink;
 mod gestures;
 mod hotkeys;
-mod landing;
 mod recording;
 
+use a7n_core::input::landing_point;
 use feedback_sink::FeedbackSink;
-use landing::landing_point;
 
 pub(super) struct Input {
     pub(super) focus: Focus,
@@ -98,16 +97,7 @@ impl Input {
             self.sink.clear();
             return;
         }
-        let display = if self.focus.is_driven() {
-            self.injector.as_ref().map(|injector| injector.bounds)
-        } else {
-            self.capture.as_ref().map(|capture| capture.bounds)
-        };
-        if let Some(display) = display {
-            self.sink.push(display, self.resistance.progress());
-        } else {
-            self.sink.clear();
-        }
+        self.sink.fade(self.resistance.progress());
     }
 
     pub(super) fn keepalive(&mut self) {
@@ -447,7 +437,9 @@ impl Daemon {
             return;
         }
         if let (Captured::Pointer { x, y, dx, dy }, Some(capture)) = (event, &self.input.capture) {
-            self.cross_edge(capture.bounds, x, y, dx, dy, false).await;
+            let (bounds, monitors) = (capture.bounds, capture.monitors.clone());
+            self.cross_edge(bounds, &monitors, (x, y), (dx, dy), false)
+                .await;
         }
     }
 
@@ -491,7 +483,9 @@ impl Daemon {
         }
         if let (Captured::Pointer { x, y, dx, dy }, Some(injector)) = (event, &self.input.injector)
         {
-            self.cross_edge(injector.bounds, x, y, dx, dy, true).await;
+            let (bounds, monitors) = (injector.bounds, injector.monitors.clone());
+            self.cross_edge(bounds, &monitors, (x, y), (dx, dy), true)
+                .await;
         }
     }
 }
