@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.28.0...v0.29.0) (2026-11-11)
+
+
+### Features
+
+* keep listed keys and buttons on the local machine while driving ([#218](https://github.com/PuppetMaster2k/apeirogon/issues/218)) ([35acda8](https://github.com/PuppetMaster2k/apeirogon/commit/35acda84032e64b4712ae26ddb0749a2d34f8ca5))
+
 ## [0.28.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.27.0...v0.28.0) (2026-11-11)
 
 
