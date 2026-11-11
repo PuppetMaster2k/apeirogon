@@ -103,7 +103,8 @@ fn edge_push_outside_desktop_clamps_point_and_preserves_outward_motion() {
     ];
     for (x, y, dx, dy, expected) in cases {
         // Act
-        let push = edge_push(bounds, x, y, dx, dy);
+        let push = edge_push(bounds, &[bounds.into()], x, y, dx, dy)
+            .map(|(edge, overshoot, along, _)| (edge, overshoot, along));
 
         // Assert
         assert_eq!(push, expected, "point ({x}, {y}), motion ({dx}, {dy})");
@@ -139,9 +140,193 @@ fn corner_push_near_edge_end_requires_diagonal_outward_motion() {
     ];
     for (x, y, dx, dy, expected) in cases {
         // Act
-        let corner = corner_push(bounds, x, y, dx, dy);
+        let corner = corner_push(bounds, &[bounds.into()], x, y, dx, dy);
 
         // Assert
         assert_eq!(corner, expected, "pointer ({x}, {y}), motion ({dx}, {dy})");
+    }
+}
+
+#[test]
+fn edge_push_monitor_union_only_crosses_outer_edges() {
+    // Arrange
+    let laptop = Bounds::from((0, 0, 1920, 1200));
+    let monitor = Bounds::from((1920, 0, 2560, 1440));
+    let staggered = Bounds::from((1920, 200, 2560, 1440));
+    let cases = [
+        (
+            monitor,
+            (4480, 1440),
+            (100, 1199),
+            (0, 5),
+            Some((Edge::Bottom, laptop)),
+        ),
+        (monitor, (4480, 1440), (1919, 500), (5, 0), None),
+        (monitor, (4480, 1440), (1920, 500), (-5, 0), None),
+        (
+            monitor,
+            (4480, 1440),
+            (1920, 1300),
+            (-5, 0),
+            Some((Edge::Left, monitor)),
+        ),
+        (
+            staggered,
+            (4480, 1640),
+            (100, 0),
+            (0, -5),
+            Some((Edge::Top, laptop)),
+        ),
+        (
+            staggered,
+            (4480, 1640),
+            (2000, 200),
+            (0, -5),
+            Some((Edge::Top, staggered)),
+        ),
+        (
+            staggered,
+            (4480, 1640),
+            (100, 1199),
+            (0, 5),
+            Some((Edge::Bottom, laptop)),
+        ),
+        (
+            staggered,
+            (4480, 1640),
+            (2000, 1639),
+            (0, 5),
+            Some((Edge::Bottom, staggered)),
+        ),
+        (
+            staggered,
+            (4480, 1640),
+            (100, 1300),
+            (0, 5),
+            Some((Edge::Bottom, laptop)),
+        ),
+    ];
+    for (second, (width, height), (x, y), (dx, dy), expected) in cases {
+        // Act
+        let push = edge_push((0, 0, width, height), &[laptop, second], x, y, dx, dy);
+
+        // Assert
+        assert_eq!(push.map(|(edge, _, _, display)| (edge, display)), expected);
+        if let Some((edge, overshoot, along, _)) = push {
+            assert_eq!(overshoot, 5);
+            let expected_along = if matches!(edge, Edge::Left | Edge::Right) {
+                f64::from(y) / f64::from(height - 1)
+            } else {
+                f64::from(x) / f64::from(width - 1)
+            };
+            assert!((f64::from(along) - expected_along).abs() < 0.000_001);
+        }
+    }
+}
+
+#[test]
+fn corner_push_inset_monitor_edge_does_not_exit_canvas_corner() {
+    // Arrange
+    let bounds = (0, 0, 4480, 1440);
+    let monitors = [(0, 0, 1920, 1200).into(), (1920, 0, 2560, 1440).into()];
+
+    // Act
+    let corner = corner_push(bounds, &monitors, 0, 1199, -1, 1);
+    let inset_corner = corner_push(bounds, &monitors, 0, 1199, 1, 1);
+
+    // Assert
+    assert_eq!(corner, None);
+    assert_eq!(inset_corner, None);
+}
+
+#[test]
+fn landing_point_monitor_edges_projects_bbox_offsets_and_clamps_gaps() {
+    // Arrange
+    let cases = [
+        (
+            (0, 0, 4480, 1440),
+            vec![(0, 0, 1920, 1200), (1920, 0, 2560, 1440)],
+            Edge::Left,
+            0.9,
+            (1920, 1295),
+        ),
+        (
+            (0, 0, 4480, 1440),
+            vec![(0, 0, 1920, 1200), (1920, 0, 2560, 1440)],
+            Edge::Bottom,
+            0.1,
+            (447, 1199),
+        ),
+        (
+            (0, 0, 300, 300),
+            vec![(0, 0, 100, 100), (200, 200, 100, 100)],
+            Edge::Left,
+            0.4,
+            (0, 99),
+        ),
+        (
+            (0, 0, 300, 300),
+            vec![(0, 0, 100, 100), (200, 200, 100, 100)],
+            Edge::Right,
+            0.6,
+            (299, 200),
+        ),
+        (
+            (0, 0, 300, 300),
+            vec![(0, 0, 100, 100), (200, 200, 100, 100)],
+            Edge::Top,
+            0.4,
+            (99, 0),
+        ),
+        (
+            (0, 0, 300, 300),
+            vec![(0, 0, 100, 100), (200, 200, 100, 100)],
+            Edge::Bottom,
+            0.6,
+            (200, 299),
+        ),
+        (
+            (-100, -200, 201, 401),
+            vec![(-100, -200, 201, 401)],
+            Edge::Left,
+            0.5,
+            (-100, 0),
+        ),
+        (
+            (-100, -200, 201, 401),
+            vec![(-100, -200, 201, 401)],
+            Edge::Right,
+            0.5,
+            (100, 0),
+        ),
+        (
+            (-100, -200, 201, 401),
+            vec![(-100, -200, 201, 401)],
+            Edge::Top,
+            0.5,
+            (0, -200),
+        ),
+        (
+            (-100, -200, 201, 401),
+            vec![(-100, -200, 201, 401)],
+            Edge::Bottom,
+            0.5,
+            (0, 200),
+        ),
+        ((-100, -200, 201, 401), vec![], Edge::Left, 2.0, (-100, 200)),
+    ];
+    for (bounds, monitors, edge, offset, expected) in cases {
+        let monitors: Vec<_> = monitors.into_iter().map(Bounds::from).collect();
+        let landing = a7n_proto::v1::Landing {
+            edge: edge.into(),
+            offset,
+            ..Default::default()
+        };
+
+        // Act
+        let point = landing_point(bounds.into(), &monitors, &landing);
+
+        // Assert
+        assert_eq!(point, expected, "{bounds:?} {edge:?} {offset}");
     }
 }

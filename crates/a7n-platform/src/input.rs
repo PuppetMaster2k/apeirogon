@@ -28,7 +28,7 @@ mod wayland;
 #[cfg(windows)]
 pub(crate) mod windows;
 #[cfg(all(unix, not(target_os = "macos")))]
-mod x11;
+pub(crate) mod x11;
 
 /// Whether received swipes expand into local keyboard shortcuts.
 pub const GESTURE_CHORDS_SUPPORTED: bool = cfg!(windows);
@@ -49,13 +49,7 @@ const INJECT_COMMAND_CAPACITY: usize = 1024;
 #[cfg(all(unix, not(target_os = "macos")))]
 const INJECT_POINTER_CAPACITY: usize = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Bounds {
-    pub x: i32,
-    pub y: i32,
-    pub width: u32,
-    pub height: u32,
-}
+pub use a7n_core::input::Bounds;
 
 #[derive(Debug)]
 pub enum Captured {
@@ -73,6 +67,8 @@ pub enum CaptureControl {
 #[derive(Debug)]
 pub struct Capture {
     pub bounds: Bounds,
+    /// Startup monitor snapshot, shared without allocating on pointer events.
+    pub monitors: std::sync::Arc<[Bounds]>,
     pub events: mpsc::Receiver<Captured>,
     pub control: mpsc::Sender<CaptureControl>,
 }
@@ -88,6 +84,8 @@ pub enum Inject {
 #[derive(Debug)]
 pub struct Injector {
     pub bounds: Bounds,
+    /// Startup monitor snapshot, shared without allocating on pointer events.
+    pub monitors: std::sync::Arc<[Bounds]>,
     pub commands: mpsc::Sender<Inject>,
     /// Absolute pointer position and raw delta after each motion or warp.
     pub pointer: mpsc::Receiver<Captured>,
