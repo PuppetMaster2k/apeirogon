@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::{HotkeyError, MODIFIER_COUNT, Mods, keys::key_name, modifier_bit, trigger_name};
+use super::{Chord, HotkeyError, MODIFIER_COUNT, Mods, keys::key_name, modifier_bit, trigger_name};
 
 const SIDE_MODIFIERS: u32 = MODIFIER_COUNT / 2;
 const SIDE_MODIFIER_MASK: u8 = (1 << SIDE_MODIFIERS) - 1;
@@ -39,7 +39,9 @@ pub fn recorded_chord(usages: &[u32]) -> Result<String, HotkeyError> {
         key_name(key).ok_or_else(|| HotkeyError("that key cannot be used in a chord".into()))?;
     let mut parts = modifier_names(usages);
     parts.push(&name);
-    Ok(parts.join("+"))
+    let value = parts.join("+");
+    Chord::parse(&value)?;
+    Ok(value)
 }
 
 /// Config names for generic jump modifiers (either physical side).
@@ -151,6 +153,7 @@ mod tests {
             (recorded_chord, vec![ctrl]),
             (recorded_chord, vec![a, key_usage("b").unwrap()]),
             (recorded_chord, vec![0]),
+            (recorded_chord, vec![key_usage("volume_up").unwrap()]),
             (recorded_modifiers, vec![]),
             (recorded_modifiers, vec![ctrl, a]),
         ];

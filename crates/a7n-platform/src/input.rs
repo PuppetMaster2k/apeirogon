@@ -4,6 +4,7 @@
 
 use std::time::{Duration, Instant};
 
+use a7n_core::local_input::LocalInput;
 use a7n_proto::v1::{InputEvent, KeyEvent};
 use tokio::sync::mpsc;
 
@@ -33,6 +34,8 @@ mod x11;
 /// Whether received swipes expand into local keyboard shortcuts.
 pub const GESTURE_CHORDS_SUPPORTED: bool = cfg!(windows);
 /// Whether this backend can send or receive the gesture capability.
+pub const LOCAL_INPUTS_SUPPORTED: bool = cfg!(any(windows, target_os = "macos"));
+
 pub const GESTURES_SUPPORTED: bool = cfg!(any(windows, target_os = "macos"));
 
 pub const KEEPALIVE_INTERVAL: Duration = Duration::from_millis(500);
@@ -63,13 +66,14 @@ pub enum Captured {
     Input(InputEvent),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CaptureControl {
     Grab(bool),
     Keepalive,
+    LocalInputs(Vec<LocalInput>),
 }
 
-/// While grabbed, all events still arrive here but do not reach the local OS.
+/// While grabbed, events still arrive; selected local inputs pass through on supported backends.
 #[derive(Debug)]
 pub struct Capture {
     pub bounds: Bounds,

@@ -8,6 +8,7 @@ use std::sync::mpsc as sync;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use a7n_core::local_input::LocalInput;
 use a7n_proto::v1::{
     Button, ButtonEvent, InputEvent, KeyEvent, ScrollEvent, ScrollUnit, input_event,
 };
@@ -36,8 +37,12 @@ use gestures::Swipes;
 
 use tap::Tap;
 
+const BUTTON_COUNT: usize = 6;
+
 const WAKE_SECONDS: f64 = 0.05;
 const KEY_COUNT: usize = 128;
+const MEDIA_KEY_COUNT: usize = 256;
+const CONSUMER_PAGE: u32 = 0x000c_0000;
 const PERMISSION_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 struct State {
@@ -47,7 +52,10 @@ struct State {
     queue_full: bool,
     disabled: bool,
     permission_checked: Instant,
+    local_inputs: Vec<LocalInput>,
+    buttons: [LocalKey; BUTTON_COUNT],
     keys: [LocalKey; KEY_COUNT],
+    media_keys: [LocalKey; MEDIA_KEY_COUNT],
     anchor: CGPoint,
     swipes: Swipes,
 }
@@ -67,7 +75,10 @@ pub(super) fn spawn(
                 queue_full: false,
                 disabled: false,
                 permission_checked: Instant::now(),
+                local_inputs: Vec::new(),
+                buttons: [LocalKey::default(); BUTTON_COUNT],
                 keys: [LocalKey::default(); KEY_COUNT],
+                media_keys: [LocalKey::default(); MEDIA_KEY_COUNT],
                 anchor: CGPoint::new(0.0, 0.0),
                 swipes: Swipes::default(),
             });
@@ -118,6 +129,7 @@ fn tick(
     }
     loop {
         match control.try_recv() {
+            Ok(CaptureControl::LocalInputs(inputs)) => state.borrow_mut().local_inputs = inputs,
             Ok(CaptureControl::Keepalive) => state.borrow_mut().deadman.keepalive(now),
             Ok(CaptureControl::Grab(grab)) => {
                 if grab {
@@ -211,7 +223,13 @@ impl State {
                     return self.grabbed;
                 };
                 let repeat = held.held == down;
-                swallow = held.swallow(down, self.grabbed);
+                swallow = held.swallow(
+                    down,
+                    self.grabbed
+                        && !keymap::hid_from_key(code).is_some_and(|usage| {
+                            self.local_inputs.contains(&LocalInput::Key(usage))
+                        }),
+                );
                 if repeat {
                     return swallow;
                 }
@@ -268,9 +286,52 @@ impl State {
             _ if ty.0 == MEDIA_EVENT => autoreleasepool(|_| media(event)),
             _ => None,
         };
-        if let Some(event) = translated {
-            self.emit(Captured::Input(InputEvent { event: Some(event) }));
+        translated.map_or(swallow, |event| {
+            self.emit_translated(event, ty.0 == MEDIA_EVENT, swallow)
+        })
+    }
+
+    fn emit_translated(
+        &mut self,
+        event: input_event::Event,
+        media_event: bool,
+        mut swallow: bool,
+    ) -> bool {
+        match &event {
+            input_event::Event::Button(button) => {
+                if let Some(held) = usize::try_from(button.button)
+                    .ok()
+                    .and_then(|index| self.buttons.get_mut(index))
+                {
+                    swallow = held.swallow(
+                        button.down,
+                        self.grabbed
+                            && !self
+                                .local_inputs
+                                .contains(&LocalInput::Button(button.button)),
+                    );
+                }
+            }
+            input_event::Event::Key(key) if media_event => {
+                if let Some(held) = key
+                    .usage
+                    .checked_sub(CONSUMER_PAGE)
+                    .and_then(|code| usize::try_from(code).ok())
+                    .and_then(|index| self.media_keys.get_mut(index))
+                {
+                    let repeat = key.down && held.held;
+                    swallow = held.swallow(
+                        key.down,
+                        self.grabbed && !self.local_inputs.contains(&LocalInput::Key(key.usage)),
+                    );
+                    if repeat {
+                        return swallow;
+                    }
+                }
+            }
+            _ => {}
         }
+        self.emit(Captured::Input(InputEvent { event: Some(event) }));
         swallow
     }
 }
@@ -312,10 +373,6 @@ fn media(event: &CGEvent) -> Option<input_event::Event> {
         return None;
     }
     let data = event.data1();
-    // Native autorepeat is generated on the receiver.
-    if data & 1 != 0 {
-        return None;
-    }
     let code = u16::try_from((data >> 16) & 0xFFFF).ok()?;
     let state = u16::try_from((data >> 8) & 0xFF).ok()?;
     if state != MEDIA_DOWN && state != MEDIA_UP {
@@ -375,7 +432,10 @@ mod tests {
             queue_full: false,
             disabled: false,
             permission_checked: start,
+            local_inputs: Vec::new(),
+            buttons: [LocalKey::default(); BUTTON_COUNT],
             keys: [LocalKey::default(); KEY_COUNT],
+            media_keys: [LocalKey::default(); MEDIA_KEY_COUNT],
             anchor: CGPoint::new(0.0, 0.0),
             swipes: Swipes::default(),
         };

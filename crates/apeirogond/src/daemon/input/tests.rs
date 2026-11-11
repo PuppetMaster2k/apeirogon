@@ -17,6 +17,7 @@ mod feedback;
 mod fullscreen;
 mod gestures;
 mod hotkeys;
+mod local_keys;
 mod pause;
 
 struct FakeInput {

@@ -6,12 +6,31 @@ use super::{Action, Cursor, Daemon, EdgeResistance, Inject, MotionScale, landing
 
 impl Daemon {
     pub(in crate::daemon) async fn sync_grab(&mut self) {
+        self.sync_local_inputs().await;
         self.input
             .grab(
                 self.input.focus.is_driven()
                     || matches!(self.input.focus.cursor(), Cursor::Driving(_)),
             )
             .await;
+    }
+
+    pub(in crate::daemon) async fn sync_local_inputs(&mut self) {
+        let inputs = if matches!(self.input.focus.cursor(), Cursor::Driving(_)) {
+            self.input.local_inputs.clone()
+        } else {
+            Vec::new()
+        };
+        if let Some(capture) = &self.input.capture {
+            if capture
+                .control
+                .send(a7n_platform::input::CaptureControl::LocalInputs(inputs))
+                .await
+                .is_err()
+            {
+                self.input.closed();
+            }
+        }
     }
 
     pub(in crate::daemon) async fn input_actions(&mut self, actions: Vec<Action>) {

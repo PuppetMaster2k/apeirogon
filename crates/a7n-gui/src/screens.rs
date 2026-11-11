@@ -111,7 +111,7 @@ impl App {
             .map(|error| error.to_string())
     }
 
-    fn value(&self, key: &str, default: &str) -> String {
+    pub(crate) fn value(&self, key: &str, default: &str) -> String {
         self.edits
             .iter()
             .find(|(edit, _)| edit == key)
