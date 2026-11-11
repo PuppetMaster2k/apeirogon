@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.26.3...v0.27.0) (2026-11-11)
+
+
+### Features
+
+* **core:** let edge pressure decay instead of resetting ([#216](https://github.com/PuppetMaster2k/apeirogon/issues/216)) ([48ab580](https://github.com/PuppetMaster2k/apeirogon/commit/48ab580c36bf490639cb377dd73575303605b4ba))
+
 ## [0.26.3](https://github.com/PuppetMaster2k/apeirogon/compare/v0.26.2...v0.26.3) (2026-11-11)
 
 
