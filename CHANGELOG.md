@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.32.1...v0.33.0) (2026-11-11)
+
+
+### Features
+
+* **gui:** hide addresses for screenshots and streaming ([#235](https://github.com/PuppetMaster2k/apeirogon/issues/235)) ([e657d14](https://github.com/PuppetMaster2k/apeirogon/commit/e657d14656ef173917e943214970873c8041e202))
+
 ## [0.32.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.32.0...v0.32.1) (2026-11-11)
 
 
