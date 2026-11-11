@@ -123,6 +123,7 @@ impl CaptureFlow {
     ) -> Option<ReleaseOrder> {
         match command {
             CaptureControl::LocalInputs(inputs) => drop(inputs),
+            CaptureControl::CursorHidden(_) => {}
             CaptureControl::Keepalive => self.deadman.keepalive(now),
             CaptureControl::Grab(true) => {
                 // A grab request is itself proof that the daemon is alive.

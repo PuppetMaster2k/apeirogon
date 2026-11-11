@@ -181,6 +181,12 @@ crates/
 
 ## Input
 
+- **Idle cursor:** local `input.hide_idle_cursor` (default true, never synced)
+  hides the cursor when a driven session ends. Local pointer movement, remote
+  movement or a new driver shows it again; disabling the setting, daemon
+  shutdown and capture dead-man release also restore it. Supported on Windows
+  and X11; macOS (no public background API) and Wayland are no-ops.
+
 - **Keys:** send physical keys (USB HID usage codes); the receiver applies its
   own keyboard layout. Cmd↔Ctrl swap by default between macOS and other systems,
   per peer off or custom, applied by the sender. Per-peer `modifier_mode` is
@@ -229,7 +235,11 @@ crates/
   edits resolve by last-writer-wins with a version counter (ties by machine
   id) and a notice to the loser. Each leaving edge can disable individual thirds;
   diagonal pushes within an 8-pixel corner box reach corner-only neighbours after edge exits.
-- **Edge resistance:** while any captured local button (or the remote owner's
+- **Edge resistance:** outward travel at an edge builds pressure in pixels;
+  inward travel subtracts its component, floored at zero. Pressure decays at
+  240 px/s, including while resting; zero or tangential motion preserves the
+  remaining pressure. Changing edges or crossing clears pressure.
+  While any captured local button (or the remote owner's
   injected button on a driven machine) is held, edge pushes cannot cross and
   discard accumulated resistance; after release a full push is required again.
   Local `input.fullscreen_hold` (default false, never synced) also blocks edge

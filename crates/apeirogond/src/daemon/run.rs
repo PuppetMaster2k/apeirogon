@@ -87,6 +87,7 @@ impl Daemon {
         } else {
             self.input.hotkeys.next_deadline()
         };
+        let pressure_deadline = self.input.resistance.next_deadline();
         let record_deadline = self.input.recording.next_deadline();
         let files_deadline = self.files_deadline();
         let clipboard_deadline = self.clipboard.held.as_ref().map(|held| held.deadline);
@@ -104,6 +105,7 @@ impl Daemon {
             _ = retry.tick() => self.retry_nearby(),
             _ = sync.tick() => self.flush_sync(Instant::now()).await,
             _ = keepalive.tick() => self.input.keepalive(),
+            () = input::deadline(pressure_deadline) => self.input.poll_edge_pressure(),
             () = input::deadline(hotkey_deadline) => self.poll_hotkey().await,
             () = input::deadline(record_deadline) => self.input.recording.expire(tokio::time::Instant::now().into_std()),
             () = input::deadline(wake_deadline) => {},

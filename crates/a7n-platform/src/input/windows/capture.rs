@@ -26,6 +26,7 @@ use super::{INJECTION_MARKER, keymap, mouse, pointer_position};
 use crate::input::local_key::LocalKey;
 use crate::input::{CaptureControl, Captured, DeadMan, InputError};
 
+mod cursor;
 mod raw_input;
 
 const BUTTON_COUNT: usize = 6;
@@ -42,6 +43,7 @@ struct CaptureState {
     events: Sender<Captured>,
     deadman: DeadMan,
     grabbed: bool,
+    cursor: cursor::Cursor,
     // ponytail: last raw device selects fallback; track devices if mixed mice/tablets need it.
     absolute_motion: bool,
     queue_full: bool,
@@ -65,6 +67,7 @@ pub(super) fn spawn(
                         events,
                         deadman: DeadMan::new(Instant::now()),
                         grabbed: false,
+                        cursor: cursor::Cursor::new(),
                         absolute_motion: false,
                         queue_full: false,
                         last,
@@ -182,6 +185,10 @@ impl CaptureState {
         loop {
             match control.try_recv() {
                 Ok(CaptureControl::LocalInputs(inputs)) => self.local_inputs = inputs,
+                Ok(CaptureControl::CursorHidden(hidden)) => {
+                    self.deadman.keepalive(now);
+                    self.cursor.set_hidden(hidden);
+                }
                 Ok(CaptureControl::Keepalive) => self.deadman.keepalive(now),
                 Ok(CaptureControl::Grab(grab)) => {
                     if grab {
@@ -200,8 +207,9 @@ impl CaptureState {
                 Err(TryRecvError::Disconnected) => return false,
             }
         }
-        if self.grabbed && self.deadman.expired(now) {
+        if (self.grabbed || self.cursor.hidden()) && self.deadman.expired(now) {
             self.grabbed = false;
+            self.cursor.set_hidden(false);
             eprintln!("kind=input_deadman_ungrab");
         }
         // Logging stays outside callbacks, which must never wait for stderr.
@@ -279,6 +287,7 @@ impl CaptureState {
         }
         let mut swallow = self.grabbed;
         if message == WM_MOUSEMOVE {
+            self.cursor.set_hidden(false);
             if let Some(event) = self.motion(mouse.pt) {
                 self.emit(event);
             }

@@ -9,7 +9,7 @@ async fn cross_edge_fullscreen_local_and_driven_push_discards_resistance() {
         let (mut daemon, _dir, _input) = daemon(true);
         let bounds = daemon.input.capture.as_ref().unwrap().bounds;
         daemon.input.resistance = EdgeResistance::new(10);
-        daemon.input.resistance.push(Edge::Right, 8);
+        daemon.input.resistance.push(Edge::Right, 8, now());
         daemon.input.fullscreen_hold = FullscreenHold::new(true);
         daemon.input.fullscreen_hold.holds(true, || true);
 
@@ -17,7 +17,7 @@ async fn cross_edge_fullscreen_local_and_driven_push_discards_resistance() {
         daemon
             .cross_edge(bounds, &[bounds], (99, 50), (1, 0), driven)
             .await;
-        let crossed = daemon.input.resistance.push(Edge::Right, 1);
+        let crossed = daemon.input.resistance.push(Edge::Right, 1, now());
 
         // Assert
         assert!(!crossed);

@@ -18,10 +18,10 @@ impl Daemon {
         let Some((edge, overshoot, along, display)) =
             self.crossing_push(bounds, monitors, (x, y), (dx, dy), driven)
         else {
-            self.input.sink.clear();
+            self.input.poll_edge_pressure();
             return;
         };
-        if !self.input.resistance.push(edge, overshoot) {
+        if !self.input.resistance.push(edge, overshoot, now()) {
             let progress = self.input.resistance.progress();
             self.input.sink.push(display, progress);
             return;
@@ -47,9 +47,10 @@ impl Daemon {
         (dx, dy): (i32, i32),
         driven: bool,
     ) -> Option<(Edge, i32, f32, Bounds)> {
+        self.input.resistance.poll(now());
         if self.input.buttons.any_held() {
             self.input.fullscreen_hold.reset();
-            self.input.resistance.push(Edge::Unspecified, 0);
+            self.input.resistance.push(Edge::Unspecified, 0, now());
             return None;
         }
         if self.input.paused || (!driven && self.input.focus.is_locked()) {
@@ -58,7 +59,17 @@ impl Daemon {
         }
         let Some(push) = edge_push(bounds, monitors, x, y, dx, dy) else {
             self.input.fullscreen_hold.reset();
-            self.input.resistance.push(Edge::Unspecified, 0);
+            if let Some((edge, _)) = self.input.resistance.progress() {
+                let inward = match edge {
+                    Edge::Left => dx.saturating_neg(),
+                    Edge::Right => dx,
+                    Edge::Top => dy.saturating_neg(),
+                    Edge::Bottom => dy,
+                    Edge::Unspecified => 0,
+                }
+                .min(0);
+                self.input.resistance.push(edge, inward, now());
+            }
             return None;
         };
         // ponytail: synchronous query on the async task; offload if measured latency grows.
@@ -67,7 +78,7 @@ impl Daemon {
             .fullscreen_hold
             .holds(true, || focused_fullscreen_at(push.3.rect(), x, y))
         {
-            self.input.resistance.push(Edge::Unspecified, 0);
+            self.input.resistance.push(Edge::Unspecified, 0, now());
             return None;
         }
         Some(push)

@@ -89,6 +89,7 @@ pub struct InputConfig {
     pub natural_scrolling: bool,
     pub fullscreen_hold: bool,
     pub local_keys: Vec<String>,
+    pub hide_idle_cursor: bool,
 }
 
 impl Default for InputConfig {
@@ -98,6 +99,7 @@ impl Default for InputConfig {
             natural_scrolling: false,
             fullscreen_hold: false,
             local_keys: Vec::new(),
+            hide_idle_cursor: true,
         }
     }
 }
@@ -391,7 +393,10 @@ impl Config {
                 ["input", "speed"] => toml::Value::Float(value.parse().map_err(|_| {
                     ConfigError::Invalid("input.speed must be between 0.1 and 10.0".into())
                 })?),
-                ["input", "natural_scrolling" | "fullscreen_hold"]
+                [
+                    "input",
+                    "natural_scrolling" | "fullscreen_hold" | "hide_idle_cursor",
+                ]
                 | ["feedback", "edge" | "landing" | "haptics"]
                 | ["notifications", "files"]
                 | ["peers", _, "allow_drive" | "wake"]

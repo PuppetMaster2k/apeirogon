@@ -38,6 +38,23 @@ pub const LOCAL_INPUTS_SUPPORTED: bool = cfg!(any(windows, target_os = "macos"))
 
 pub const GESTURES_SUPPORTED: bool = cfg!(any(windows, target_os = "macos"));
 
+/// Background cursor hiding is unavailable on macOS, Wayland and other platforms.
+#[must_use]
+pub fn idle_cursor_supported() -> bool {
+    #[cfg(windows)]
+    {
+        true
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        detect_backend() == Backend::X11
+    }
+    #[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
+    {
+        false
+    }
+}
+
 pub const KEEPALIVE_INTERVAL: Duration = Duration::from_millis(500);
 pub const DEADMAN_TIMEOUT: Duration = Duration::from_millis(1500);
 
@@ -65,6 +82,8 @@ pub enum CaptureControl {
     Grab(bool),
     Keepalive,
     LocalInputs(Vec<LocalInput>),
+    /// Hide after remote ownership ends; independent of grabbing.
+    CursorHidden(bool),
 }
 
 /// While grabbed, events still arrive; selected local inputs pass through on supported backends.

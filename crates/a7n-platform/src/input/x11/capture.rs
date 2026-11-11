@@ -120,6 +120,7 @@ impl CaptureThread {
         while self.step(events, &mut control).is_continue() {}
         // Whatever ended the loop, the local user gets the devices back.
         self.release();
+        self.set_cursor_hidden(false);
     }
 
     fn step(
@@ -129,8 +130,9 @@ impl CaptureThread {
     ) -> ControlFlow<()> {
         self.drain_events(events)?;
         self.drain_control(control)?;
-        if self.grabbed && self.deadman.expired(Instant::now()) {
+        if (self.grabbed || self.cursor_hidden) && self.deadman.expired(Instant::now()) {
             self.release();
+            self.set_cursor_hidden(false);
         }
         self.wait_readable()
     }
@@ -170,6 +172,10 @@ impl CaptureThread {
         let now = Instant::now();
         match command {
             CaptureControl::LocalInputs(inputs) => drop(inputs),
+            CaptureControl::CursorHidden(hidden) => {
+                self.deadman.keepalive(now);
+                self.set_cursor_hidden(hidden);
+            }
             CaptureControl::Keepalive => self.deadman.keepalive(now),
             CaptureControl::Grab(true) => {
                 // A grab request is itself proof that the daemon is alive.
@@ -227,8 +233,6 @@ impl CaptureThread {
             .reply()
             .ok()?;
         (pointer.status == GrabStatus::SUCCESS).then_some(())?;
-        conn.xfixes_hide_cursor(root).ok()?;
-        self.cursor_hidden = true;
         conn.flush().ok()
     }
 
@@ -238,12 +242,27 @@ impl CaptureThread {
         let conn = &self.session.conn;
         let _ = conn.ungrab_keyboard(CURRENT_TIME);
         let _ = conn.ungrab_pointer(CURRENT_TIME);
-        if self.cursor_hidden {
-            let _ = conn.xfixes_show_cursor(self.session.root);
-        }
         let _ = conn.flush();
         self.grabbed = false;
-        self.cursor_hidden = false;
+    }
+
+    fn set_cursor_hidden(&mut self, hidden: bool) {
+        if self.cursor_hidden == hidden {
+            return;
+        }
+        let conn = &self.session.conn;
+        let request = if hidden {
+            conn.xfixes_hide_cursor(self.session.root)
+        } else {
+            conn.xfixes_show_cursor(self.session.root)
+        };
+        let result = request
+            .map_err(InputError::from)
+            .and_then(|cookie| cookie.check().map_err(InputError::from));
+        match result {
+            Ok(()) => self.cursor_hidden = hidden,
+            Err(error) => eprintln!("kind=cursor_visibility_failed error={error}"),
+        }
     }
 
     fn translate(&mut self, event: &Event) -> Result<Option<Captured>, x11rb::errors::ReplyError> {
@@ -261,6 +280,7 @@ impl CaptureThread {
                 if dx == 0 && dy == 0 {
                     return Ok(None);
                 }
+                self.set_cursor_hidden(false);
                 let (x, y) = self.session.pointer_position()?;
                 Ok(Some(Captured::Pointer { x, y, dx, dy }))
             }

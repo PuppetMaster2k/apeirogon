@@ -28,6 +28,7 @@ use feedback_sink::FeedbackSink;
 
 pub(super) struct Input {
     pub(super) focus: Focus,
+    pub(super) idle_cursor: a7n_core::cursor::IdleCursor,
     pub(super) capture: Option<Capture>,
     pub(super) injector: Option<Injector>,
     pub(super) unavailable: Option<String>,
@@ -43,7 +44,7 @@ pub(super) struct Input {
     pub(super) shake: ShakeDetector,
     pub(super) recording: recording::Recording,
     pub(super) fullscreen_hold: FullscreenHold,
-    resistance: EdgeResistance,
+    pub(super) resistance: EdgeResistance,
     pub(super) sink: FeedbackSink,
     edge_no_target: Option<Edge>,
     buttons: HeldButtons,
@@ -61,6 +62,7 @@ impl Input {
     pub(super) fn new(own: MachineId) -> Self {
         Self {
             focus: Focus::new(own),
+            idle_cursor: a7n_core::cursor::IdleCursor::new(true),
             capture: None,
             injector: None,
             unavailable: None,
@@ -91,6 +93,15 @@ impl Input {
         self.fullscreen_hold.reset();
         self.sink.clear();
         self.edge_no_target = None;
+    }
+
+    pub(super) fn poll_edge_pressure(&mut self) {
+        self.resistance.poll(now());
+        if self.paused || (!self.focus.is_driven() && self.focus.is_locked()) {
+            self.sink.clear();
+            return;
+        }
+        self.sink.fade(self.resistance.progress());
     }
 
     pub(super) fn keepalive(&mut self) {
@@ -134,7 +145,31 @@ impl Input {
         }
     }
 
+    pub(super) async fn cursor_visibility(&mut self, hidden: Option<bool>) {
+        let (Some(hidden), Some(capture)) = (hidden, &self.capture) else {
+            return;
+        };
+        if capture
+            .control
+            .send(CaptureControl::CursorHidden(hidden))
+            .await
+            .is_err()
+        {
+            self.closed();
+        }
+    }
+
+    async fn show_cursor(&mut self) {
+        let change = self.idle_cursor.show();
+        self.cursor_visibility(change).await;
+    }
+
     async fn inject(&mut self, command: Inject) {
+        if matches!(command, Inject::Motion { dx, dy } if dx != 0 || dy != 0)
+            || matches!(command, Inject::Warp { .. })
+        {
+            self.show_cursor().await;
+        }
         if let Inject::Event(event) = &command {
             self.trace_key(event);
             if let Some(Event::Button(button)) = &event.event {
@@ -251,6 +286,7 @@ impl Daemon {
         }
         self.flush_link_losses().await;
         self.input.grab(false).await;
+        self.input.show_cursor().await;
     }
 
     pub(super) async fn poll_focus(&mut self) {
@@ -390,6 +426,9 @@ impl Daemon {
             self.input.closed();
             return;
         };
+        if matches!(event, Captured::Pointer { dx, dy, .. } if dx != 0 || dy != 0) {
+            self.input.show_cursor().await;
+        }
         if self.record_capture(&event) {
             return;
         }
