@@ -118,6 +118,7 @@ fn tick(
     }
     loop {
         match control.try_recv() {
+            Ok(CaptureControl::CursorHidden(_)) => {}
             Ok(CaptureControl::Keepalive) => state.borrow_mut().deadman.keepalive(now),
             Ok(CaptureControl::Grab(grab)) => {
                 if grab {

@@ -207,6 +207,7 @@ impl Focus {
         if !released.is_empty() {
             actions.push(Action::Release(released));
         }
+        actions.push(Action::EndedDriven);
     }
 
     fn take_over(&mut self, replacement: MachineId, actions: &mut Vec<Action>) {

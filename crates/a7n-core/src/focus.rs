@@ -41,6 +41,7 @@ pub enum Action {
         body: Body,
     },
     Release(Vec<InputEvent>),
+    EndedDriven,
     Cursor(Cursor),
     /// A new remote owner; `landing` is absent for a stay re-arm.
     Driven {

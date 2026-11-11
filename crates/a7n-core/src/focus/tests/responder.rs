@@ -172,3 +172,17 @@ fn on_focus_after_owner_link_lost_accepts_low_route() {
     )));
     assert!(focus.on_remote_input(id(2), Route(1), now));
 }
+
+#[test]
+fn on_link_lost_no_held_inputs_reports_driven_end() {
+    // Arrange
+    let now = Instant::now();
+    let mut focus = Focus::new(id(1));
+    focus.on_focus(id(2), &wire(1), true, now);
+
+    // Act
+    let actions = focus.on_link_lost(id(2));
+
+    // Assert
+    assert_eq!(actions, vec![Action::EndedDriven]);
+}

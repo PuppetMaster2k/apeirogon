@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod clipboard;
+pub mod cursor;
 pub mod desk;
 pub mod display;
 pub mod files;
