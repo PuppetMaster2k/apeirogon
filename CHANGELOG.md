@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.32.0...v0.32.1) (2026-11-11)
+
+
+### Bug Fixes
+
+* **daemon:** glow only on edges that lead to a machine ([#232](https://github.com/PuppetMaster2k/apeirogon/issues/232)) ([cc7c2d8](https://github.com/PuppetMaster2k/apeirogon/commit/cc7c2d86fab0db483de373ee6309299bbe965b04))
+
 ## [0.32.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.31.0...v0.32.0) (2026-11-11)
 
 
