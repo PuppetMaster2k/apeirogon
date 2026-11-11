@@ -10,12 +10,25 @@ use crate::daemon::DaemonError;
 
 pub(crate) async fn serve(server: IpcServer, commands: mpsc::Sender<Command>) {
     let mut connections = tokio::task::JoinSet::new();
+    let accept = server.accept();
+    tokio::pin!(accept);
     loop {
         tokio::select! {
             () = commands.closed() => break,
-            result = server.accept() => match result {
-                Ok(connection) => { connections.spawn(serve_connection(connection, commands.clone())); }
-                Err(_) => crate::log::event!("kind=ipc_accept_failed"),
+            result = &mut accept => {
+                match result {
+                    Ok(stream) => {
+                        let commands = commands.clone();
+                        connections.spawn(async move {
+                            match IpcConnection::accept_stream(stream).await {
+                                Ok(connection) => serve_connection(connection, commands).await,
+                                Err(_) => crate::log::event!("kind=ipc_accept_failed"),
+                            }
+                        });
+                    }
+                    Err(_) => crate::log::event!("kind=ipc_accept_failed"),
+                }
+                accept.set(server.accept());
             },
             Some(_) = connections.join_next(), if !connections.is_empty() => {},
         }
