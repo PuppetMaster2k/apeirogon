@@ -7,7 +7,7 @@ use crate::daemon::transfer::write;
 use crate::pin_store::Entry;
 
 async fn connect(a: &mut Daemon, b: &mut Daemon) {
-    a.store_peer(Entry {
+    a.store_peer(&Entry {
         machine_id: b.identity.machine_id,
         pin: b.identity.pin,
         name: "peer".into(),
@@ -16,7 +16,7 @@ async fn connect(a: &mut Daemon, b: &mut Daemon) {
         screen_mm: None,
     })
     .unwrap();
-    b.store_peer(Entry {
+    b.store_peer(&Entry {
         machine_id: a.identity.machine_id,
         pin: a.identity.pin,
         name: "peer".into(),
