@@ -157,7 +157,7 @@ impl Daemon {
             }
             WakeAction::Edge(landing) => landing,
         };
-        if self.input.paused {
+        if self.input.paused || !self.is_layout_target(pending.peer) {
             return;
         }
         let actions = self.take_peer(pending.peer, Some(landing), now);

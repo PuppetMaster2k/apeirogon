@@ -364,6 +364,11 @@ impl Daemon {
             Some(Body::Accepts(accepts)) => self.input.focus.on_accepts(peer, accepts.accepts),
             Some(Body::Refuse(refuse)) => self.input.focus.on_refuse(peer, refuse),
             Some(Body::Handover(handover)) if !self.input.paused => {
+                if MachineId::try_from(handover.next.as_slice())
+                    .is_ok_and(|next| next != self.identity.machine_id && !self.drive_peer(next))
+                {
+                    return Ok(());
+                }
                 self.input.focus.on_handover(peer, handover, now())
             }
             Some(Body::Ack(ack)) => self.input.focus.on_ack(peer, ack),

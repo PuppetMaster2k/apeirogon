@@ -190,6 +190,20 @@ impl App {
                 },
             );
             ui.separator();
+            let key = format!("{prefix}.drive_peer");
+            let mut drive_peer = self.value(&key, "true") == "true";
+            theme::setting_row(
+                ui,
+                "Drive this machine from here",
+                "Off: edges, jump keys and switching never move input to this machine.",
+                Some("drive_peer"),
+                |ui| {
+                    if theme::toggle(ui, &mut drive_peer).changed() {
+                        self.edit(&key, if drive_peer { "true" } else { "false" }, "true");
+                    }
+                },
+            );
+            ui.separator();
             let key = format!("{prefix}.wake");
             let mut wake = self.value(&key, "true") == "true";
             theme::setting_row(

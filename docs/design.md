@@ -174,6 +174,7 @@ crates/
   1.5 s of unacknowledged input. The ping also measures round-trip time.
 - **Per-peer policy:** `allow_drive` toggle (may this peer drive me?) and
   separate clipboard and file policies (`both`, `send`, `receive`, `ask`, `off`).
+  Local `peers.<id>.drive_peer` (default true, never synced) controls whether this machine may drive that peer; false blocks edges, jump keys, switching and automatic wake.
   File policy is local `peers.<id>.files`, defaults to `ask`, and never syncs.
 - **Settings sync:** convenience settings (hotkeys, speed multipliers) can sync
   across the desk through an allow-list. Security settings (`allow_drive`,

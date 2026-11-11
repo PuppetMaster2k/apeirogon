@@ -35,6 +35,12 @@ impl Daemon {
         self
     }
 
+    pub(super) fn drive_peer(&self, peer: MachineId) -> bool {
+        self.config
+            .peer(&peer)
+            .is_none_or(|policy| policy.drive_peer)
+    }
+
     pub(super) fn allow_drive(&self, peer: MachineId) -> bool {
         self.input.injector.is_some()
             && self.pins.get(&peer).is_some()
