@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.33.0...v0.34.0) (2026-11-11)
+
+
+### Features
+
+* per-peer switch to stop this machine driving a peer ([#238](https://github.com/PuppetMaster2k/apeirogon/issues/238)) ([2440a04](https://github.com/PuppetMaster2k/apeirogon/commit/2440a04691ce2799608242de2ab54bdb22b5c642))
+
 ## [0.33.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.32.1...v0.33.0) (2026-11-11)
 
 
