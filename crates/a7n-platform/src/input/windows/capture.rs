@@ -281,13 +281,14 @@ impl CaptureState {
     fn mouse(&mut self, message: u32, mouse: &MSLLHOOKSTRUCT) -> bool {
         if own_injection(mouse.flags & LLMHF_INJECTED != 0, mouse.dwExtraInfo) {
             if message == WM_MOUSEMOVE {
+                // Show synchronously with the landing, before Windows applies this warp.
+                self.cursor.set_hidden(false);
                 self.last = mouse.pt;
             }
             return false;
         }
         let mut swallow = self.grabbed;
         if message == WM_MOUSEMOVE {
-            self.cursor.set_hidden(false);
             if let Some(event) = self.motion(mouse.pt) {
                 self.emit(event);
             }

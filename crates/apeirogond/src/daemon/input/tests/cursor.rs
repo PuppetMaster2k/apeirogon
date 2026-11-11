@@ -91,16 +91,86 @@ async fn apply_config_hide_disabled_restores_cursor_and_prevents_hiding() {
 }
 
 #[tokio::test]
-async fn shutdown_input_hidden_cursor_restores_visibility() {
+async fn shutdown_input_idle_or_driving_restores_visibility() {
+    // Arrange
+    let reasons = [
+        Action::EndedDriven,
+        Action::Cursor(Cursor::Driving(
+            MachineId::try_from(&[2; MachineId::LEN][..]).unwrap(),
+        )),
+    ];
+    for reason in reasons {
+        let (mut daemon, _dir, fake) = daemon(true);
+        let mut fake = fake.unwrap();
+        daemon.input_actions(vec![reason]).await;
+        visibility(&mut fake);
+
+        // Act
+        daemon.shutdown_input().await;
+
+        // Assert
+        assert_eq!(visibility(&mut fake), [false]);
+    }
+}
+
+#[tokio::test]
+async fn input_actions_driving_motion_then_home_hides_until_home() {
     // Arrange
     let (mut daemon, _dir, fake) = daemon(true);
     let mut fake = fake.unwrap();
-    daemon.input_actions(vec![Action::EndedDriven]).await;
+    let peer = MachineId::try_from(&[2; MachineId::LEN][..]).unwrap();
+
+    // Act
+    daemon
+        .input_actions(vec![Action::Cursor(Cursor::Driving(peer))])
+        .await;
+    daemon
+        .captured(Some(Captured::Pointer {
+            x: 50,
+            y: 50,
+            dx: 1,
+            dy: 0,
+        }))
+        .await;
+    let driving = visibility(&mut fake);
+    daemon
+        .input_actions(vec![Action::Cursor(Cursor::Home)])
+        .await;
+
+    // Assert
+    assert_eq!(driving, [true]);
+    assert_eq!(visibility(&mut fake), [false]);
+}
+
+#[tokio::test]
+async fn input_actions_driving_then_driven_with_landing_restores_visibility() {
+    // Arrange
+    let (mut daemon, _dir, fake) = daemon(true);
+    let mut fake = fake.unwrap();
+    daemon
+        .input_actions(vec![Action::Cursor(Cursor::Driving(
+            MachineId::try_from(&[2; MachineId::LEN][..]).unwrap(),
+        ))])
+        .await;
     visibility(&mut fake);
 
     // Act
-    daemon.shutdown_input().await;
+    daemon
+        .input_actions(vec![Action::Driven {
+            owner: daemon.identity.machine_id,
+            landing: Some(a7n_proto::v1::Landing {
+                edge: a7n_proto::v1::Edge::Left.into(),
+                offset: 0.5,
+                ..Default::default()
+            }),
+            resistance_px: 0,
+        }])
+        .await;
+    let driven = visibility(&mut fake);
+    daemon.input_actions(vec![Action::EndedDriven]).await;
 
     // Assert
-    assert_eq!(visibility(&mut fake), [false]);
+    assert_eq!(driven, [false]);
+    assert!(matches!(fake.inject.try_recv(), Ok(Inject::Warp { .. })));
+    assert_eq!(visibility(&mut fake), [true]);
 }

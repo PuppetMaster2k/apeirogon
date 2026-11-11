@@ -16,8 +16,7 @@ use objc2::rc::autoreleasepool;
 use objc2_app_kit::NSEvent;
 use objc2_core_foundation::{CFRunLoop, CGPoint, kCFRunLoopDefaultMode};
 use objc2_core_graphics::{
-    CGAssociateMouseAndMouseCursorPosition, CGDisplayHideCursor, CGDisplayShowCursor, CGEvent,
-    CGEventField, CGEventTapProxy, CGEventType, CGMainDisplayID,
+    CGAssociateMouseAndMouseCursorPosition, CGEvent, CGEventField, CGEventTapProxy, CGEventType,
 };
 use tokio::sync::mpsc::error::{TryRecvError, TrySendError};
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -30,6 +29,7 @@ use crate::input::local_key::LocalKey;
 use crate::input::{CaptureControl, Captured, DeadMan, InputError};
 use crate::permissions;
 
+mod cursor;
 mod gestures;
 mod tap;
 
@@ -49,6 +49,7 @@ struct State {
     events: Sender<Captured>,
     deadman: DeadMan,
     grabbed: bool,
+    cursor: cursor::Cursor,
     queue_full: bool,
     disabled: bool,
     permission_checked: Instant,
@@ -72,6 +73,7 @@ pub(super) fn spawn(
                 events,
                 deadman: DeadMan::new(Instant::now()),
                 grabbed: false,
+                cursor: cursor::Cursor::default(),
                 queue_full: false,
                 disabled: false,
                 permission_checked: Instant::now(),
@@ -130,7 +132,11 @@ fn tick(
     loop {
         match control.try_recv() {
             Ok(CaptureControl::LocalInputs(inputs)) => state.borrow_mut().local_inputs = inputs,
-            Ok(CaptureControl::CursorHidden(_)) => {}
+            Ok(CaptureControl::CursorHidden(hidden)) => {
+                let mut state = state.borrow_mut();
+                state.deadman.keepalive(now);
+                state.cursor.set_hidden(hidden);
+            }
             Ok(CaptureControl::Keepalive) => state.borrow_mut().deadman.keepalive(now),
             Ok(CaptureControl::Grab(grab)) => {
                 if grab {
@@ -142,8 +148,11 @@ fn tick(
             Err(TryRecvError::Disconnected) => return Ok(false),
         }
     }
-    if state.borrow().grabbed && state.borrow().deadman.expired(now) {
+    if (state.borrow().grabbed || state.borrow().cursor.hidden())
+        && state.borrow().deadman.expired(now)
+    {
         tap.set_grab(state, false)?;
+        state.borrow_mut().cursor.set_hidden(false);
         eprintln!("kind=input_deadman_ungrab");
     }
     let mut state = state.borrow_mut();
@@ -169,13 +178,8 @@ impl State {
             if check(CGAssociateMouseAndMouseCursorPosition(false)).is_err() {
                 return;
             }
-            if check(CGDisplayHideCursor(CGMainDisplayID())).is_err() {
-                let _ = CGAssociateMouseAndMouseCursorPosition(true);
-                return;
-            }
         } else {
             let _ = CGAssociateMouseAndMouseCursorPosition(true);
-            let _ = CGDisplayShowCursor(CGMainDisplayID());
         }
         self.swipes = Swipes::default();
         self.grabbed = grab;
@@ -430,6 +434,7 @@ mod tests {
             events,
             deadman: DeadMan::new(start),
             grabbed: false,
+            cursor: cursor::Cursor::default(),
             queue_full: false,
             disabled: false,
             permission_checked: start,
