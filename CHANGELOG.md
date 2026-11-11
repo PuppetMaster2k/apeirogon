@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.31.0...v0.32.0) (2026-11-11)
+
+
+### Features
+
+* **gui:** choose System, Light or Dark appearance ([#230](https://github.com/PuppetMaster2k/apeirogon/issues/230)) ([2ed77d2](https://github.com/PuppetMaster2k/apeirogon/commit/2ed77d205aa416664bd2d1aea437a42da7953480))
+
 ## [0.31.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.30.1...v0.31.0) (2026-11-11)
 
 
