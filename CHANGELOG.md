@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.27.0...v0.28.0) (2026-11-11)
+
+
+### Features
+
+* hide the cursor on a machine when input leaves it ([#217](https://github.com/PuppetMaster2k/apeirogon/issues/217)) ([3e57a05](https://github.com/PuppetMaster2k/apeirogon/commit/3e57a05164e5331532abf1aa82205030a2f7ce12))
+
 ## [0.27.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.26.3...v0.27.0) (2026-11-11)
 
 
