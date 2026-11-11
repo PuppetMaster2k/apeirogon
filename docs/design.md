@@ -209,10 +209,17 @@ crates/
 - **Pointer:** relative deltas, sent as loss-tolerant cumulative counters so a
   dropped datagram is repaired by the next; every reliable input batch
   resyncs the pointer so clicks land where the user saw it. The receiver
-  applies its own speed and acceleration, plus a per-machine speed multiplier
-  from config.
+  applies its own speed and acceleration, plus `input.speed` (0.1–10.0)
+  multiplied by the driving peer's local `peers.<id>.pointer_speed`
+  (0.25–4.0, default 1.0). The product is clamped to the global speed limits.
 - **Scroll:** pixel (trackpad) or line (wheel) units; the sender applies its
-  natural-scrolling preference first.
+  natural-scrolling preference first. The receiver applies local
+  `peers.<id>.scroll_speed` (0.25–4.0, default 1.0) to both units, retaining
+  fractional remainders between events independently for pixels and lines.
+  `peers.<id>.reverse_scroll` (default false) adds a receiver-side flip of
+  both axes. All three per-peer input settings describe how that peer feels
+  on this machine and never sync. Edit them in per-peer GUI settings or with
+  `a7n config get/set peers.<id>.<setting>`; edits also apply while driven.
 - **Gestures:** three- and four-finger Mac trackpad swipes drive local Windows
   shortcuts when the gesture capability is negotiated. The receiving Windows
   machine configures `[gestures]`: `swipe_up = "meta+tab"` (Task View),

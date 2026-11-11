@@ -7,7 +7,7 @@ use std::time::Instant;
 use a7n_core::focus::edge::{EdgeResistance, FullscreenHold, HeldButtons};
 use a7n_core::focus::{Action, Cursor, Focus, Take};
 use a7n_core::hotkey::{HotkeyMatcher, SHAKE_DEFAULT, ShakeDetector};
-use a7n_core::input::{MotionCounter, MotionScale, MotionTracker};
+use a7n_core::input::{MotionCounter, MotionScale, MotionTracker, ScrollScale};
 use a7n_platform::feedback::Feedback;
 use a7n_platform::input::{Bounds, Capture, CaptureControl, Captured, Inject, Injector};
 use a7n_proto::v1::{Edge, Envelope, InputBatch, envelope::Body, input_event::Event};
@@ -38,6 +38,7 @@ pub(super) struct Input {
     counter: MotionCounter,
     tracker: MotionTracker,
     pub(super) scale: MotionScale,
+    pub(super) scroll_scale: ScrollScale,
     pub(super) modifier_remap: BTreeMap<u32, u32>,
     pub(super) hotkeys: HotkeyMatcher,
     pub(super) gestures: a7n_core::gestures::Bindings,
@@ -72,6 +73,7 @@ impl Input {
             counter: MotionCounter::default(),
             tracker: MotionTracker::default(),
             scale: MotionScale::new(1.0),
+            scroll_scale: ScrollScale::new(1.0, false),
             modifier_remap: BTreeMap::new(),
             hotkeys: HotkeyMatcher::new(a7n_ipc::config::Config::default().bindings()),
             gestures: a7n_ipc::config::Config::default().gesture_bindings(),
@@ -410,7 +412,11 @@ impl Daemon {
                 }
                 continue;
             }
-            self.input.inject(Inject::Event(event.clone())).await;
+            let mut event = event.clone();
+            if let Some(Event::Scroll(scroll)) = &mut event.event {
+                self.input.scroll_scale.apply(scroll);
+            }
+            self.input.inject(Inject::Event(event)).await;
         }
     }
 

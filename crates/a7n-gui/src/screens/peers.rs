@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use a7n_ipc::PeerInfo;
+use a7n_ipc::config::{MAX_PEER_SPEED, MIN_PEER_SPEED};
 use eframe::egui;
 
 use crate::{App, theme};
@@ -243,7 +244,55 @@ impl App {
             }
         });
         ui.add_space(theme::size::SECTION_GAP);
+        theme::card(ui, |ui| self.peer_input(ui, &prefix));
+        ui.add_space(theme::size::SECTION_GAP);
         theme::card(ui, |ui| self.modifier_remaps(ui, &prefix));
+    }
+
+    fn peer_input(&mut self, ui: &mut egui::Ui, prefix: &str) {
+        ui.heading("Input from this machine");
+        for (name, title, help) in [
+            (
+                "pointer_speed",
+                "Pointer speed",
+                "Multiplies your base pointer speed when this machine drives you.",
+            ),
+            (
+                "scroll_speed",
+                "Scroll speed",
+                "Wheel and trackpad speed when this machine drives you.",
+            ),
+        ] {
+            let key = format!("{prefix}.{name}");
+            let mut percent = self.value(&key, "1.0").parse::<f64>().unwrap_or(1.0) * 100.0;
+            theme::setting_row(ui, title, help, None, |ui| {
+                if ui
+                    .add(
+                        egui::Slider::new(
+                            &mut percent,
+                            MIN_PEER_SPEED * 100.0..=MAX_PEER_SPEED * 100.0,
+                        )
+                        .suffix(" %"),
+                    )
+                    .changed()
+                {
+                    self.edit(&key, &(percent / 100.0).to_string(), "1.0");
+                }
+            });
+        }
+        let key = format!("{prefix}.reverse_scroll");
+        let mut reverse = self.value(&key, "false") == "true";
+        theme::setting_row(
+            ui,
+            "Reverse scrolling",
+            "Reverse both scroll directions received from this machine.",
+            None,
+            |ui| {
+                if ui.checkbox(&mut reverse, "Reverse scrolling").changed() {
+                    self.edit(&key, if reverse { "true" } else { "false" }, "false");
+                }
+            },
+        );
     }
 
     fn modifier_remaps(&mut self, ui: &mut egui::Ui, prefix: &str) {

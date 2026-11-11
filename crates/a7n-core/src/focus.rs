@@ -146,6 +146,12 @@ impl Focus {
         self.driven.is_some()
     }
 
+    /// The peer currently driving this machine.
+    #[must_use]
+    pub fn driven_by(&self) -> Option<MachineId> {
+        self.driven.as_ref().map(|driven| driven.owner)
+    }
+
     /// None when there is no take awaiting an answer.
     #[must_use]
     pub fn next_deadline(&self) -> Option<Instant> {

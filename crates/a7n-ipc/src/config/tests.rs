@@ -186,3 +186,65 @@ fn set_invalid_value_leaves_config_unchanged() {
         assert_eq!(config.to_toml().unwrap(), before, "{key} = {value}");
     }
 }
+
+#[test]
+fn set_peer_input_invalid_speeds_are_rejected_without_mutation() {
+    // Arrange
+    let id = "01010101010101010101010101010101";
+    for field in ["pointer_speed", "scroll_speed"] {
+        for value in ["0.249", "4.001", "nan", "inf", "-inf"] {
+            let mut config = Config::default();
+            let key = format!("peers.{id}.{field}");
+            let before = config.to_toml().unwrap();
+
+            // Act
+            let result = config.set(&key, value);
+            let parsed = Config::parse(&format!("[peers.{id}]\n{field} = {value}"));
+
+            // Assert
+            assert!(result.unwrap_err().to_string().contains(&key));
+            assert!(parsed.unwrap_err().to_string().contains(&key));
+            assert_eq!(config.to_toml().unwrap(), before);
+        }
+    }
+}
+
+#[test]
+fn set_peer_input_values_round_trip_with_legacy_defaults() {
+    // Arrange
+    let id = "01010101010101010101010101010101";
+    let mut config = Config::parse(&format!("[peers.{id}]\nwake = false")).unwrap();
+    for (field, expected) in [
+        ("pointer_speed", "1.0"),
+        ("scroll_speed", "1.0"),
+        ("reverse_scroll", "false"),
+    ] {
+        assert_eq!(
+            config.get(&format!("peers.{id}.{field}")).unwrap(),
+            expected
+        );
+    }
+
+    // Act
+    for (field, value) in [
+        ("pointer_speed", "0.25"),
+        ("scroll_speed", "4.0"),
+        ("reverse_scroll", "true"),
+    ] {
+        config.set(&format!("peers.{id}.{field}"), value).unwrap();
+    }
+    let parsed = Config::parse(&config.to_toml().unwrap()).unwrap();
+
+    // Assert
+    for (field, expected) in [
+        ("pointer_speed", "0.25"),
+        ("scroll_speed", "4.0"),
+        ("reverse_scroll", "true"),
+    ] {
+        assert_eq!(
+            parsed.get(&format!("peers.{id}.{field}")).unwrap(),
+            expected
+        );
+    }
+    assert!(!parsed.peer(&id.parse().unwrap()).unwrap().wake);
+}

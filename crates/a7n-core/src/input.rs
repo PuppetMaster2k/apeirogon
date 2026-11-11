@@ -8,7 +8,9 @@ use a7n_proto::v1::{Edge, Motion};
 use crate::layout::Corner;
 
 mod geometry;
+mod scroll;
 pub use geometry::{Bounds, landing_point};
+pub use scroll::ScrollScale;
 
 /// Maximum distance in pixels from an edge end for a diagonal crossing.
 pub const CORNER_BOX: i64 = 8;
@@ -32,14 +34,17 @@ impl MotionScale {
 
     pub fn apply(&mut self, dx: i32, dy: i32) -> (i32, i32) {
         (
-            Self::axis(dx, self.speed, &mut self.remainder.0),
-            Self::axis(dy, self.speed, &mut self.remainder.1),
+            Self::axis(f64::from(dx), self.speed, &mut self.remainder.0),
+            Self::axis(f64::from(dy), self.speed, &mut self.remainder.1),
         )
     }
 
     #[allow(clippy::cast_possible_truncation)] // Pixel deltas truncate toward zero and saturate at i32 bounds.
-    fn axis(delta: i32, speed: f64, remainder: &mut f64) -> i32 {
-        let scaled = f64::from(delta) * speed + *remainder;
+    fn axis(delta: f64, speed: f64, remainder: &mut f64) -> i32 {
+        if !delta.is_finite() {
+            return 0;
+        }
+        let scaled = delta * speed + *remainder;
         *remainder = scaled.fract();
         scaled as i32
     }

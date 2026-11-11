@@ -20,8 +20,10 @@ pub use files::FilesConfig;
 pub use gestures::GestureConfig;
 pub use hotkeys::HotkeyConfig;
 
-const MIN_SPEED: f64 = 0.1;
-const MAX_SPEED: f64 = 10.0;
+pub const MIN_SPEED: f64 = 0.1;
+pub const MAX_SPEED: f64 = 10.0;
+pub const MIN_PEER_SPEED: f64 = 0.25;
+pub const MAX_PEER_SPEED: f64 = 4.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -128,6 +130,9 @@ impl Default for FeedbackConfig {
 pub struct PeerConfig {
     pub allow_drive: bool,
     pub wake: bool,
+    pub pointer_speed: f64,
+    pub scroll_speed: f64,
+    pub reverse_scroll: bool,
     pub clipboard: ClipboardPolicy,
     pub files: ClipboardPolicy,
     pub modifier_mode: ModifierMode,
@@ -139,6 +144,9 @@ impl Default for PeerConfig {
         Self {
             allow_drive: true,
             wake: true,
+            pointer_speed: 1.0,
+            scroll_speed: 1.0,
+            reverse_scroll: false,
             clipboard: ClipboardPolicy::default(),
             files: ClipboardPolicy::Ask,
             modifier_mode: ModifierMode::default(),
@@ -317,7 +325,17 @@ impl Config {
             ));
         }
         let mut ids = BTreeSet::new();
-        for id in self.peers.keys() {
+        for (id, peer) in &self.peers {
+            for (field, speed) in [
+                ("pointer_speed", peer.pointer_speed),
+                ("scroll_speed", peer.scroll_speed),
+            ] {
+                if !(MIN_PEER_SPEED..=MAX_PEER_SPEED).contains(&speed) {
+                    return Err(ConfigError::Invalid(format!(
+                        "peers.{id}.{field} must be between {MIN_PEER_SPEED} and {MAX_PEER_SPEED}"
+                    )));
+                }
+            }
             let machine = id.parse::<MachineId>().map_err(|_| {
                 ConfigError::Invalid(format!("peers.{id} must be a 32 hex machine id"))
             })?;
@@ -390,6 +408,9 @@ impl Config {
                 ["port"] => toml::Value::Integer(value.parse().map_err(|_| {
                     ConfigError::Invalid("port must be between 1 and 65535".into())
                 })?),
+                ["peers", _, "pointer_speed" | "scroll_speed"] => {
+                    toml::Value::Float(value.parse().map_err(|_| invalid())?)
+                }
                 ["input", "speed"] => toml::Value::Float(value.parse().map_err(|_| {
                     ConfigError::Invalid("input.speed must be between 0.1 and 10.0".into())
                 })?),
@@ -399,7 +420,7 @@ impl Config {
                 ]
                 | ["feedback", "edge" | "landing" | "haptics"]
                 | ["notifications", "files"]
-                | ["peers", _, "allow_drive" | "wake"]
+                | ["peers", _, "allow_drive" | "wake" | "reverse_scroll"]
                 | ["sync", "settings"] => {
                     toml::Value::Boolean(value.parse().map_err(|_| {
                         ConfigError::Invalid(format!("{key} must be true or false"))
