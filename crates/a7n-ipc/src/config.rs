@@ -14,10 +14,12 @@ use serde::{Deserialize, Serialize};
 
 mod files;
 mod gestures;
+mod gui;
 mod hotkeys;
 mod local_keys;
 pub use files::FilesConfig;
 pub use gestures::GestureConfig;
+pub use gui::{Appearance, GuiConfig};
 pub use hotkeys::HotkeyConfig;
 
 pub const MIN_SPEED: f64 = 0.1;
@@ -40,6 +42,7 @@ pub struct Config {
     pub clipboard: ClipboardConfig,
     pub files: FilesConfig,
     pub notifications: NotificationsConfig,
+    pub gui: GuiConfig,
 }
 
 impl Default for Config {
@@ -56,6 +59,7 @@ impl Default for Config {
             clipboard: ClipboardConfig::default(),
             files: FilesConfig::default(),
             notifications: NotificationsConfig::default(),
+            gui: GuiConfig::default(),
         }
     }
 }
@@ -392,9 +396,8 @@ impl Config {
                     "gestures",
                     "swipe_up" | "swipe_down" | "swipe_left" | "swipe_right",
                 ]
-                | ["hotkeys", "double_tap" | "trigger_mode" | "lock" | "jump"] => {
-                    toml::Value::String(value.into())
-                }
+                | ["hotkeys", "double_tap" | "trigger_mode" | "lock" | "jump"]
+                | ["gui", "appearance"] => toml::Value::String(value.into()),
                 ["hotkeys", "home"] | ["input", "local_keys"] => toml::Value::Array(
                     value
                         .split(',')

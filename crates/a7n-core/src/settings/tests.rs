@@ -43,6 +43,7 @@ fn try_from_unknown_and_security_keys_drops_everything_outside_allow_list() {
         ),
         ("clipboard.deny_apps".into(), "[]".into()),
         ("notifications.files".into(), "false".into()),
+        ("gui.appearance".into(), "dark".into()),
         ("unknown".into(), "value".into()),
     ]
     .into();

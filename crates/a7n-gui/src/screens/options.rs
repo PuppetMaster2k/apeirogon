@@ -16,6 +16,40 @@ struct Toggle {
 const NOT_ON_WAYLAND: &str = "Not available on Wayland";
 
 impl App {
+    pub(crate) fn apply_appearance(&self, ctx: &egui::Context) {
+        ctx.set_theme(match self.value("gui.appearance", "system").as_str() {
+            "light" => egui::ThemePreference::Light,
+            "dark" => egui::ThemePreference::Dark,
+            _ => egui::ThemePreference::System,
+        });
+    }
+
+    pub(super) fn appearance_options(&mut self, ui: &mut egui::Ui) {
+        const KEY: &str = "gui.appearance";
+        let current = self.value(KEY, "system");
+        let mut value = current.as_str();
+        theme::card(ui, |ui| {
+            theme::setting_row(
+                ui,
+                "Appearance",
+                "Choose the window theme. System follows this machine's light or dark setting.",
+                Some(KEY),
+                |ui| {
+                    if theme::segmented(
+                        ui,
+                        &mut value,
+                        &[("system", "System"), ("light", "Light"), ("dark", "Dark")],
+                    )
+                    .changed()
+                    {
+                        self.edit(KEY, value, "system");
+                        self.apply_appearance(ui.ctx());
+                    }
+                },
+            );
+        });
+    }
+
     pub(super) fn input_options(&mut self, ui: &mut egui::Ui) {
         self.toggle_card(
             ui,
