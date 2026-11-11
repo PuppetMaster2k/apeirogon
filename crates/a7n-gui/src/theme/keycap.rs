@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use eframe::egui::{
-    Align, CornerRadius, Frame, Layout, Margin, Response, RichText, Stroke, Ui, vec2,
+    Align, CornerRadius, Frame, Label, Layout, Margin, Response, RichText, Stroke, Ui, vec2,
 };
 
 use super::{Palette, font_mono, size};
+
+const KEYCAP_MARGIN_X: i8 = 7;
+const KEYCAP_MARGIN_Y: i8 = 2;
+const KEYCAP_SPACING: f32 = 4.0;
+const KEYCAP_FONT_SIZE: f32 = 12.0;
+const KEYCAP_STROKE: f32 = 1.0;
 
 /// Shared display names for config keys used in chords and modifier remaps.
 pub(crate) fn key_name(key: &str) -> String {
@@ -37,14 +43,17 @@ pub(crate) fn keycap(ui: &mut Ui, key: &str) -> Response {
     let p = Palette::of(ui.ctx());
     Frame::new()
         .fill(p.hover)
-        .stroke(Stroke::new(1.0, p.border_strong))
+        .stroke(Stroke::new(KEYCAP_STROKE, p.border_strong))
         .corner_radius(CornerRadius::same(size::R_KEYCAP))
-        .inner_margin(Margin::symmetric(7, 2))
+        .inner_margin(Margin::symmetric(KEYCAP_MARGIN_X, KEYCAP_MARGIN_Y))
         .show(ui, |ui| {
-            ui.label(
-                RichText::new(key_name(key))
-                    .font(font_mono(12.0))
-                    .color(p.text),
+            ui.add(
+                Label::new(
+                    RichText::new(key_name(key))
+                        .font(font_mono(KEYCAP_FONT_SIZE))
+                        .color(p.text),
+                )
+                .extend(),
             );
         })
         .response
@@ -57,17 +66,22 @@ pub(crate) fn chord(ui: &mut Ui, chord: &str) {
         .iter()
         .map(|key| {
             ui.painter()
-                .layout_no_wrap(key_name(key), font_mono(12.0), Palette::of(ui.ctx()).text)
+                .layout_no_wrap(
+                    key_name(key),
+                    font_mono(KEYCAP_FONT_SIZE),
+                    Palette::of(ui.ctx()).text,
+                )
                 .size()
                 .x
-                + 18.0
+                + 2.0 * (f32::from(KEYCAP_MARGIN_X) + KEYCAP_STROKE)
         })
-        .sum();
+        .sum::<f32>()
+        + keys.iter().skip(1).map(|_| KEYCAP_SPACING).sum::<f32>();
     ui.allocate_ui_with_layout(
         vec2(width.min(ui.available_width()), size::CONTROL_H),
         Layout::left_to_right(Align::Center).with_main_wrap(true),
         |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().item_spacing.x = KEYCAP_SPACING;
             for key in keys {
                 keycap(ui, key);
             }
