@@ -17,6 +17,10 @@ impl Daemon {
     pub(in crate::daemon) async fn input_actions(&mut self, actions: Vec<Action>) {
         for action in actions {
             match action {
+                Action::EndedDriven => {
+                    let change = self.input.idle_cursor.ended_driven();
+                    self.input.cursor_visibility(change).await;
+                }
                 Action::Send { peer, body } => self.send_input(peer, body),
                 Action::Release(events) => {
                     self.input.reset_edge_state();
@@ -39,6 +43,7 @@ impl Daemon {
                     resistance_px,
                     ..
                 } => {
+                    self.input.show_cursor().await;
                     self.input.reset_edge_state();
                     self.input.hotkeys = HotkeyMatcher::new(self.config.bindings());
                     self.input.shake = ShakeDetector::new(self.config.hotkeys.shake);

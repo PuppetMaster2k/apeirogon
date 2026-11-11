@@ -17,6 +17,7 @@ fn try_from_unknown_and_security_keys_drops_everything_outside_allow_list() {
     wire.values = [
         ("input.speed".into(), "2".into()),
         ("input.fullscreen_hold".into(), "true".into()),
+        ("input.hide_idle_cursor".into(), "false".into()),
         (
             "peers.01010101010101010101010101010101.allow_drive".into(),
             "false".into(),

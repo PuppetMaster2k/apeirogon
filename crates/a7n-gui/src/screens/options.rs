@@ -29,6 +29,14 @@ impl App {
                     unavailable: None,
                 },
                 Toggle {
+                    key: "input.hide_idle_cursor",
+                    title: "Hide the cursor when remote input leaves",
+                    help: "Show it again when the mouse moves or another machine takes control.",
+                    default: "true",
+                    unavailable: (!a7n_platform::input::idle_cursor_supported())
+                        .then_some("Only available on Windows and X11"),
+                },
+                Toggle {
                     key: "input.fullscreen_hold",
                     title: "Keep the pointer in full-screen apps",
                     help: "Edges don't switch machines while a full-screen app or game has focus. Shortcuts still work.",

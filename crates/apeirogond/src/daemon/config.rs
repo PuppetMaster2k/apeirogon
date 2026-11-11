@@ -20,6 +20,7 @@ impl Daemon {
             .clone()
             .or_else(a7n_platform::host_name)
             .unwrap_or_else(|| self.identity.machine_id.to_string());
+        self.input.idle_cursor = a7n_core::cursor::IdleCursor::new(config.input.hide_idle_cursor);
         self.input.scale = MotionScale::new(config.input.speed);
         self.input.fullscreen_hold = FullscreenHold::new(config.input.fullscreen_hold);
         self.input.sink.configure(config.feedback);
@@ -52,6 +53,11 @@ impl Daemon {
     }
 
     pub(super) async fn apply_config(&mut self, config: Config) {
+        let change = self
+            .input
+            .idle_cursor
+            .configure(config.input.hide_idle_cursor);
+        self.input.cursor_visibility(change).await;
         let before: Vec<_> = self
             .links
             .by_peer
