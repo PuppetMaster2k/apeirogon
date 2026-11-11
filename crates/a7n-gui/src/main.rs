@@ -103,7 +103,18 @@ impl App {
                 Update::Recorded(result) => {
                     if let Some(key) = self.recording_hotkey.take() {
                         match result {
-                            Ok(value) => self.edit(&key, &value, ""),
+                            Ok(mut value) => {
+                                if key == "input.local_keys" {
+                                    let current = self.value(&key, "");
+                                    if current.split(',').any(|name| name == value) {
+                                        continue;
+                                    }
+                                    if !current.is_empty() {
+                                        value = format!("{current},{value}");
+                                    }
+                                }
+                                self.edit(&key, &value, "");
+                            }
                             Err(message) => self.message = message,
                         }
                     }

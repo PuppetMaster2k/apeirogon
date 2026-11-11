@@ -122,6 +122,7 @@ impl CaptureFlow {
         now: Instant,
     ) -> Option<ReleaseOrder> {
         match command {
+            CaptureControl::LocalInputs(inputs) => drop(inputs),
             CaptureControl::CursorHidden(_) => {}
             CaptureControl::Keepalive => self.deadman.keepalive(now),
             CaptureControl::Grab(true) => {

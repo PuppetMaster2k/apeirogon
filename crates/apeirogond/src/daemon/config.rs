@@ -27,6 +27,9 @@ impl Daemon {
         self.input.hotkeys = HotkeyMatcher::new(config.bindings());
         self.input.gestures = config.gesture_bindings();
         self.input.shake = ShakeDetector::new(config.hotkeys.shake);
+        self.input.local_inputs = config
+            .local_inputs()
+            .expect("local input settings have been validated");
         self.config = config;
         self.config_path = path;
         self
@@ -74,7 +77,11 @@ impl Daemon {
         self.input.hotkeys = HotkeyMatcher::new(config.bindings());
         self.input.gestures = config.gesture_bindings();
         self.input.shake = ShakeDetector::new(config.hotkeys.shake);
+        self.input.local_inputs = config
+            .local_inputs()
+            .expect("local input settings have been validated");
         self.config = config;
+        self.sync_local_inputs().await;
         self.recheck_files_policy();
         for (peer, was_allowed) in before {
             let accepts = self.allow_drive(peer);

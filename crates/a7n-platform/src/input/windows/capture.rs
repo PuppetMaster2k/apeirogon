@@ -9,6 +9,7 @@ use std::sync::mpsc as sync;
 use std::thread;
 use std::time::Instant;
 
+use a7n_core::local_input::LocalInput;
 use a7n_proto::v1::{InputEvent, KeyEvent, input_event};
 use tokio::sync::mpsc::error::{TryRecvError, TrySendError};
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -28,6 +29,8 @@ use crate::input::{CaptureControl, Captured, DeadMan, InputError};
 mod cursor;
 mod raw_input;
 
+const BUTTON_COUNT: usize = 6;
+
 const WAKE_INTERVAL_MS: u32 = 50;
 const SCAN_CODE_COUNT: usize = 256;
 const HELD_KEY_COUNT: usize = SCAN_CODE_COUNT * 3;
@@ -45,6 +48,8 @@ struct CaptureState {
     absolute_motion: bool,
     queue_full: bool,
     last: POINT,
+    local_inputs: Vec<LocalInput>,
+    buttons: [LocalKey; BUTTON_COUNT],
     keys: [LocalKey; HELD_KEY_COUNT],
 }
 
@@ -66,6 +71,8 @@ pub(super) fn spawn(
                         absolute_motion: false,
                         queue_full: false,
                         last,
+                        local_inputs: Vec::new(),
+                        buttons: [LocalKey::default(); BUTTON_COUNT],
                         keys: [LocalKey::default(); HELD_KEY_COUNT],
                     });
                 });
@@ -177,6 +184,7 @@ impl CaptureState {
     fn tick(&mut self, control: &mut Receiver<CaptureControl>, now: Instant) -> bool {
         loop {
             match control.try_recv() {
+                Ok(CaptureControl::LocalInputs(inputs)) => self.local_inputs = inputs,
                 Ok(CaptureControl::CursorHidden(hidden)) => {
                     self.deadman.keepalive(now);
                     self.cursor.set_hidden(hidden);
@@ -253,7 +261,10 @@ impl CaptureState {
         {
             let down = key.flags & LLKHF_UP == 0;
             let repeat = down && held.held;
-            swallow = held.swallow(down, self.grabbed);
+            swallow = held.swallow(
+                down,
+                self.grabbed && !self.local_inputs.contains(&LocalInput::Key(usage)),
+            );
             if !repeat {
                 self.emit(Captured::Input(InputEvent {
                     event: Some(input_event::Event::Key(KeyEvent {
@@ -274,15 +285,30 @@ impl CaptureState {
             }
             return false;
         }
+        let mut swallow = self.grabbed;
         if message == WM_MOUSEMOVE {
             self.cursor.set_hidden(false);
             if let Some(event) = self.motion(mouse.pt) {
                 self.emit(event);
             }
         } else if let Some(event) = mouse::translate(message, mouse.mouseData) {
+            if let input_event::Event::Button(button) = &event {
+                if let Some(held) = usize::try_from(button.button)
+                    .ok()
+                    .and_then(|index| self.buttons.get_mut(index))
+                {
+                    swallow = held.swallow(
+                        button.down,
+                        self.grabbed
+                            && !self
+                                .local_inputs
+                                .contains(&LocalInput::Button(button.button)),
+                    );
+                }
+            }
             self.emit(Captured::Input(InputEvent { event: Some(event) }));
         }
-        self.grabbed
+        swallow
     }
 
     fn motion(&mut self, point: POINT) -> Option<Captured> {

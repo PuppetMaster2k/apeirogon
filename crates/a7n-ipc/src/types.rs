@@ -17,6 +17,7 @@ pub enum HotkeyKind {
     Trigger,
     Chord,
     Modifiers,
+    Single,
 }
 
 /// Commands accepted after the version handshake.

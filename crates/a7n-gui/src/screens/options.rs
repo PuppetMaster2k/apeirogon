@@ -45,6 +45,51 @@ impl App {
                 },
             ],
         );
+        self.local_keys(ui);
+    }
+
+    fn local_keys(&mut self, ui: &mut egui::Ui) {
+        const KEY: &str = "input.local_keys";
+        theme::card(ui, |ui| {
+            ui.heading("Local keys and buttons");
+            theme::small(
+                ui,
+                "Keep these inputs on this machine while driving another. Hotkeys still take priority.",
+            );
+            if !a7n_platform::input::LOCAL_INPUTS_SUPPORTED {
+                theme::small(ui, "Local pass-through is unavailable on X11 and Wayland.");
+            }
+            let mut names: Vec<String> = self
+                .value(KEY, "")
+                .split(',')
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+                .collect();
+            let mut removed = None;
+            for (index, name) in names.iter().enumerate() {
+                ui.push_id(index, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(name);
+                        if theme::button(
+                            ui,
+                            theme::ButtonKind::Ghost,
+                            theme::ButtonSize::Sm,
+                            None,
+                            "Remove",
+                        )
+                        .clicked()
+                        {
+                            removed = Some(index);
+                        }
+                    });
+                });
+            }
+            if let Some(index) = removed {
+                names.remove(index);
+                self.edit(KEY, &names.join(","), "");
+            }
+            self.record_hotkey(ui, KEY, a7n_ipc::HotkeyKind::Single);
+        });
     }
 
     pub(super) fn feedback_options(&mut self, ui: &mut egui::Ui) {

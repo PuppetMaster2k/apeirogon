@@ -171,6 +171,7 @@ impl CaptureThread {
     fn apply(&mut self, command: CaptureControl) {
         let now = Instant::now();
         match command {
+            CaptureControl::LocalInputs(inputs) => drop(inputs),
             CaptureControl::CursorHidden(hidden) => {
                 self.deadman.keepalive(now);
                 self.set_cursor_hidden(hidden);

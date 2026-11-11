@@ -4,8 +4,9 @@ use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
 use a7n_core::hotkey::{HotkeyMatcher, recorded_chord, recorded_modifiers, recorded_trigger};
+use a7n_core::local_input::LocalInput;
 use a7n_ipc::HotkeyKind;
-use a7n_proto::v1::{KeyEvent, input_event::Event};
+use a7n_proto::v1::input_event::Event;
 
 use super::{Captured, Daemon, DaemonError, now};
 use crate::command::Reply;
@@ -17,12 +18,13 @@ struct Pending {
     kind: HotkeyKind,
     reply: Reply<String>,
     keys: BTreeSet<u32>,
+    single: Option<LocalInput>,
 }
 
 #[derive(Default)]
 pub(in crate::daemon) struct Recording {
     pending: Option<Pending>,
-    suppressed: BTreeSet<u32>,
+    suppressed: BTreeSet<LocalInput>,
 }
 
 impl Recording {
@@ -41,10 +43,20 @@ impl Recording {
             return;
         };
         let keys: Vec<_> = pending.keys.into_iter().collect();
-        let result = if keys.is_empty() {
+        let result = if keys.is_empty() && pending.single.is_none() {
+            Err(DaemonError::InvalidRequest("no key pressed"))
+        } else if pending.kind == HotkeyKind::Single {
+            pending
+                .single
+                .and_then(LocalInput::name)
+                .ok_or(DaemonError::InvalidRequest(
+                    "pick one named key or middle, back or forward mouse button",
+                ))
+        } else if keys.is_empty() {
             Err(DaemonError::InvalidRequest("no key pressed"))
         } else {
             match pending.kind {
+                HotkeyKind::Single => unreachable!("single inputs were handled above"),
                 HotkeyKind::Trigger => recorded_trigger(&keys),
                 HotkeyKind::Chord => recorded_chord(&keys),
                 HotkeyKind::Modifiers => recorded_modifiers(&keys),
@@ -54,25 +66,37 @@ impl Recording {
         let _ = pending.reply.send(result);
     }
 
-    fn on_key(&mut self, key: &KeyEvent) -> bool {
-        if !key.down && self.suppressed.remove(&key.usage) {
+    fn on_key(&mut self, key: &a7n_proto::v1::KeyEvent) -> bool {
+        self.on_input(LocalInput::Key(key.usage), key.down)
+    }
+
+    fn on_input(&mut self, input: LocalInput, down: bool) -> bool {
+        if !down && self.suppressed.remove(&input) {
             if self.suppressed.is_empty() {
                 self.finish();
             }
             return true;
         }
         // A timeout or disconnected client must still consume held keys through release.
-        if self.suppressed.contains(&key.usage) {
+        if self.suppressed.contains(&input) {
             return true;
         }
         let Some(pending) = &mut self.pending else {
             return false;
         };
-        if !key.down || pending.reply.is_closed() {
+        if !down || pending.reply.is_closed() {
             return false;
         }
-        pending.keys.insert(key.usage);
-        self.suppressed.insert(key.usage);
+        if pending.kind != HotkeyKind::Single && matches!(input, LocalInput::Button(_)) {
+            return false;
+        }
+        if pending.kind == HotkeyKind::Single && pending.single.is_none() {
+            pending.single = Some(input);
+        }
+        if let LocalInput::Key(usage) = input {
+            pending.keys.insert(usage);
+        }
+        self.suppressed.insert(input);
         true
     }
 }
@@ -102,6 +126,7 @@ impl Daemon {
             kind,
             reply,
             keys: BTreeSet::new(),
+            single: None,
         });
     }
 
@@ -110,10 +135,12 @@ impl Daemon {
         let Captured::Input(input) = event else {
             return false;
         };
-        let Some(Event::Key(key)) = &input.event else {
-            return false;
-        };
-        self.input.recording.on_key(key)
+        match &input.event {
+            Some(Event::Key(key)) => self.input.recording.on_key(key),
+            Some(event) => LocalInput::from_event(event)
+                .is_some_and(|(input, down)| self.input.recording.on_input(input, down)),
+            None => false,
+        }
     }
 }
 

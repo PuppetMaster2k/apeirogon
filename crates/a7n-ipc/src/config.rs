@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 mod files;
 mod gestures;
 mod hotkeys;
+mod local_keys;
 pub use files::FilesConfig;
 pub use gestures::GestureConfig;
 pub use hotkeys::HotkeyConfig;
@@ -87,6 +88,7 @@ pub struct InputConfig {
     pub speed: f64,
     pub natural_scrolling: bool,
     pub fullscreen_hold: bool,
+    pub local_keys: Vec<String>,
     pub hide_idle_cursor: bool,
 }
 
@@ -96,6 +98,7 @@ impl Default for InputConfig {
             speed: 1.0,
             natural_scrolling: false,
             fullscreen_hold: false,
+            local_keys: Vec::new(),
             hide_idle_cursor: true,
         }
     }
@@ -300,6 +303,7 @@ impl Config {
                 "input.speed must be between 0.1 and 10.0".into(),
             ));
         }
+        self.local_inputs()?;
         self.parse_bindings()?;
         self.gestures.bindings()?;
         if self
@@ -373,9 +377,10 @@ impl Config {
                 | ["hotkeys", "double_tap" | "trigger_mode" | "lock" | "jump"] => {
                     toml::Value::String(value.into())
                 }
-                ["hotkeys", "home"] => toml::Value::Array(
+                ["hotkeys", "home"] | ["input", "local_keys"] => toml::Value::Array(
                     value
                         .split(',')
+                        .filter(|entry| !value.is_empty() || !entry.is_empty())
                         .map(|chord| toml::Value::String(chord.trim().into()))
                         .collect(),
                 ),
@@ -435,6 +440,9 @@ impl Config {
                 .receive_dir()
                 .ok()
                 .map(|path| path.display().to_string());
+        }
+        if key == "input.local_keys" {
+            return Some(self.input.local_keys.join(","));
         }
         if key == "hotkeys.home" {
             return Some(self.hotkeys.home.join(","));

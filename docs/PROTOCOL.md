@@ -180,6 +180,15 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 - Local IPC version 7 exposes `offer_id` on held files and `generation` on held clipboard copies. Accept requests carry these identities (peer and offer id for files, origin machine and generation for clipboard) and are refused if the held item changed. Update the daemon and local clients together.
 - Local IPC version 8 adds optional `screen_mm` dimensions to placed and unplaced machines. Update the daemon and local clients together.
 - Local IPC version 11 adds status field `firewall`, a list of Windows Firewall problems (`missing_allow { program, ports, profiles }`, `blocked { rule, ports }`) found with normal user rights; it is always empty off Windows. The daemon never changes the firewall or asks for elevation. Update the daemon and local clients together; the peer wire protocol is unchanged.
+- Local IPC version 13 adds `single` to `RecordHotkey { kind }`, replying with
+  `Recorded { value }` for the first named physical key or supported mouse
+  button (`middle`, `back`, `forward`). Recording consumes captured events
+  through release and retains the v12 timeout. Primary mouse buttons and
+  unnamed keys return `invalid_request`. Local config `input.local_keys` never
+  syncs; Windows/macOS pass listed inputs through while grabbed, and the
+  daemon excludes them from outgoing input after hotkey handling. X11/Wayland
+  pass-through is unsupported. Update daemon and local clients together;
+  the peer wire protocol is unchanged.
 - Local IPC version 12 replaces `RecordTriggerKey` with `RecordHotkey { kind }` (`trigger`, `chord`, `modifiers`) and replies with `Recorded { value }`. Recording collects local key-downs and finishes once all recorded keys are released or 10 s elapse. Recorded keys are consumed through release without triggering hotkeys, even after timeout. Trigger requires one allowed trigger key; chord requires generic modifiers plus exactly one non-modifier key; modifiers requires only generic modifiers. Invalid combinations return `invalid_request` with an explanation; no captured key returns "no key pressed". Inactive Wayland capture still times out. Update daemon and local clients together; the peer wire protocol is unchanged.
 - Local IPC version 10 adds `RecordTriggerKey`, replying with `TriggerKey { name }` for the next captured local key-down within 10 seconds. The recording key is consumed through release without triggering a hotkey. An unsuitable key returns `invalid_request` with "that key types text; pick a modifier, F-key, Scroll Lock, Pause or Menu"; timeout returns "no key pressed". Inactive Wayland capture cannot observe local keys at home, so recording times out there. Update the daemon and local clients together; the peer wire protocol is unchanged.
 - Local IPC version 9 adds `blocked` to placed machines and set-layout placements, preserving disabled edge thirds through local editors. Update the daemon and local clients together.

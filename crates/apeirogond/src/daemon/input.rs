@@ -34,6 +34,7 @@ pub(super) struct Input {
     pub(super) unavailable: Option<String>,
     pub(super) paused: bool,
     trace_keys: bool,
+    pub(super) local_inputs: Vec<a7n_core::local_input::LocalInput>,
     counter: MotionCounter,
     tracker: MotionTracker,
     pub(super) scale: MotionScale,
@@ -67,6 +68,7 @@ impl Input {
             unavailable: None,
             paused: false,
             trace_keys: false,
+            local_inputs: Vec::new(),
             counter: MotionCounter::default(),
             tracker: MotionTracker::default(),
             scale: MotionScale::new(1.0),
@@ -484,6 +486,14 @@ impl Daemon {
                 Body::Motion(motion)
             }
             Captured::Input(mut event) => {
+                if event
+                    .event
+                    .as_ref()
+                    .and_then(a7n_core::local_input::LocalInput::from_event)
+                    .is_some_and(|(input, _)| self.input.local_inputs.contains(&input))
+                {
+                    return;
+                }
                 if !self.gesture_allowed(peer, &event) {
                     return;
                 }

@@ -13,8 +13,7 @@ mod recording;
 mod shake;
 mod trigger;
 
-use keys::key_usage;
-pub use keys::trigger_name;
+pub use keys::{key_name, key_usage, trigger_name};
 pub use recording::{recorded_chord, recorded_modifiers, recorded_trigger};
 pub use shake::{
     SHAKE_DEFAULT, SHAKE_MAX, SHAKE_MIN, SHAKE_MIN_TRAVEL, SHAKE_WINDOW, ShakeDetector,
@@ -96,7 +95,9 @@ impl Chord {
                 mods.add(value, &token)?;
             } else {
                 let usage = key_usage(&token)
-                    .filter(|usage| modifier_bit(*usage).is_none())
+                    .filter(|usage| {
+                        *usage >> 16 == KEYBOARD_PAGE >> 16 && modifier_bit(*usage).is_none()
+                    })
                     .ok_or_else(|| HotkeyError(format!("unknown key '{token}'")))?;
                 if key.replace(usage).is_some() {
                     return Err(HotkeyError(format!("multiple keys at '{token}'")));
