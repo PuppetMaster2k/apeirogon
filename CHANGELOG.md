@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.26.0...v0.26.1) (2026-11-11)
+
+
+### Bug Fixes
+
+* Windows edge crossing and dropped IPC clients ([#196](https://github.com/PuppetMaster2k/apeirogon/issues/196)) ([ac877bf](https://github.com/PuppetMaster2k/apeirogon/commit/ac877bfb008e92949175f14a9fab21ed3440789e))
+
 ## [0.26.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.25.0...v0.26.0) (2026-11-10)
 
 
