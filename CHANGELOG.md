@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.2](https://github.com/PuppetMaster2k/apeirogon/compare/v0.26.1...v0.26.2) (2026-11-11)
+
+
+### Bug Fixes
+
+* stuck modifiers after hotkeys, keycap wrapping and press-to-record ([#198](https://github.com/PuppetMaster2k/apeirogon/issues/198)) ([12311fa](https://github.com/PuppetMaster2k/apeirogon/commit/12311fa7c41de9cc7834095f036220a685c1e89e))
+
 ## [0.26.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.26.0...v0.26.1) (2026-11-11)
 
 
