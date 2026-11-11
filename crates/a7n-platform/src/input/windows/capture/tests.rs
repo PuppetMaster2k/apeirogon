@@ -15,6 +15,8 @@ fn tick_full_queue_and_expired_keepalive_releases_grab() {
         absolute_motion: false,
         queue_full: false,
         last: POINT { x: 100, y: 200 },
+        local_inputs: Vec::new(),
+        buttons: [LocalKey::default(); BUTTON_COUNT],
         keys: [LocalKey::default(); HELD_KEY_COUNT],
     };
     state.emit(Captured::Pointer {
@@ -49,6 +51,8 @@ fn key_repeated_down_is_dropped_but_release_and_other_injection_are_captured() {
         absolute_motion: false,
         queue_full: false,
         last: POINT::default(),
+        local_inputs: Vec::new(),
+        buttons: [LocalKey::default(); BUTTON_COUNT],
         keys: [LocalKey::default(); HELD_KEY_COUNT],
     };
     let key = KBDLLHOOKSTRUCT {
@@ -141,6 +145,8 @@ fn key_down_before_grab_release_passes_through() {
         absolute_motion: false,
         queue_full: false,
         last: POINT::default(),
+        local_inputs: Vec::new(),
+        buttons: [LocalKey::default(); BUTTON_COUNT],
         keys: [LocalKey::default(); HELD_KEY_COUNT],
     };
     let key = KBDLLHOOKSTRUCT {
@@ -166,4 +172,44 @@ fn key_down_before_grab_release_passes_through() {
         );
     }
     assert!(state.key(&key));
+}
+
+#[test]
+fn key_listed_while_grabbed_passes_through_and_emits_both_edges() {
+    // Arrange
+    let (events, mut receiver) = tokio::sync::mpsc::channel(2);
+    let mut state = CaptureState {
+        events,
+        deadman: DeadMan::new(Instant::now()),
+        grabbed: true,
+        absolute_motion: false,
+        queue_full: false,
+        last: POINT::default(),
+        local_inputs: vec![LocalInput::Key(0x0007_0004)],
+        buttons: [LocalKey::default(); BUTTON_COUNT],
+        keys: [LocalKey::default(); HELD_KEY_COUNT],
+    };
+    let key = KBDLLHOOKSTRUCT {
+        scanCode: 0x1e,
+        ..KBDLLHOOKSTRUCT::default()
+    };
+
+    // Act
+    let down = state.key(&key);
+    state.local_inputs.clear();
+    let repeat = state.key(&key);
+    let up = state.key(&KBDLLHOOKSTRUCT {
+        flags: LLKHF_UP,
+        ..key
+    });
+
+    // Assert
+    assert!(!down && !repeat && !up);
+    for down in [true, false] {
+        assert!(
+            matches!(receiver.try_recv().unwrap(), Captured::Input(InputEvent {
+            event: Some(input_event::Event::Key(key))
+        }) if key.down == down && key.usage == 0x0007_0004)
+        );
+    }
 }

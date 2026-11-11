@@ -83,7 +83,12 @@ impl App {
         }
     }
 
-    fn record_hotkey(&mut self, ui: &mut egui::Ui, key: &str, kind: a7n_ipc::HotkeyKind) {
+    pub(super) fn record_hotkey(
+        &mut self,
+        ui: &mut egui::Ui,
+        key: &str,
+        kind: a7n_ipc::HotkeyKind,
+    ) {
         ui.add_enabled_ui(self.recording_hotkey.is_none(), |ui| {
             let label = if self.recording_hotkey.as_deref() == Some(key) {
                 "Press keys…"

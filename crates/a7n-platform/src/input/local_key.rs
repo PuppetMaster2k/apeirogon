@@ -10,6 +10,9 @@ pub(super) struct LocalKey {
 impl LocalKey {
     pub(super) fn swallow(&mut self, down: bool, grabbed: bool) -> bool {
         if down {
+            if self.held && self.passed {
+                return false;
+            }
             if !self.held {
                 self.passed = !grabbed;
             }

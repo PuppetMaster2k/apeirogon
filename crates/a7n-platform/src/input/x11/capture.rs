@@ -169,6 +169,7 @@ impl CaptureThread {
     fn apply(&mut self, command: CaptureControl) {
         let now = Instant::now();
         match command {
+            CaptureControl::LocalInputs(inputs) => drop(inputs),
             CaptureControl::Keepalive => self.deadman.keepalive(now),
             CaptureControl::Grab(true) => {
                 // A grab request is itself proof that the daemon is alive.

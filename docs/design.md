@@ -187,6 +187,19 @@ crates/
   `auto` (default), `off`, or `custom`; only `custom` uses `modifier_remap`.
   Option is already the HID Alt key and needs no remap.
 - **Media keys:** sent as HID consumer-page usages.
+- **Local keys and buttons:** local `input.local_keys` is a list of physical key
+  names and `middle`, `back`, `forward` mouse buttons. Left/right mouse buttons
+  are rejected. While driving a peer, listed inputs pass through locally on
+  Windows/macOS and are never forwarded. Hotkeys take priority in the daemon.
+  Names use the hotkey key table, including `mute`, `volume_up`, `volume_down`,
+  `play_pause`, `stop`, `next_track`, `previous_track`. This list never syncs.
+  X11 and Wayland do not support local pass-through: the server/compositor grab
+  cannot selectively release an event through the existing backend. Listed
+  events are still excluded from forwarding there. The GUI Input section can
+  record one key or mouse button and remove entries; CLI accepts
+  `a7n config set input.local_keys "back,volume_up"` (empty string clears it).
+  Local IPC v13 adds recording kind `single`, returning the first named key or
+  supported button after release; update daemon and clients together.
 - **Pointer:** relative deltas, sent as loss-tolerant cumulative counters so a
   dropped datagram is repaired by the next; every reliable input batch
   resyncs the pointer so clicks land where the user saw it. The receiver

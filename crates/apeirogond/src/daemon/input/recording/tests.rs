@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::*;
+use a7n_proto::v1::KeyEvent;
 use tokio::sync::oneshot;
 
 const CTRL: u32 = 0x0007_00e0;
@@ -18,6 +19,7 @@ fn recording(
                 kind,
                 reply,
                 keys: BTreeSet::new(),
+                single: None,
             }),
             suppressed: BTreeSet::new(),
         },
@@ -111,4 +113,32 @@ fn on_key_invalid_trigger_consumes_every_key_until_release() {
         reply.try_recv().unwrap(),
         Err(DaemonError::Hotkey(_))
     ));
+}
+
+#[test]
+fn on_input_single_button_records_name_and_consumes_release() {
+    // Arrange
+    let (mut recording, mut reply) = recording(HotkeyKind::Single, Instant::now());
+    let button = LocalInput::Button(a7n_proto::v1::Button::Back.into());
+
+    // Act
+    let consumed = [true, false].map(|down| recording.on_input(button, down));
+
+    // Assert
+    assert_eq!(consumed, [true, true]);
+    assert_eq!(reply.try_recv().unwrap().unwrap(), "back");
+}
+
+#[test]
+fn on_input_single_media_key_records_consumer_name() {
+    // Arrange
+    let (mut recording, mut reply) = recording(HotkeyKind::Single, Instant::now());
+    let usage = a7n_core::hotkey::key_usage("volume_up").unwrap();
+
+    // Act
+    let consumed = [true, false].map(|down| recording.on_key(&key(usage, down)));
+
+    // Assert
+    assert_eq!(consumed, [true, true]);
+    assert_eq!(reply.try_recv().unwrap().unwrap(), "volume_up");
 }
