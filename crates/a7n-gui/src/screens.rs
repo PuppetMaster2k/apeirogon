@@ -40,6 +40,8 @@ impl App {
             return;
         }
         if self.screen == Screen::Hotkeys {
+            self.appearance_options(ui);
+            ui.add_space(theme::size::SECTION_GAP);
             self.input_options(ui);
             ui.add_space(theme::size::SECTION_GAP);
             self.feedback_options(ui);

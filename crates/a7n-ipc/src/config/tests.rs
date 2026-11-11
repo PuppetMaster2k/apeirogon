@@ -14,6 +14,7 @@ fn parse_invalid_settings_rejects_unknown_keys_and_invalid_values() {
         ("[input]\nspeed = nan", "input.speed"),
         ("[input]\nspeed = inf", "input.speed"),
         ("[input]\nunknown = true", "unknown"),
+        ("[gui]\nappearance = 'unknown'", "appearance"),
         ("[peers.bad]\nallow_drive = true", "peers.bad"),
         (
             "[peers.0123456789abcdef0123456789abcdef]\nunknown = true",
@@ -155,6 +156,7 @@ fn set_invalid_value_leaves_config_unchanged() {
         ("hotkeys.lock", "ctrl+home"),
         ("sync.settings", "no"),
         ("notifications.files", "no"),
+        ("gui.appearance", "unknown"),
         ("input.fullscreen_hold", "yes"),
         ("input.hide_idle_cursor", "yes"),
         ("feedback.haptics", "yes"),
@@ -184,6 +186,53 @@ fn set_invalid_value_leaves_config_unchanged() {
         // Assert
         assert!(result.is_err(), "{key} = {value}");
         assert_eq!(config.to_toml().unwrap(), before, "{key} = {value}");
+    }
+}
+
+#[test]
+fn parse_missing_appearance_defaults_to_system() {
+    // Arrange
+    let legacy = "[input]\nspeed = 2.0";
+
+    // Act
+    let config = Config::parse(legacy).unwrap();
+
+    // Assert
+    assert_eq!(config.gui.appearance, Appearance::System);
+}
+
+#[test]
+fn set_appearance_valid_values_round_trip() {
+    // Arrange
+    for (value, expected) in [
+        ("light", Appearance::Light),
+        ("dark", Appearance::Dark),
+        ("system", Appearance::System),
+    ] {
+        let mut config = Config::default();
+
+        // Act
+        config.set("gui.appearance", value).unwrap();
+        let parsed = Config::parse(&config.to_toml().unwrap()).unwrap();
+
+        // Assert
+        assert_eq!(parsed.gui.appearance, expected);
+        assert_eq!(parsed.get("gui.appearance").as_deref(), Some(value));
+    }
+}
+
+#[test]
+fn set_appearance_unknown_value_lists_allowed_values() {
+    // Arrange
+    let mut config = Config::default();
+
+    // Act
+    let error = config.set("gui.appearance", "sepia").unwrap_err();
+
+    // Assert
+    let message = error.to_string();
+    for text in ["gui.appearance", "sepia", "system", "light", "dark"] {
+        assert!(message.contains(text), "{message}");
     }
 }
 

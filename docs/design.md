@@ -371,6 +371,7 @@ do not.
   `a7n config`. `a7n layout` is an interactive TUI.
 - **GUI** (`a7n-gui`, egui/eframe) for Windows and macOS:
   - Thin client of the daemon over `a7n-ipc`; no logic of its own.
+  - Window appearance is local `gui.appearance`: `system` (default), `light`, or `dark`; changes preview immediately and never sync.
   - Pause returns outgoing focus home and blocks edge, hotkey and explicit
     switches to peers until resumed. Receiving input remains governed by
     `allow_drive`. Pause is session state and resets at daemon startup.

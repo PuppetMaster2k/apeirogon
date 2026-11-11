@@ -97,7 +97,7 @@ impl App {
         }
     }
 
-    fn updates(&mut self) {
+    fn updates(&mut self, ctx: &egui::Context) {
         while let Ok(update) = self.worker.updates.try_recv() {
             match update {
                 Update::Recorded(result) => {
@@ -160,6 +160,7 @@ impl App {
                 Update::Config(Ok(config)) => {
                     self.config = Some(*config);
                     self.edits.clear();
+                    self.apply_appearance(ctx);
                     self.editing_hotkeys = [false; 4];
                     self.editing_gestures = [false; 4];
                     self.editing_receive_dir = false;
@@ -291,7 +292,7 @@ impl App {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.updates();
+        self.updates(ctx);
         #[cfg(feature = "tray")]
         self.tray(ctx);
         // Keeps the pairing expiry and native tray responsive while idle.
