@@ -57,9 +57,9 @@ impl Worker {
                         _ = poll.tick() => Command::Request(Request::Status),
                     };
                     let update = match command {
-                        Command::Request(Request::RecordTriggerKey) => {
-                            Update::Recorded(match request_daemon(&mut client, &Request::RecordTriggerKey).await {
-                                Ok(Response::TriggerKey { name }) => Ok(name),
+                        Command::Request(Request::RecordHotkey { kind }) => {
+                            Update::Recorded(match request_daemon(&mut client, &Request::RecordHotkey { kind }).await {
+                                Ok(Response::Recorded { value }) => Ok(value),
                                 Ok(Response::Error { message, .. }) | Err(message) => Err(message),
                                 Ok(_) => Err("Unexpected daemon response".into()),
                             })

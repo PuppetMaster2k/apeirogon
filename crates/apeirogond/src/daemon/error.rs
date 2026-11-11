@@ -42,6 +42,8 @@ pub(crate) enum DaemonError {
     NotPaired,
     #[error("{0}")]
     InvalidRequest(&'static str),
+    #[error(transparent)]
+    Hotkey(#[from] a7n_core::hotkey::HotkeyError),
     #[error("machine is not connected")]
     NotConnected,
     #[error("not enough free space in the receive directory")]

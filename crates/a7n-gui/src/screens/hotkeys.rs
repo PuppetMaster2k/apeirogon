@@ -52,13 +52,17 @@ impl App {
                 egui::vec2(ui.available_width(), theme::size::CONTROL_H),
                 egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true),
                 |ui| {
-                    if index == 0 {
-                        self.record_trigger(ui);
-                    }
-                    let placeholder = if name == "home" {
-                        "scroll_lock,ctrl+alt+shift+home"
-                    } else {
-                        "right_alt"
+                    let kind = match name {
+                        "double_tap" => a7n_ipc::HotkeyKind::Trigger,
+                        "jump" => a7n_ipc::HotkeyKind::Modifiers,
+                        _ => a7n_ipc::HotkeyKind::Chord,
+                    };
+                    self.record_hotkey(ui, &key, kind);
+                    let placeholder = match name {
+                        "home" => "scroll_lock,ctrl+alt+shift+home",
+                        "jump" => "ctrl+alt+shift",
+                        "lock" => "ctrl+alt+shift+l",
+                        _ => "right_alt",
                     };
                     if chord_editor(
                         ui,
@@ -79,16 +83,18 @@ impl App {
         }
     }
 
-    fn record_trigger(&mut self, ui: &mut egui::Ui) {
-        ui.add_enabled_ui(!self.recording_trigger, |ui| {
-            let label = if self.recording_trigger {
-                "Press a key…"
+    fn record_hotkey(&mut self, ui: &mut egui::Ui, key: &str, kind: a7n_ipc::HotkeyKind) {
+        ui.add_enabled_ui(self.recording_hotkey.is_none(), |ui| {
+            let label = if self.recording_hotkey.as_deref() == Some(key) {
+                "Press keys…"
             } else {
                 "Record"
             };
             if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, label).clicked() {
-                self.recording_trigger = true;
-                self.send(crate::Command::Request(a7n_ipc::Request::RecordTriggerKey));
+                self.recording_hotkey = Some(key.to_owned());
+                self.send(crate::Command::Request(a7n_ipc::Request::RecordHotkey {
+                    kind,
+                }));
             }
         });
     }

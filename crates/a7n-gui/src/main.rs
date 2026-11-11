@@ -31,7 +31,7 @@ struct App {
     selected_peer: Option<a7n_ipc::MachineId>,
     editing_hotkeys: [bool; 4],
     editing_gestures: [bool; 4],
-    recording_trigger: bool,
+    recording_hotkey: Option<String>,
     editing_receive_dir: bool,
     address: String,
     code: String,
@@ -68,7 +68,7 @@ impl App {
             selected_peer: None,
             editing_hotkeys: [false; 4],
             editing_gestures: [false; 4],
-            recording_trigger: false,
+            recording_hotkey: None,
             editing_receive_dir: false,
             address: String::new(),
             code: String::new(),
@@ -90,9 +90,9 @@ impl App {
             self.message = format!("Could not queue action: {error}; try again");
             if matches!(
                 error.into_inner(),
-                Command::Request(Request::RecordTriggerKey)
+                Command::Request(Request::RecordHotkey { .. })
             ) {
-                self.recording_trigger = false;
+                self.recording_hotkey = None;
             }
         }
     }
@@ -101,10 +101,11 @@ impl App {
         while let Ok(update) = self.worker.updates.try_recv() {
             match update {
                 Update::Recorded(result) => {
-                    self.recording_trigger = false;
-                    match result {
-                        Ok(name) => self.edit("hotkeys.double_tap", &name, "right_alt"),
-                        Err(message) => self.message = message,
+                    if let Some(key) = self.recording_hotkey.take() {
+                        match result {
+                            Ok(value) => self.edit(&key, &value, ""),
+                            Err(message) => self.message = message,
+                        }
                     }
                 }
                 Update::Response(Ok(Response::Status(status))) => {
