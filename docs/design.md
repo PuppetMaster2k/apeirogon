@@ -221,7 +221,9 @@ crates/
   APIs; delivery and suppression of macOS system gestures require hardware
   verification (see the macOS input checklist).
 - **Layout:** 2D canvas of whole-machine rectangles (each machine's virtual
-  desktop). Known physical sizes use 0.1 mm canvas units; “Use real sizes”
+  desktop). Crossing edges are the outer edges of the machine's monitors;
+  offsets and blocked thirds stay relative to the machine rectangle, and
+  landings snap onto the nearest monitor edge. Known physical sizes use 0.1 mm canvas units; “Use real sizes”
   resizes and lines up the draft before Save. Edges connect where rectangles
   touch, so offsets and partial overlaps work. One desk-wide layout is synced to all members; concurrent
   edits resolve by last-writer-wins with a version counter (ties by machine

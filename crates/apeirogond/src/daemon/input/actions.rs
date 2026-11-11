@@ -66,7 +66,7 @@ impl Daemon {
                     self.input.resistance = EdgeResistance::new(resistance_px);
                     self.sync_grab().await;
                     if let (Some(landing), Some(injector)) = (landing, &self.input.injector) {
-                        let (x, y) = landing_point(injector.bounds, &landing);
+                        let (x, y) = landing_point(injector.bounds, &injector.monitors, &landing);
                         self.input.inject(Inject::Warp { x, y }).await;
                         self.input.sink.landing(x, y);
                     }

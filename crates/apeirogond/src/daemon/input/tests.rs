@@ -52,11 +52,13 @@ fn fake_input() -> (Handles, FakeInput) {
         (
             Capture {
                 bounds,
+                monitors: vec![bounds].into(),
                 events: capture_rx,
                 control: control_tx,
             },
             Injector {
                 bounds,
+                monitors: vec![bounds].into(),
                 commands: inject_tx,
                 pointer: feedback_rx,
             },
