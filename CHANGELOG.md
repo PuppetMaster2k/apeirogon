@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.29.0...v0.30.0) (2026-11-11)
+
+
+### Features
+
+* per-peer pointer speed, scroll speed and reverse scrolling ([#224](https://github.com/PuppetMaster2k/apeirogon/issues/224)) ([a06145f](https://github.com/PuppetMaster2k/apeirogon/commit/a06145f7fb20ac5029380b95584f23ffc3c7f010))
+
 ## [0.29.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.28.0...v0.29.0) (2026-11-11)
 
 
