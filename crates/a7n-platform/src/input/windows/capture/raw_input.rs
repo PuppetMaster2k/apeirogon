@@ -14,7 +14,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_INPUT, WNDCLASSW,
 };
 
-use super::STATE;
+use super::{INJECTION_MARKER, STATE};
 
 const CLASS_NAME: *const u16 = windows_sys::core::w!("a7n-raw-input");
 const GENERIC_DESKTOP_PAGE: u16 = 0x01;
@@ -134,6 +134,9 @@ fn read_mouse(lparam: LPARAM) {
     }
     // SAFETY: The validated type is RIM_TYPEMOUSE and the full mouse record was read.
     let mouse = unsafe { input.data.mouse };
+    if !raw_motion_accepted(mouse.ulExtraInformation, mouse.lLastX, mouse.lLastY) {
+        return;
+    }
     STATE.with(|state| {
         if let Some(state) = state.borrow_mut().as_mut() {
             state.raw_motion(
@@ -144,6 +147,10 @@ fn read_mouse(lparam: LPARAM) {
             );
         }
     });
+}
+
+fn raw_motion_accepted(extra_info: u32, dx: i32, dy: i32) -> bool {
+    usize::try_from(extra_info).ok() != Some(INJECTION_MARKER) && (dx != 0 || dy != 0)
 }
 
 unsafe extern "system" fn window_proc(
@@ -158,4 +165,22 @@ unsafe extern "system" fn window_proc(
     // SAFETY: Forward original window parameters, including WM_INPUT so Windows
     // can perform foreground raw-input cleanup. No TLS borrow remains held.
     unsafe { DefWindowProcW(window, message, wparam, lparam) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raw_motion_accepted_injected_or_zero_motion_is_rejected() {
+        // Arrange
+        let marker = u32::try_from(INJECTION_MARKER).expect("injection marker fits u32");
+        let cases = [(marker, 3, -2), (0, 0, 0), (0, 3, 0), (0, 0, -2)];
+
+        // Act
+        let accepted = cases.map(|(extra_info, dx, dy)| raw_motion_accepted(extra_info, dx, dy));
+
+        // Assert
+        assert_eq!(accepted, [false, false, true, true]);
+    }
 }

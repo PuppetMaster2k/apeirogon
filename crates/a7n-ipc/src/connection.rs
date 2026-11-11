@@ -48,12 +48,12 @@ impl IpcServer {
         })
     }
 
-    /// Accept and negotiate one connection. A failed client's Hello does not close the listener.
+    /// Accept one raw connection. Run `IpcConnection::accept_stream` separately to negotiate it.
     ///
     /// # Errors
-    /// Returns accept, timeout, framing or version errors.
-    pub async fn accept(&self) -> Result<IpcConnection, IpcError> {
-        IpcConnection::accept_stream(self.listener.accept().await?).await
+    /// Returns OS accept errors.
+    pub async fn accept(&self) -> Result<Stream, IpcError> {
+        Ok(self.listener.accept().await?)
     }
 }
 
@@ -64,7 +64,11 @@ pub struct IpcConnection<S = Stream> {
 }
 
 impl<S: AsyncRead + AsyncWrite + Unpin> IpcConnection<S> {
-    async fn accept_stream(stream: S) -> Result<Self, IpcError> {
+    /// Negotiate a raw connection. A failed client's Hello does not close the listener.
+    ///
+    /// # Errors
+    /// Returns timeout, framing or version errors.
+    pub async fn accept_stream(stream: S) -> Result<Self, IpcError> {
         let mut lines = JsonLines::new(stream);
         tokio::time::timeout(limits::HANDSHAKE_TIMEOUT, async {
             let hello: Hello = lines.read().await?;

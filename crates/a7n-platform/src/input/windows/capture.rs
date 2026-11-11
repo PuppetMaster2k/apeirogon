@@ -280,12 +280,7 @@ impl CaptureState {
         if !self.grabbed {
             self.last = point;
         }
-        let (dx, dy) = select_delta(
-            self.grabbed,
-            self.absolute_motion,
-            MotionSource::Hook,
-            (dx, dy),
-        )?;
+        let (dx, dy) = select_delta(self.absolute_motion, MotionSource::Hook, (dx, dy))?;
         Some(self.pointer(dx, dy))
     }
 
@@ -294,7 +289,6 @@ impl CaptureState {
             self.absolute_motion = absolute;
         }
         if let Some((dx, dy)) = select_delta(
-            self.grabbed,
             self.absolute_motion,
             MotionSource::Raw {
                 has_device,
@@ -324,17 +318,17 @@ enum MotionSource {
 }
 
 fn select_delta(
-    grabbed: bool,
     absolute_motion: bool,
     source: MotionSource,
     delta: (i32, i32),
 ) -> Option<(i32, i32)> {
+    // Hook positions are clamped at desktop edges, so relative pushes need raw motion.
     let selected = match source {
-        MotionSource::Hook => !grabbed || absolute_motion,
+        MotionSource::Hook => absolute_motion,
         MotionSource::Raw {
             has_device,
             absolute,
-        } => grabbed && has_device && !absolute,
+        } => has_device && !absolute,
     };
     selected.then_some(delta)
 }
