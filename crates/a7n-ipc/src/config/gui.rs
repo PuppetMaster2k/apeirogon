@@ -15,4 +15,5 @@ pub enum Appearance {
 #[serde(default, deny_unknown_fields)]
 pub struct GuiConfig {
     pub appearance: Appearance,
+    pub hide_addresses: bool,
 }

@@ -6,7 +6,7 @@ use std::time::Instant;
 use a7n_ipc::{DEFAULT_UDP_PORT, MachineId, PairingCode, PeerInfo, Request, StatusInfo};
 use eframe::egui;
 
-use super::firewall::firewall_warnings;
+use super::{address_text, firewall::firewall_warnings};
 use crate::{App, Command, theme};
 use theme::{BadgeKind, ButtonKind, ButtonSize, IconButtonKind, icon};
 
@@ -44,7 +44,7 @@ impl App {
             },
         );
         self.page_message(ui);
-        firewall_warnings(ui, &status.firewall);
+        firewall_warnings(ui, &status.firewall, self.hide_addresses());
         self.held_files(ui, &status);
         self.active_transfers(ui, &status);
         theme::overline(ui, "This machine");
@@ -180,8 +180,11 @@ impl App {
                         machine_id(ui, nearby.id);
                         ui.add(
                             egui::Label::new(
-                                egui::RichText::new(nearby.addr.to_string())
-                                    .font(theme::font_mono(13.0)),
+                                egui::RichText::new(address_text(
+                                    &nearby.addr,
+                                    self.hide_addresses(),
+                                ))
+                                .font(theme::font_mono(13.0)),
                             )
                             .truncate(),
                         );
@@ -241,7 +244,15 @@ impl App {
     fn join_pairing(&mut self, ui: &mut egui::Ui) {
         ui.heading("Join pairing");
         ui.label("Enter the host's address and the code it shows.");
-        theme::text_input(ui, "Address", &mut self.address, "IP or IP:port", true);
+        let hidden = self.hide_addresses();
+        theme::masked_text_input(
+            ui,
+            "Address",
+            &mut self.address,
+            "IP or IP:port",
+            true,
+            hidden,
+        );
         theme::text_input(ui, "Pairing code", &mut self.code, "Six digits", true);
         let address = parse_address(&self.address);
         let code = PairingCode::parse(self.code.trim());

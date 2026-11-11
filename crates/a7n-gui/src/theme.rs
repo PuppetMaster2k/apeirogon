@@ -30,7 +30,7 @@ pub(crate) use segmented::segmented;
 pub(crate) use setting_row::setting_row;
 pub(crate) use style::install;
 pub(crate) use text::{error, small, warning};
-pub(crate) use text_input::text_input;
+pub(crate) use text_input::{masked_text_input, text_input};
 pub(crate) use toggle::toggle;
 pub(crate) use typography::{
     family, font_icon, font_medium, font_mono, font_regular, font_semibold, overline_style, size,
