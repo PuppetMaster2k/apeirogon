@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.30.1...v0.31.0) (2026-11-11)
+
+
+### Features
+
+* hide the cursor of the machine that is driving a peer ([#228](https://github.com/PuppetMaster2k/apeirogon/issues/228)) ([cd25e32](https://github.com/PuppetMaster2k/apeirogon/commit/cd25e32d2c08d4f44f39677016abd1d23f43a859))
+
 ## [0.30.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.30.0...v0.30.1) (2026-11-11)
 
 
