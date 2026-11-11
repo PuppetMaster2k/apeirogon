@@ -30,11 +30,11 @@ impl App {
                 },
                 Toggle {
                     key: "input.hide_idle_cursor",
-                    title: "Hide the cursor when remote input leaves",
-                    help: "Show it again when the mouse moves or another machine takes control.",
+                    title: "Hide the cursor on the machine without input",
+                    help: "Hide while driving another machine or after remote input leaves. Show it when input returns.",
                     default: "true",
                     unavailable: (!a7n_platform::input::idle_cursor_supported())
-                        .then_some("Only available on Windows and X11"),
+                        .then_some(NOT_ON_WAYLAND),
                 },
                 Toggle {
                     key: "input.fullscreen_hold",

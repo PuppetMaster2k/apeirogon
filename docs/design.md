@@ -181,11 +181,14 @@ crates/
 
 ## Input
 
-- **Idle cursor:** local `input.hide_idle_cursor` (default true, never synced)
-  hides the cursor when a driven session ends. Local pointer movement, remote
-  movement or a new driver shows it again; disabling the setting, daemon
-  shutdown and capture dead-man release also restore it. Supported on Windows
-  and X11; macOS (no public background API) and Wayland are no-ops.
+- **Cursor hiding:** local `input.hide_idle_cursor` (default true, never synced)
+  hides the local cursor while driving a peer and after a driven session ends.
+  Returning home shows it; local or remote pointer movement or a new driver
+  clears idle hiding without revealing a cursor still driving a peer.
+  Disabling the setting, daemon shutdown and capture dead-man release also
+  restore it. Supported on Windows, macOS (deliberate private WindowServer API
+  to allow background hiding; stays visible if unavailable) and X11; Wayland
+  is a no-op.
 
 - **Keys:** send physical keys (USB HID usage codes); the receiver applies its
   own keyboard layout. Cmd↔Ctrl swap by default between macOS and other systems,

@@ -48,6 +48,11 @@ impl Daemon {
                     }
                 }
                 Action::Cursor(cursor) => {
+                    let change = self
+                        .input
+                        .idle_cursor
+                        .driving(matches!(cursor, Cursor::Driving(_)));
+                    self.input.cursor_visibility(change).await;
                     self.input.shake = ShakeDetector::new(self.config.hotkeys.shake);
                     self.input.reset_edge_state();
                     if let Cursor::Driving(peer) = cursor {
@@ -62,7 +67,8 @@ impl Daemon {
                     landing,
                     resistance_px,
                 } => {
-                    self.input.show_cursor().await;
+                    let change = self.input.idle_cursor.driving(false);
+                    self.input.cursor_visibility(change).await;
                     self.input.reset_edge_state();
                     self.input.hotkeys = HotkeyMatcher::new(self.config.bindings());
                     self.input.shake = ShakeDetector::new(self.config.hotkeys.shake);

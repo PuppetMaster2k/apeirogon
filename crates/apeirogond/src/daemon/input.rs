@@ -288,7 +288,8 @@ impl Daemon {
         }
         self.flush_link_losses().await;
         self.input.grab(false).await;
-        self.input.show_cursor().await;
+        let change = self.input.idle_cursor.configure(false);
+        self.input.cursor_visibility(change).await;
     }
 
     pub(super) async fn poll_focus(&mut self) {

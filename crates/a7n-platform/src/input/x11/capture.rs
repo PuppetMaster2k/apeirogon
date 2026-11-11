@@ -280,7 +280,6 @@ impl CaptureThread {
                 if dx == 0 && dy == 0 {
                     return Ok(None);
                 }
-                self.set_cursor_hidden(false);
                 let (x, y) = self.session.pointer_position()?;
                 Ok(Some(Captured::Pointer { x, y, dx, dy }))
             }
