@@ -46,8 +46,13 @@ async fn crossing_exit_unpaired_target_returns_no_crossing() {
         daemon.unpair(target).unwrap();
 
         // Act
-        let crossing =
-            daemon.crossing_exit((0, 0, 100, 100), (99, 98), (100, 1), Edge::Right, 0.98);
+        let crossing = daemon.crossing_exit(
+            (0, 0, 100, 100),
+            &[(0, 0, 100, 100).into()],
+            (99, 98),
+            (100, 1),
+            (Edge::Right, 0.98),
+        );
 
         // Assert
         assert!(crossing.is_none());
@@ -71,7 +76,9 @@ async fn cross_edge_outside_left_point_reaches_paired_target() {
     let dx = -i32::try_from(a7n_proto::limits::DEFAULT_RESISTANCE_PX).unwrap();
 
     // Act
-    daemon.cross_edge(bounds, -3, 50, dx, 0, false).await;
+    daemon
+        .cross_edge(bounds, &[bounds], (-3, 50), (dx, 0), false)
+        .await;
 
     // Assert
     let pending = daemon.wol.pending.as_ref().unwrap();

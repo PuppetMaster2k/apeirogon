@@ -58,8 +58,14 @@ impl Session {
 }
 
 pub(super) fn start() -> Result<(Capture, Injector), InputError> {
-    let capture_thread = capture::CaptureThread::new(Session::connect()?)?;
-    let inject_thread = inject::InjectThread::new(Session::connect()?)?;
+    let capture_session = Session::connect()?;
+    let inject_session = Session::connect()?;
+    let capture_monitors = monitors(&capture_session.conn, capture_session.root)
+        .unwrap_or_else(|| vec![capture_session.bounds]);
+    let inject_monitors = monitors(&inject_session.conn, inject_session.root)
+        .unwrap_or_else(|| vec![inject_session.bounds]);
+    let capture_thread = capture::CaptureThread::new(capture_session)?;
+    let inject_thread = inject::InjectThread::new(inject_session)?;
     let capture_bounds = capture_thread.bounds();
     let inject_bounds = inject_thread.bounds();
 
@@ -75,13 +81,36 @@ pub(super) fn start() -> Result<(Capture, Injector), InputError> {
 
     let capture = Capture {
         bounds: capture_bounds,
+        monitors: capture_monitors.into(),
         events: events_rx,
         control: control_tx,
     };
     let injector = Injector {
         bounds: inject_bounds,
+        monitors: inject_monitors.into(),
         commands: commands_tx,
         pointer: pointer_rx,
     };
     Ok((capture, injector))
+}
+
+pub(crate) fn monitors(connection: &RustConnection, root: Window) -> Option<Vec<Bounds>> {
+    use x11rb::protocol::randr::ConnectionExt as _;
+    let reply = connection
+        .randr_get_monitors(root, true)
+        .ok()?
+        .reply()
+        .ok()?;
+    let monitors: Vec<_> = reply
+        .monitors
+        .iter()
+        .filter(|m| m.width > 0 && m.height > 0)
+        .map(|m| Bounds {
+            x: i32::from(m.x),
+            y: i32::from(m.y),
+            width: u32::from(m.width),
+            height: u32::from(m.height),
+        })
+        .collect();
+    (!monitors.is_empty()).then_some(monitors)
 }

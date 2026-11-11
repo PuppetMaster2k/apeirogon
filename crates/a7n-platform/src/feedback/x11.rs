@@ -18,7 +18,6 @@ use std::time::{Duration, Instant};
 
 use a7n_proto::v1::Edge;
 use x11rb::connection::Connection;
-use x11rb::protocol::randr::ConnectionExt as _;
 use x11rb::protocol::shape::{ConnectionExt as _, SK, SO};
 use x11rb::protocol::xproto::{
     AtomEnum, ClipOrdering, ConfigureWindowAux, ConnectionExt as _, CreateWindowAux, PropMode,
@@ -156,7 +155,8 @@ impl Overlay {
             .ok()?
             .reply()
             .ok()?;
-        let monitors = self.monitors()?;
+        let monitors = crate::input::x11::monitors(&self.connection, self.root)
+            .unwrap_or_else(|| vec![display]);
         let (x, y) = (i32::from(pointer.root_x), i32::from(pointer.root_y));
         let monitor = pick_monitor(&monitors, display, x, y);
         let along = if matches!(edge, Edge::Top | Edge::Bottom) {
@@ -168,27 +168,6 @@ impl Overlay {
             Some(rect) => self.show(self.glow, rect),
             None => self.unmap(self.glow),
         }
-    }
-
-    fn monitors(&self) -> Option<Vec<Bounds>> {
-        let reply = self
-            .connection
-            .randr_get_monitors(self.root, true)
-            .ok()?
-            .reply()
-            .ok()?;
-        Some(
-            reply
-                .monitors
-                .iter()
-                .map(|monitor| Bounds {
-                    x: i32::from(monitor.x),
-                    y: i32::from(monitor.y),
-                    width: u32::from(monitor.width),
-                    height: u32::from(monitor.height),
-                })
-                .collect(),
-        )
     }
 
     /// Places the window and raises it above the others.

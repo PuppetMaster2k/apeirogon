@@ -92,11 +92,13 @@ pub(super) fn start() -> Result<(Capture, Injector), InputError> {
         .map_err(|_| InputError::Portal("the input thread stopped during startup".to_owned()))??;
     let capture = Capture {
         bounds: capture_bounds,
+        monitors: vec![capture_bounds].into(),
         events: events_rx,
         control: control_tx,
     };
     let injector = Injector {
         bounds: inject_bounds,
+        monitors: vec![inject_bounds].into(),
         commands: commands_tx,
         pointer: pointer_rx,
     };
