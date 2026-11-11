@@ -21,11 +21,62 @@ fn daemon_with_feedback(
     daemon.input.sink.attach(Some(sink));
     daemon.input.sink.configure(config);
     daemon.input.resistance = EdgeResistance::new(100);
+    let own = daemon.identity.machine_id;
+    let mut placements = vec![Placement {
+        id: own,
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        blocked: 0,
+    }];
+    for (byte, x, y) in [(42, 100, 0), (43, 0, 100)] {
+        let id = MachineId::try_from(&[byte; MachineId::LEN][..]).unwrap();
+        daemon.pins.add(Entry {
+            machine_id: id,
+            pin: daemon.identity.pin,
+            name: "peer".into(),
+            spki_der: None,
+            hw_addr: None,
+            screen_mm: None,
+        });
+        placements.push(Placement {
+            id,
+            x,
+            y,
+            width: 100,
+            height: 100,
+            blocked: 0,
+        });
+    }
+    daemon.layout.state = daemon.layout.state.edit(placements, own).unwrap();
     (daemon, dir, commands)
 }
 
 fn drain(commands: &mut mpsc::Receiver<Command>) -> Vec<Command> {
     std::iter::from_fn(|| commands.try_recv().ok()).collect()
+}
+
+#[tokio::test(start_paused = true)]
+async fn cross_edge_no_neighbour_sends_no_edge_feedback() {
+    // Arrange
+    let (mut daemon, _dir, mut commands) = daemon_with_feedback(FeedbackConfig {
+        edge: true,
+        landing: false,
+        haptics: true,
+    });
+
+    // Act
+    for dx in [-30, -100] {
+        daemon
+            .cross_edge(DISPLAY, &[DISPLAY], (0, 50), (dx, 0), false)
+            .await;
+    }
+
+    // Assert
+    assert_eq!(drain(&mut commands), [] as [Command; 0]);
+    assert_eq!(daemon.input.resistance.progress(), None);
+    assert!(daemon.wol.pending.is_none());
 }
 
 #[tokio::test(start_paused = true)]

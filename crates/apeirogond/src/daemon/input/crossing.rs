@@ -21,21 +21,23 @@ impl Daemon {
             self.input.poll_edge_pressure();
             return;
         };
-        if !self.input.resistance.push(edge, overshoot, now()) {
-            let progress = self.input.resistance.progress();
-            self.input.sink.push(display, progress);
-            return;
-        }
-        self.input.sink.clear();
         let Some((target, landing)) =
             self.crossing_exit(bounds, monitors, (x, y), (dx, dy), (edge, along))
         else {
+            self.input.resistance.push(Edge::Unspecified, 0, now());
+            self.input.sink.clear();
             if !driven && self.input.edge_no_target.replace(edge) != Some(edge) {
                 crate::log::event!("kind=edge_no_target");
             }
             return;
         };
         self.input.edge_no_target = None;
+        if !self.input.resistance.push(edge, overshoot, now()) {
+            let progress = self.input.resistance.progress();
+            self.input.sink.push(display, progress);
+            return;
+        }
+        self.input.sink.clear();
         self.dispatch_crossing(target, landing, driven).await;
     }
 
