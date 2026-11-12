@@ -28,7 +28,15 @@ impl Tray {
             "tray is available on Windows and macOS",
         ))
     }
-    pub fn update(&self, _status: &str, _focused: &str, _paused: bool) {}
+    pub fn update(
+        &self,
+        _status: &str,
+        _focused: &str,
+        _pause: &str,
+        _settings: &str,
+        _quit: &str,
+    ) {
+    }
     #[must_use]
     pub fn action(&self) -> Option<Action> {
         None

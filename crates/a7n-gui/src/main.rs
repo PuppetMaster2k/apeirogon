@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #![forbid(unsafe_code)]
 
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use a7n_ipc::config::Config;
+use a7n_ipc::config::{Config, Language};
 use a7n_ipc::{Request, Response, StatusInfo};
 use eframe::egui;
+use rust_i18n::t;
+
+rust_i18n::i18n!("locales", fallback = "en");
 
 mod canvas;
 mod screens;
@@ -49,6 +53,7 @@ struct App {
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Result<Self, std::io::Error> {
+        set_language(Language::System);
         theme::install(&cc.egui_ctx);
         let worker = Worker::new(cc.egui_ctx.clone())?;
         #[cfg(not(feature = "tray"))]
@@ -58,7 +63,10 @@ impl App {
             let ctx = cc.egui_ctx.clone();
             match a7n_platform::tray::Tray::new(move || ctx.request_repaint()) {
                 Ok(tray) => (Some(tray), String::new()),
-                Err(error) => (None, error.to_string()),
+                Err(error) => (
+                    None,
+                    t!("Could not create tray: %{error}", error = error).into_owned(),
+                ),
             }
         };
         let mut app = Self {
@@ -84,13 +92,16 @@ impl App {
             #[cfg(feature = "tray")]
             tray,
         };
+        #[cfg(feature = "tray")]
+        app.tray(&cc.egui_ctx);
         app.send(Command::Config);
         Ok(app)
     }
 
     fn send(&mut self, command: Command) {
         if let Err(error) = self.worker.commands.try_send(command) {
-            self.message = format!("Could not queue action: {error}; try again");
+            self.message =
+                t!("Could not queue action: %{error}; try again", error = error).into_owned();
             if matches!(
                 error.into_inner(),
                 Command::Request(Request::RecordHotkey { .. })
@@ -126,7 +137,7 @@ impl App {
                 Update::Response(Ok(Response::Status(status))) => {
                     let was_missing = self.missing_permissions().is_some();
                     if was_missing && status.missing_permissions.is_empty() {
-                        self.message = "Permissions granted".into();
+                        self.message = t!("Permissions granted").into_owned();
                     }
                     self.status = Some(status);
                     self.daemon_error = None;
@@ -134,7 +145,9 @@ impl App {
                 Update::Response(Ok(Response::Layout(info))) => {
                     match canvas::Canvas::try_from(info) {
                         Ok(canvas) => self.layout = Some(canvas),
-                        Err(error) => self.message = error.to_string(),
+                        Err(_) => {
+                            self.message = t!("No canvas space to place machines").into_owned();
+                        }
                     }
                 }
                 Update::Response(Ok(Response::PairCode {
@@ -149,19 +162,22 @@ impl App {
                     self.message = message;
                 }
                 Update::Response(Ok(Response::Paired { name, .. })) => {
-                    self.message = format!("Paired with {name}");
+                    self.message = t!("Paired with %{name}", name = name).into_owned();
                     self.pairing = None;
                 }
                 Update::Response(Ok(Response::Waking { name })) => {
-                    self.message = format!("Waking {name}…");
+                    self.message = t!("Waking %{name}…", name = name).into_owned();
                 }
-                Update::Response(Ok(Response::Done)) => self.message = "Done".into(),
-                Update::Response(Ok(_)) => self.message = "Unexpected daemon response".into(),
+                Update::Response(Ok(Response::Done)) => self.message = t!("Done").into_owned(),
+                Update::Response(Ok(_)) => {
+                    self.message = t!("Unexpected daemon response").into_owned();
+                }
                 Update::Response(Err(error)) => {
                     self.status = None;
                     self.daemon_error = Some(error);
                 }
                 Update::Config(Ok(config)) => {
+                    set_language(config.gui.language);
                     self.config = Some(*config);
                     self.edits.clear();
                     self.apply_appearance(ctx);
@@ -188,16 +204,25 @@ impl App {
             return;
         };
         let mut action = None;
-        egui::Window::new("Clipboard confirmation")
+        egui::Window::new(t!("Clipboard confirmation"))
             .collapsible(false)
             .show(ctx, |ui| {
                 theme::card(ui, |ui| {
-                    ui.label(format!(
-                        "Clipboard from {}: {} items, {} B, {}",
-                        held.name,
-                        held.items,
-                        held.size,
-                        held.kinds_label()
+                    let kinds = held
+                        .kinds
+                        .iter()
+                        .map(|kind| match kind {
+                            a7n_ipc::ClipboardKind::Text => t!("Text"),
+                            a7n_ipc::ClipboardKind::Image => t!("Image"),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    ui.label(t!(
+                        "Clipboard from %{name}: %{items} items, %{size} B, %{kinds}",
+                        name = held.name,
+                        items = held.items,
+                        size = held.size,
+                        kinds = kinds
                     ));
                     ui.horizontal(|ui| {
                         if theme::button(
@@ -205,7 +230,7 @@ impl App {
                             theme::ButtonKind::Primary,
                             theme::ButtonSize::Md,
                             None,
-                            "Accept",
+                            &t!("Accept"),
                         )
                         .clicked()
                         {
@@ -219,7 +244,7 @@ impl App {
                             theme::ButtonKind::Ghost,
                             theme::ButtonSize::Md,
                             None,
-                            "Reject",
+                            &t!("Reject"),
                         )
                         .clicked()
                         {
@@ -240,34 +265,40 @@ impl App {
         let Some(tray) = &self.tray else {
             return;
         };
-        let (status, focused, paused) =
-            self.status
-                .as_ref()
-                .map_or(("Disconnected", "unknown".to_owned(), false), |s| {
-                    let focused = if s.focused == s.machine {
-                        s.name.clone()
+        let (status, focused, paused) = self.status.as_ref().map_or(
+            (t!("Disconnected"), t!("unknown").into_owned(), false),
+            |s| {
+                let focused = if s.focused == s.machine {
+                    s.name.clone()
+                } else {
+                    s.peers
+                        .iter()
+                        .find(|p| p.id == s.focused)
+                        .map_or_else(|| s.focused.to_string(), |p| p.name.clone())
+                };
+                (
+                    if s.input.is_some() {
+                        t!("Input unavailable")
                     } else {
-                        s.peers
-                            .iter()
-                            .find(|p| p.id == s.focused)
-                            .map_or_else(|| s.focused.to_string(), |p| p.name.clone())
-                    };
-                    (
-                        if s.input.is_some() {
-                            "Input unavailable"
-                        } else {
-                            "Connected"
-                        },
-                        focused,
-                        s.paused,
-                    )
-                });
+                        t!("Connected")
+                    },
+                    focused,
+                    s.paused,
+                )
+            },
+        );
         let waiting = self
             .status
             .as_ref()
             .and_then(|s| s.held_clipboard.as_ref())
-            .map(|held| format!("Clipboard waiting from {}", held.name));
-        tray.update(waiting.as_deref().unwrap_or(status), &focused, paused);
+            .map(|held| t!("Clipboard waiting from %{name}", name = held.name));
+        tray.update(
+            waiting.as_deref().unwrap_or(&status),
+            &t!("Focus: %{name}", name = focused),
+            &if paused { t!("Resume") } else { t!("Pause") },
+            &t!("Settings"),
+            &t!("Quit"),
+        );
         while let Some(action) = self
             .tray
             .as_ref()
@@ -328,17 +359,17 @@ impl eframe::App for App {
                 ui.add_space(20.0);
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for (screen, icon, name) in [
-                    (Screen::Machines, theme::icon::MONITOR, "Machines"),
+                    (Screen::Machines, theme::icon::MONITOR, &t!("Machines")),
                     (
                         Screen::Layout,
                         theme::icon::SQUARE_SPLIT_HORIZONTAL,
-                        "Layout",
+                        &t!("Layout"),
                     ),
-                    (Screen::Hotkeys, theme::icon::KEYBOARD, "Hotkeys"),
+                    (Screen::Hotkeys, theme::icon::KEYBOARD, &t!("Hotkeys")),
                     (
                         Screen::Policies,
                         theme::icon::SHIELD_CHECK,
-                        "Peers & policies",
+                        &t!("Peers & policies"),
                     ),
                 ] {
                     if theme::nav_item(ui, icon, name, self.screen == screen).clicked() {
@@ -351,16 +382,16 @@ impl eframe::App for App {
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                     theme::card(ui, |ui| {
                         let (kind, label) = self.status.as_ref().map_or(
-                            (theme::BadgeKind::Danger, "Daemon stopped"),
+                            (theme::BadgeKind::Danger, t!("Daemon stopped")),
                             |status| {
                                 if status.paused {
-                                    (theme::BadgeKind::Warning, "Paused")
+                                    (theme::BadgeKind::Warning, t!("Paused"))
                                 } else {
-                                    (theme::BadgeKind::Online, "Daemon running")
+                                    (theme::BadgeKind::Online, t!("Daemon running"))
                                 }
                             },
                         );
-                        theme::badge(ui, kind, label);
+                        theme::badge(ui, kind, &label);
                     });
                 });
             });
@@ -398,6 +429,24 @@ impl eframe::App for App {
     }
 }
 
+fn set_language(language: Language) {
+    static SYSTEM_LOCALE: OnceLock<&str> = OnceLock::new();
+    let locale = match language {
+        Language::System => SYSTEM_LOCALE.get_or_init(|| {
+            if sys_locale::get_locale()
+                .is_some_and(|locale| locale.to_ascii_lowercase().starts_with("de"))
+            {
+                "de"
+            } else {
+                "en"
+            }
+        }),
+        Language::English => "en",
+        Language::German => "de",
+    };
+    rust_i18n::set_locale(locale);
+}
+
 fn main() -> eframe::Result {
     eframe::run_native(
         "Apeirogon",
@@ -410,4 +459,24 @@ fn main() -> eframe::Result {
         },
         Box::new(|cc| Ok(Box::new(App::new(cc)?))),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn translate_german_locale_translates_known_key_and_preserves_unknown() {
+        // Arrange
+        rust_i18n::set_locale("de");
+
+        // Act
+        let translated = t!("Machines");
+        let fallback = t!("Unknown translation key");
+
+        // Assert
+        assert_eq!(translated, "Rechner");
+        assert_eq!(fallback, "Unknown translation key");
+        rust_i18n::set_locale("en");
+    }
 }

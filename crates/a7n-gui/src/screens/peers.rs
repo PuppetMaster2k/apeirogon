@@ -3,6 +3,7 @@
 use a7n_ipc::config::{MAX_PEER_SPEED, MIN_PEER_SPEED};
 use a7n_ipc::{LinkProblem, PeerInfo};
 use eframe::egui;
+use rust_i18n::t;
 
 use crate::{App, theme};
 use theme::{BadgeKind, ButtonKind, ButtonSize, icon};
@@ -38,8 +39,8 @@ impl App {
             theme::empty_card(
                 ui,
                 icon::SHIELD_CHECK,
-                "No paired machines yet.",
-                "Pair a machine on the Machines page",
+                &t!("No paired machines yet."),
+                &t!("Pair a machine on the Machines page"),
             );
             return;
         }
@@ -76,7 +77,7 @@ impl App {
     }
 
     fn peer_list(&mut self, ui: &mut egui::Ui, peers: &[PeerInfo]) {
-        theme::overline(ui, "Paired machines");
+        theme::overline(ui, &t!("Paired machines"));
         for peer in peers {
             ui.push_id(peer.id, |ui| {
                 if theme::nav_item(
@@ -96,7 +97,11 @@ impl App {
                     } else {
                         BadgeKind::Offline
                     },
-                    if peer.connected { "Online" } else { "Offline" },
+                    &if peer.connected {
+                        t!("Online")
+                    } else {
+                        t!("Offline")
+                    },
                 );
                 peer_problem(ui, peer);
                 let id = peer.id.to_string();
@@ -116,8 +121,8 @@ impl App {
         theme::card(ui, |ui| {
             theme::setting_row(
                 ui,
-                "Receive directory",
-                "Files from all peers are saved here. Use an absolute path.",
+                &t!("Receive directory"),
+                &t!("Files from all peers are saved here. Use an absolute path."),
                 Some(key),
                 |ui| {
                     ui.allocate_ui_with_layout(
@@ -127,9 +132,9 @@ impl App {
                             if self.editing_receive_dir {
                                 if theme::text_input(
                                     ui,
-                                    "Directory",
+                                    &t!("Directory"),
                                     &mut value,
-                                    "Absolute path",
+                                    &t!("Absolute path"),
                                     true,
                                 )
                                 .changed()
@@ -141,7 +146,7 @@ impl App {
                                     ButtonKind::Ghost,
                                     ButtonSize::Sm,
                                     None,
-                                    "Done",
+                                    &t!("Done"),
                                 )
                                 .clicked()
                                 {
@@ -159,7 +164,7 @@ impl App {
                                     ButtonKind::Ghost,
                                     ButtonSize::Sm,
                                     None,
-                                    "Change…",
+                                    &t!("Change…"),
                                 )
                                 .clicked()
                                 {
@@ -182,8 +187,8 @@ impl App {
             let mut allowed = self.value(&key, "true") == "true";
             theme::setting_row(
                 ui,
-                "Allow drive",
-                "This machine may take over keyboard and mouse here.",
+                &t!("Allow drive"),
+                &t!("This machine may take over keyboard and mouse here."),
                 Some("allow_drive"),
                 |ui| {
                     if theme::toggle(ui, &mut allowed).changed() {
@@ -196,8 +201,8 @@ impl App {
             let mut drive_peer = self.value(&key, "true") == "true";
             theme::setting_row(
                 ui,
-                "Drive this machine from here",
-                "Off: edges, jump keys and switching never move input to this machine.",
+                &t!("Drive this machine from here"),
+                &t!("Off: edges, jump keys and switching never move input to this machine."),
                 Some("drive_peer"),
                 |ui| {
                     if theme::toggle(ui, &mut drive_peer).changed() {
@@ -210,8 +215,8 @@ impl App {
             let mut wake = self.value(&key, "true") == "true";
             theme::setting_row(
                 ui,
-                "Wake automatically",
-                "Wake this machine when you switch to it while offline.",
+                &t!("Wake automatically"),
+                &t!("Wake this machine when you switch to it while offline."),
                 Some("wake"),
                 |ui| {
                     if theme::toggle(ui, &mut wake).changed() {
@@ -222,15 +227,15 @@ impl App {
             for (name, title, default, help) in [
                 (
                     "clipboard",
-                    "Clipboard",
+                    &t!("Clipboard"),
                     "both",
-                    "Direction clipboard contents are shared.",
+                    &t!("Direction clipboard contents are shared."),
                 ),
                 (
                     "files",
-                    "Files",
+                    &t!("Files"),
                     "ask",
-                    "Ask shows a confirmation before files are saved.",
+                    &t!("Ask shows a confirmation before files are saved."),
                 ),
             ] {
                 ui.separator();
@@ -242,11 +247,11 @@ impl App {
                         ui,
                         &mut selected,
                         &[
-                            ("both", "Both"),
-                            ("send", "Send"),
-                            ("receive", "Receive"),
-                            ("ask", "Ask"),
-                            ("off", "Off"),
+                            ("both", &t!("Both")),
+                            ("send", &t!("Send")),
+                            ("receive", &t!("Receive")),
+                            ("ask", &t!("Ask")),
+                            ("off", &t!("Off")),
                         ],
                     )
                     .changed()
@@ -255,7 +260,7 @@ impl App {
                     }
                 });
                 if name == "clipboard" && selected == "ask" {
-                    theme::small(ui, "Incoming copies wait for your confirmation.");
+                    theme::small(ui, &t!("Incoming copies wait for your confirmation."));
                 }
             }
         });
@@ -266,17 +271,17 @@ impl App {
     }
 
     fn peer_input(&mut self, ui: &mut egui::Ui, prefix: &str) {
-        ui.heading("Input from this machine");
+        ui.heading(t!("Input from this machine"));
         for (name, title, help) in [
             (
                 "pointer_speed",
-                "Pointer speed",
-                "Multiplies your base pointer speed when this machine drives you.",
+                &t!("Pointer speed"),
+                &t!("Multiplies your base pointer speed when this machine drives you."),
             ),
             (
                 "scroll_speed",
-                "Scroll speed",
-                "Wheel and trackpad speed when this machine drives you.",
+                &t!("Scroll speed"),
+                &t!("Wheel and trackpad speed when this machine drives you."),
             ),
         ] {
             let key = format!("{prefix}.{name}");
@@ -300,11 +305,11 @@ impl App {
         let mut reverse = self.value(&key, "false") == "true";
         theme::setting_row(
             ui,
-            "Reverse scrolling",
-            "Reverse both scroll directions received from this machine.",
+            &t!("Reverse scrolling"),
+            &t!("Reverse both scroll directions received from this machine."),
             None,
             |ui| {
-                if ui.checkbox(&mut reverse, "Reverse scrolling").changed() {
+                if ui.checkbox(&mut reverse, t!("Reverse scrolling")).changed() {
                     self.edit(&key, if reverse { "true" } else { "false" }, "false");
                 }
             },
@@ -317,14 +322,18 @@ impl App {
         let mut selected = value.as_str();
         theme::setting_row(
             ui,
-            "Modifier remaps",
-            "Auto swaps Cmd and Ctrl between a Mac and a PC.",
+            &t!("Modifier remaps"),
+            &t!("Auto swaps Cmd and Ctrl between a Mac and a PC."),
             Some("modifier_mode"),
             |ui| {
                 if theme::segmented(
                     ui,
                     &mut selected,
-                    &[("auto", "Auto"), ("off", "Off"), ("custom", "Custom")],
+                    &[
+                        ("auto", &t!("Auto")),
+                        ("off", &t!("Off")),
+                        ("custom", &t!("Custom")),
+                    ],
                 )
                 .changed()
                 {
@@ -339,11 +348,18 @@ impl App {
         let key = format!("{prefix}.modifier_remap");
         theme::setting_row(
             ui,
-            "Modifier remaps",
-            "Physical key on this keyboard → key sent to the peer. Same key = unchanged.",
+            &t!("Modifier remaps"),
+            &t!("Physical key on this keyboard → key sent to the peer. Same key = unchanged."),
             Some("modifier_remap"),
             |ui| {
-                if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, "Reset all").clicked()
+                if theme::button(
+                    ui,
+                    ButtonKind::Ghost,
+                    ButtonSize::Sm,
+                    None,
+                    &t!("Reset all"),
+                )
+                .clicked()
                 {
                     for source in MODIFIERS {
                         self.edit(&format!("{key}.{source}"), source, source);
@@ -410,12 +426,18 @@ pub(super) fn peer_problem(ui: &mut egui::Ui, peer: &PeerInfo) {
         return;
     };
     let message = match problem {
-        LinkProblem::Unreachable => "Unreachable: check both machines are on the same network and the firewall allows apeirogon.".to_owned(),
-        LinkProblem::Refused => "Not accepting connections: is apeirogon running there?".to_owned(),
-        LinkProblem::AuthFailed => "Certificate does not match: pair again.".to_owned(),
-        LinkProblem::VersionMismatch { older: Some(name) } => format!("Different apeirogon versions: update {name}."),
-        LinkProblem::VersionMismatch { older: None } => "Different apeirogon versions: update both machines.".to_owned(),
-        LinkProblem::Silent => "Stopped responding: check the peer and its network connection.".to_owned(),
+        LinkProblem::Unreachable => t!(
+            "Unreachable: check both machines are on the same network and the firewall allows apeirogon."
+        ),
+        LinkProblem::Refused => t!("Not accepting connections: is apeirogon running there?"),
+        LinkProblem::AuthFailed => t!("Certificate does not match: pair again."),
+        LinkProblem::VersionMismatch { older: Some(name) } => {
+            t!("Different apeirogon versions: update %{name}.", name = name)
+        }
+        LinkProblem::VersionMismatch { older: None } => {
+            t!("Different apeirogon versions: update both machines.")
+        }
+        LinkProblem::Silent => t!("Stopped responding: check the peer and its network connection."),
     };
     theme::small(ui, &message);
 }

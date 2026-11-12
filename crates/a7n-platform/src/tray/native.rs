@@ -43,11 +43,11 @@ impl Tray {
     /// Returns native menu or icon creation errors.
     pub fn new(wake: impl Fn() + Send + Sync + 'static) -> Result<Self, TrayError> {
         let menu = Menu::new();
-        let status = MenuItem::new("Disconnected", false, None);
-        let focused = MenuItem::new("Focus: unknown", false, None);
-        let pause = MenuItem::new("Pause", true, None);
-        let settings = MenuItem::new("Settings", true, None);
-        let quit = MenuItem::new("Quit", true, None);
+        let status = MenuItem::new("", false, None);
+        let focused = MenuItem::new("", false, None);
+        let pause = MenuItem::new("", true, None);
+        let settings = MenuItem::new("", true, None);
+        let quit = MenuItem::new("", true, None);
         menu.append_items(&[&status, &focused, &pause, &settings, &quit])?;
         let icon = TrayIconBuilder::new()
             .with_tooltip("Apeirogon")
@@ -71,10 +71,12 @@ impl Tray {
         })
     }
 
-    pub fn update(&self, status: &str, focused: &str, paused: bool) {
+    pub fn update(&self, status: &str, focused: &str, pause: &str, settings: &str, quit: &str) {
         self.status.set_text(status);
-        self.focused.set_text(format!("Focus: {focused}"));
-        self.pause.set_text(if paused { "Resume" } else { "Pause" });
+        self.focused.set_text(focused);
+        self.pause.set_text(pause);
+        self.settings.set_text(settings);
+        self.quit.set_text(quit);
     }
 
     #[must_use]

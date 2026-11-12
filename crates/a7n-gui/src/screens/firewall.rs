@@ -2,6 +2,7 @@
 
 use a7n_ipc::FirewallProblem;
 use eframe::egui;
+use rust_i18n::t;
 
 use crate::theme;
 
@@ -15,7 +16,10 @@ pub(super) fn firewall_warnings(ui: &mut egui::Ui, problems: &[FirewallProblem],
         theme::card(ui, |ui| {
             theme::warning(
                 ui,
-                &format!("Windows Firewall: {}", address_text(problem, hidden)),
+                &t!(
+                    "Windows Firewall: %{problem}",
+                    problem = address_text(problem, hidden)
+                ),
             );
             let Some(fix) = problem.fix() else {
                 return;
@@ -23,7 +27,7 @@ pub(super) fn firewall_warnings(ui: &mut egui::Ui, problems: &[FirewallProblem],
             ui.add_space(theme::size::ROW_GAP / 2.0);
             theme::small(
                 ui,
-                "How to fix it. Commands need an administrator Command Prompt.",
+                &t!("How to fix it. Commands need an administrator Command Prompt."),
             );
             ui.add(
                 egui::Label::new(

@@ -19,7 +19,7 @@ mod hotkeys;
 mod local_keys;
 pub use files::FilesConfig;
 pub use gestures::GestureConfig;
-pub use gui::{Appearance, GuiConfig};
+pub use gui::{Appearance, GuiConfig, Language};
 pub use hotkeys::HotkeyConfig;
 
 pub const MIN_SPEED: f64 = 0.1;
@@ -406,7 +406,7 @@ impl Config {
                     "swipe_up" | "swipe_down" | "swipe_left" | "swipe_right",
                 ]
                 | ["hotkeys", "double_tap" | "trigger_mode" | "lock" | "jump"]
-                | ["gui", "appearance"]
+                | ["gui", "appearance" | "language"]
                 | ["feedback", "style" | "landing_style" | "color" | "size"] => {
                     toml::Value::String(value.into())
                 }

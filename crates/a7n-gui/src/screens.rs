@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use eframe::egui;
+use rust_i18n::t;
 
 use super::{App, Command, Screen, theme};
 use theme::{BadgeKind, ButtonKind, ButtonSize, IconButtonKind, icon};
@@ -23,13 +24,13 @@ impl App {
     pub(super) fn settings(&mut self, ui: &mut egui::Ui) {
         let (title, subtitle) = if self.screen == Screen::Hotkeys {
             (
-                "Hotkeys",
-                "Shortcuts for returning home and moving input between machines.",
+                &t!("Hotkeys"),
+                &t!("Shortcuts for returning home and moving input between machines."),
             )
         } else {
             (
-                "Peers & policies",
-                "What each paired machine is allowed to do.",
+                &t!("Peers & policies"),
+                &t!("What each paired machine is allowed to do."),
             )
         };
         self.settings_header(ui, title, subtitle);
@@ -38,8 +39,8 @@ impl App {
             theme::empty_card(
                 ui,
                 icon::ARROW_CLOCKWISE,
-                "Config is unavailable.",
-                "Reload config to try again.",
+                &t!("Config is unavailable."),
+                &t!("Reload config to try again."),
             );
             return;
         }
@@ -64,7 +65,7 @@ impl App {
         ui.add_space(theme::size::SECTION_GAP);
         theme::small(
             ui,
-            "Saving rewrites config.toml without comments, like a7n config set.",
+            &t!("Saving rewrites config.toml without comments, like a7n config set."),
         );
     }
 
@@ -80,7 +81,7 @@ impl App {
                         ButtonKind::Primary,
                         ButtonSize::Md,
                         Some(icon::FLOPPY_DISK),
-                        "Save changes",
+                        &t!("Save changes"),
                     )
                     .clicked()
                     {
@@ -92,7 +93,7 @@ impl App {
                 ui,
                 IconButtonKind::Bordered,
                 icon::ARROW_CLOCKWISE,
-                "Discard edits and reload config",
+                &t!("Discard edits and reload config"),
                 false,
             )
             .clicked()
@@ -100,7 +101,7 @@ impl App {
                 self.send(Command::Config);
             }
             if !self.edits.is_empty() {
-                theme::badge(ui, BadgeKind::Warning, "Unsaved changes");
+                theme::badge(ui, BadgeKind::Warning, &t!("Unsaved changes"));
             }
         });
     }
@@ -114,7 +115,7 @@ impl App {
                     .map(|(key, value)| (key.as_str(), value.as_str())),
             )
             .err()
-            .map(|error| error.to_string())
+            .map(|error| t!("Invalid settings: %{error}", error = error).into_owned())
     }
 
     pub(crate) fn value(&self, key: &str, default: &str) -> String {
@@ -148,8 +149,8 @@ impl App {
             theme::card(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     theme::icon_tile(ui, icon::POWER);
-                    ui.heading("Daemon isn't running");
-                    ui.label("Start the daemon to manage machines and share input.");
+                    ui.heading(t!("Daemon isn't running"));
+                    ui.label(t!("Start the daemon to manage machines and share input."));
                     if let Some(error) = &self.daemon_error {
                         ui.label(
                             egui::RichText::new(error)
@@ -163,7 +164,7 @@ impl App {
                         ButtonKind::Primary,
                         ButtonSize::Md,
                         Some(icon::POWER),
-                        "Start daemon",
+                        &t!("Start daemon"),
                     )
                     .clicked()
                     {
@@ -178,8 +179,8 @@ impl App {
         let mut save = false;
         theme::page_header(
             ui,
-            "Layout",
-            "Arrange machines to match their positions on your desk.",
+            &t!("Layout"),
+            &t!("Arrange machines to match their positions on your desk."),
             |ui| {
                 ui.add_enabled_ui(
                     self.layout
@@ -191,7 +192,7 @@ impl App {
                             ButtonKind::Primary,
                             ButtonSize::Md,
                             Some(icon::FLOPPY_DISK),
-                            "Save layout",
+                            &t!("Save layout"),
                         )
                         .clicked();
                     },
@@ -201,9 +202,9 @@ impl App {
                     ButtonKind::Ghost,
                     ButtonSize::Md,
                     Some(icon::ARROW_CLOCKWISE),
-                    "Reload",
+                    &t!("Reload"),
                 )
-                .on_hover_text("Discard edits and reload layout")
+                .on_hover_text(t!("Discard edits and reload layout"))
                 .clicked()
                 {
                     self.send(Command::Request(a7n_ipc::Request::GetLayout));
@@ -213,20 +214,20 @@ impl App {
                     ButtonKind::Secondary,
                     ButtonSize::Md,
                     None,
-                    "Use real sizes",
+                    &t!("Use real sizes"),
                 )
                 .clicked()
                     && let Some(canvas) = &mut self.layout
-                    && let Err(error) = canvas.use_real_sizes()
+                    && let Err(_) = canvas.use_real_sizes()
                 {
-                    self.message = error.to_string();
+                    self.message = t!("No canvas space to place machines").into();
                 }
                 if theme::button(
                     ui,
                     ButtonKind::Secondary,
                     ButtonSize::Md,
                     None,
-                    "Fit to canvas",
+                    &t!("Fit to canvas"),
                 )
                 .clicked()
                     && let Some(canvas) = &mut self.layout
@@ -250,8 +251,8 @@ impl App {
             theme::empty_card(
                 ui,
                 icon::SQUARE_SPLIT_HORIZONTAL,
-                "Layout is unavailable.",
-                "Reload to request the desk layout.",
+                &t!("Layout is unavailable."),
+                &t!("Reload to request the desk layout."),
             );
         }
     }
@@ -259,7 +260,7 @@ impl App {
 
 fn address_text(value: &impl ToString, hidden: bool) -> String {
     if hidden {
-        "Address hidden".to_owned()
+        t!("Address hidden").into_owned()
     } else {
         value.to_string()
     }

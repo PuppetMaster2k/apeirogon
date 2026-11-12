@@ -11,10 +11,20 @@ pub enum Appearance {
     Dark,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Language {
+    #[default]
+    System,
+    English,
+    German,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct GuiConfig {
     pub appearance: Appearance,
+    pub language: Language,
     pub hide_addresses: bool,
     pub update_check: bool,
 }

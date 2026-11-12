@@ -3,6 +3,7 @@
 use std::time::{Duration, Instant};
 
 use eframe::egui;
+use rust_i18n::t;
 use serde::Deserialize;
 
 use crate::{App, Command, theme};
@@ -47,7 +48,7 @@ pub(super) fn check() -> Result<Option<Release>, String> {
         }
         Ok::<_, Box<dyn std::error::Error>>((latest > current).then_some(release))
     };
-    fetch().map_err(|_| "Could not check for updates. Try again later.".into())
+    fetch().map_err(|_| t!("Could not check for updates. Try again later.").into())
 }
 
 fn version(value: &str) -> Option<(u64, u64, u64)> {
@@ -80,7 +81,7 @@ impl App {
             self.update_check.manual = Some(manual);
             self.update_check.message.clear();
         } else if manual {
-            self.update_check.message = "Could not queue update check. Try again.".into();
+            self.update_check.message = t!("Could not queue update check. Try again.").into();
         }
     }
 
@@ -90,7 +91,7 @@ impl App {
         match result {
             Ok(release) => {
                 if manual && release.is_none() {
-                    self.update_check.message = "Up to date".into();
+                    self.update_check.message = t!("Up to date").into();
                 }
                 self.update_check.release = release;
             }
@@ -102,7 +103,10 @@ impl App {
     pub(super) fn update_notice(&self, ui: &mut egui::Ui) {
         if let Some(release) = &self.update_check.release {
             ui.hyperlink_to(
-                format!("Apeirogon {} is available", release.tag_name),
+                t!(
+                    "Apeirogon %{version} is available",
+                    version = release.tag_name
+                ),
                 &release.html_url,
             );
         }
@@ -117,8 +121,8 @@ impl App {
         theme::card(ui, |ui| {
             theme::setting_row(
                 ui,
-                "Check for updates",
-                "Check GitHub at startup and daily. Nothing downloads or installs.",
+                &t!("Check for updates"),
+                &t!("Check GitHub at startup and daily. Nothing downloads or installs."),
                 Some(KEY),
                 |ui| {
                     if theme::toggle(ui, &mut enabled).changed() {
@@ -130,7 +134,7 @@ impl App {
                             theme::ButtonKind::Ghost,
                             theme::ButtonSize::Sm,
                             None,
-                            "Check now",
+                            &t!("Check now"),
                         )
                         .clicked()
                         {
