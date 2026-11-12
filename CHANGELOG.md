@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.42.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.41.0...v0.42.0) (2026-11-12)
+
+
+### Features
+
+* **gui:** clean up the UI, add Feedback & theming, show monitors in the layout ([#259](https://github.com/PuppetMaster2k/apeirogon/issues/259)) ([85848c1](https://github.com/PuppetMaster2k/apeirogon/commit/85848c1ec636470851aaa053d31505d27395408e))
+
 ## [0.41.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.40.0...v0.41.0) (2026-11-12)
 
 
