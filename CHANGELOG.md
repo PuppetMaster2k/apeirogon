@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.37.0...v0.38.0) (2026-11-12)
+
+
+### Features
+
+* choose the edge feedback style, colour and size ([#247](https://github.com/PuppetMaster2k/apeirogon/issues/247)) ([46dfa09](https://github.com/PuppetMaster2k/apeirogon/commit/46dfa09e73d25f7e14b267bee4c14f778224316e))
+
 ## [0.37.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.36.0...v0.37.0) (2026-11-12)
 
 
