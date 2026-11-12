@@ -113,7 +113,7 @@ impl Default for InputConfig {
     }
 }
 
-/// Local cues for edge pushes and landings; never synced between machines.
+/// Cues for edge pushes and landings; appearance syncs, enable toggles stay local.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct FeedbackConfig {

@@ -263,12 +263,15 @@ crates/
   X11 detects only EWMH full-screen windows; borderless games without that state
   are not held.
 
-- **Feedback:** purely local cues, never synced. Settings `feedback.edge`
+- **Feedback:** appearance syncs across the desk through settings sync:
+  `feedback.style`, `feedback.color`, `feedback.size` and `feedback.landing_style`.
+  Enable toggles `feedback.edge`, `feedback.landing` and `feedback.haptics` stay local.
+  Setting `feedback.edge`
   (default true) draws a glow along the pushed edge that grows with the built-up
-  resistance; local `feedback.style` chooses `glow` (default) or a growing solid
+  resistance; `feedback.style` chooses `glow` (default) or a growing solid
   `beam`, `feedback.color` chooses `accent` (default), `green`, `orange` or `pink`,
   and `feedback.size` chooses `small`, `medium` (default) or `large`; `feedback.landing` (default true) briefly marks where the pointer
-  lands after a take, using the same colour and size; local
+  lands after a take, using the same colour and size;
   `feedback.landing_style` chooses `ring` (default), an expanding `pulse`, or a
   shrinking filled `dot`, with motion disabled under reduce-motion; `feedback.haptics` (default false, macOS only) ticks the
   trackpad at each quarter of the push. The daemon decides what to send
