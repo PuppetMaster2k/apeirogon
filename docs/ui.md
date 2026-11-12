@@ -1,10 +1,10 @@
 # Apeirogon UI guidelines
 
-Design rules for the Apeirogon (`a7n`) settings app, built with egui. Use this file when you build or change any screen. All tokens and helpers live in [`theme.rs`](../crates/a7n-gui/src/theme.rs).
+Design rules for the Apeirogon (`a7n`) settings app, built with egui. Use this file when you build or change any screen. All tokens and helpers live in [`theme.rs`](theme.rs).
 
 **Character:** technical and precise. Cool slate neutrals, one blue accent, 1 px lines, small radii (4 px controls, 6 px cards), Inter for the UI, JetBrains Mono for anything a machine wrote.
 
-![Machines – light](ui/machines-light.png)
+![Machines – light](screens/machines-light.png)
 
 ---
 
@@ -40,7 +40,7 @@ Read colors in widgets with `let p = theme::Palette::of(ui.ctx());`. Never hard-
 
 ## 2. Foundations
 
-![Foundations](ui/foundations.png)
+![Foundations](screens/foundations.png)
 
 ### Color tokens
 
@@ -119,7 +119,7 @@ Icons inherit the text color, with 8 px between icon and label. **Every icon-onl
 
 ## 3. Components
 
-![Components](ui/components.png)
+![Components](screens/components.png)
 
 ### Buttons: `theme::button(ui, kind, size, icon, label)`
 
@@ -141,19 +141,55 @@ Labels use sentence case and a verb: "Save changes", not "Save settings" / "SAVE
 
 Label above (13 px Medium), field 32 px tall, help or error text below in 12 px (`text3` or `danger`, with a `WARNING_CIRCLE` icon for errors). Set `mono = true` for addresses, codes and IDs.
 
-**Hotkeys** display as keycaps with `theme::chord(ui, "ctrl+alt+shift+l")`. A Ghost "Edit" button swaps them for a mono `text_input` using the existing config syntax. Do not record chords: egui cannot distinguish left and right modifiers, which settings such as `right_alt` require.
+**Hotkeys** are not free text. Show them as key caps with `theme::chord(ui, "ctrl+alt+shift+l")`, plus a Ghost "Record" button that captures the next key combination.
 
 ### Choosing a selection control
 
 | Value | Control |
 |---|---|
 | bool (`allow_drive`) | `theme::toggle(ui, &mut v)` inside a `setting_row` |
-| small enum (`clipboard`, including Ask) | `theme::segmented(ui, &mut v, &[(Both,"Both"),(Send,"Send"),…])` |
+| enum with ≤ 4 options (`clipboard`) | `theme::segmented(ui, &mut v, &[(Both,"Both"),(Send,"Send"),…])` |
 | longer list (modifier remap target) | `egui::ComboBox` (styled by the theme) |
 
 ### Badges: `theme::badge(ui, kind, text)`
 
 `Online` · `Offline` (hollow dot) · `Accent` ("This machine") · `Warning` ("Paused", "Unsaved changes") · `Danger` ("Daemon stopped").
+
+### Slider: `theme::slider(…)` / `theme::stepped_slider(…)`
+
+![Slider & accordion](screens/components2.png)
+
+- Use a slider when **the feel matters more than the exact number** (pointer speed, scroll speed). When the exact number matters, add a small mono number field to its right.
+- **Sizes:** the track is 4 px (`border_strong`, filled part in accent), the thumb is a 16 px white circle with a 1 px border, and the hit area is the full 32 px row.
+- **States:**
+  - Hover: a 6 px accent halo around the thumb.
+  - Dragging: 2 px accent border and a value bubble above the thumb.
+  - Focus: 3 px ring.
+  - Disabled: 45 % opacity.
+- Label on the left, current value on the right in **mono** (`1.00×`, `250 ms`).
+- **Uneven steps** (0 / 100 / 250 / 500 / 1000 ms) use `stepped_slider`, which draws ticks under the track and the option labels below them.
+- **Keyboard:** ←/→ step, Shift ×10, Home/End jump to the ends. The helper locks the arrow keys while it has focus.
+
+```rust
+theme::slider(ui, "Pointer speed", &mut cfg.pointer_speed, 0.25..=3.0, None, |v| format!("{v:.2}×"));
+theme::stepped_slider(ui, "Edge switch delay", &mut cfg.edge_delay_ms,
+    &[(0, "0"), (100, "100"), (250, "250"), (500, "500"), (1000, "1000")]);
+```
+
+### Accordion: `theme::accordion_group` + `theme::accordion` / `theme::disclosure`
+
+- **Grouped accordion:** a card of 52 px header rows separated by dividers. Each header shows a chevron, a title in Medium and a **summary of the current value** on the right, so users rarely need to open it. The open body lines up with the title (40 px indent, 20 px bottom padding).
+- **States:** hover fills the row with `hover`, focus draws a 2 px accent inset border, disabled is at 45 % opacity, and the chevron rotates 90° when the item opens.
+- **Inline disclosure** ("Advanced settings"): a small ghost header with no card. Its body is indented 24 px with a 1 px guide line. Use it for one or two extra fields at the end of a card.
+- Collapse what people rarely change. Never hide the setting a page exists for.
+
+```rust
+theme::accordion_group(ui, |ui| {
+    theme::accordion(ui, "clipboard", "Clipboard", Some("Both directions"), false, false, |ui| { /* … */ });
+    theme::accordion(ui, "remap", "Modifier remap", Some("1 remap"), true, true, |ui| { /* … */ });
+});
+theme::disclosure(ui, "advanced", "Advanced settings", false, |ui| { /* … */ });
+```
 
 ### Layout pieces
 
@@ -231,8 +267,8 @@ fn ui(&mut self, ctx: &egui::Context) {
 
 ### Machines
 
-![Machines – light](ui/machines-light.png)
-![Machines – dark](ui/machines-dark.png)
+![Machines – light](screens/machines-light.png)
+![Machines – dark](screens/machines-dark.png)
 
 Structure: header → **This machine** → **Paired machines** → **Nearby machines** → **Pair a machine** (Host and Join cards side by side).
 
@@ -269,15 +305,14 @@ Rules:
 - Show the full machine ID in mono `text3` with a copy icon button. Don't use the ID as the visible name.
 - Don't list the local machine under **Paired machines** (the old UI showed MARCEL-EBIZ-NB in both places).
 - Show empty sections as a dashed-border card with an icon, a sentence and a hint, never as a blank heading.
-- Offline paired machines with a remembered hardware address show a Secondary **Wake** button. While a wake is pending, show a Warning **Waking…** badge and disable Wake until it completes or expires. Wake sends a packet without moving focus.
 - **Join pairing** stays disabled until both the address and the code are filled in.
 
 ### Peers & policies
 
-![Peers – dark](ui/peers-dark.png)
-![Peers – light](ui/peers-light.png)
+![Peers – dark](screens/peers-dark.png)
+![Peers – light](screens/peers-light.png)
 
-Use a master-detail view: a selectable list of paired peers on the left and the selected peer’s settings in cards on the right. List peers by name with an Online/Offline status dot and text and a short mono machine ID below. Remember the selection when changing pages. An empty list shows a dashed card with an icon, a sentence and “Pair a machine on the Machines page”. The settings use `setting_row`:
+One card per peer. Its header shows the name, status badge and mono config path, and the card collapses (the chevron is a Ghost icon button). The rows inside use `setting_row`:
 
 ```rust
 theme::setting_row(ui, "Allow drive",
@@ -287,27 +322,18 @@ ui.separator();
 theme::setting_row(ui, "Clipboard",
     "Direction clipboard contents are shared.", Some("clipboard"),
     |ui| { theme::segmented(ui, &mut peer.clipboard, &[
-        (Clip::Both, "Both"), (Clip::Send, "Send"), (Clip::Receive, "Receive"), (Clip::Ask, "Ask"), (Clip::Off, "Off"),
+        (Clip::Both, "Both"), (Clip::Send, "Send"), (Clip::Receive, "Receive"), (Clip::Off, "Off"),
     ]); });
 ```
 
-- On Windows, Hotkeys includes a "Trackpad gestures" card with one chord row per Mac swipe direction. Edit uses the existing shortcut text field; Clear displays Off. Save and validation errors use the same flow as hotkeys. The card is hidden on other platforms.
-- Peer config hints use the leaf key (`allow_drive`, `clipboard`, `files`, `modifier_remap`); hotkeys keep their `hotkeys.*` hints. Setting controls stay right-aligned alongside their labels and help.
-- Use the same human key names in chords, remap keycaps and ComboBox values/options (`R Alt`, `Scroll Lock`, `Home`, `L Ctrl`). Meta is Win on Windows, Cmd on macOS and Super elsewhere; stored values keep the config syntax.
-- Choose modifier mode with an Auto / Off / Custom segmented control. Auto swaps Cmd and Ctrl between a Mac and a PC. Only Custom shows the remap grid and "Reset all".
-- Show custom modifier remaps as a grid: `keycap("L Ctrl")` → `ARROW_RIGHT` → a ComboBox. **Draw remapped entries in accent** (accent border and `accent_text` value) so changes stand out. Add a "Reset all" Ghost button.
-- Add **Wake automatically** below Allow drive, with leaf key `wake`: “Wake this machine when you switch to it while offline.” Default on; local only.
-- Clipboard offers Both, Send, Receive, Ask and Off. Ask help: "Incoming copies wait for your confirmation."
-- Files sits below Clipboard with Both, Send, Receive, Ask (default) and Off. Help: "Ask shows a confirmation before files are saved."
-- A machine-wide Receive directory `setting_row` sits above the peer list, including when no peers are paired. Show the effective path in mono with a Ghost "Change…" button that opens a mono text input and "Done". Hint: `files.receive_dir`. Require an absolute path; use the existing validation error and Save changes flow. The default is the OS downloads directory plus `Apeirogon`, falling back to `~/Downloads/Apeirogon`.
+- Show modifier remaps as a grid: `keycap("L Ctrl")` → `ARROW_RIGHT` → a ComboBox. **Draw remapped entries in accent** (accent border and `accent_text` value) so changes stand out. Add a "Reset all" Ghost button.
+- Collapsed peers show a one-line summary: "Drive allowed · Clipboard both · No remaps".
 - **Unsaved state:** when edits are pending, show a `Warning` badge "Unsaved changes" next to the header actions: a `Bordered` reload icon button (tooltip "Discard edits and reload config") and **Save changes** as the one Primary button.
 - Keep "Saving rewrites config.toml without comments, like `a7n config set`" as Small `text3` text at the bottom. It's useful, not a headline.
 
 ### Hotkeys (same pattern)
 
-Use one card with a `setting_row` per hotkey (double tap, home, lock, jump). Draw each value with `theme::chord` and give it a Ghost **Edit** button. Editing replaces the keycaps with a mono `text_input` using the existing string syntax; do not add a Record action because egui cannot distinguish left/right modifiers. Home takes several chords, so show each as its own keycap group, with "or" in `text3` between them.
-
-Jump defaults to `Ctrl+Alt+Shift+1…9` (`Ctrl+Option+Shift+1…9` on macOS). Unpaired slots do nothing; later machines keep their layout numbers. An explicitly configured `hotkeys.jump` keeps its existing value.
+Use one card with a `setting_row` per hotkey (double tap, home, lock, jump). Draw each value with `theme::chord` and give it a Ghost **Record** button. Home takes several chords, so show each as its own keycap group, with "or" in `text3` between them.
 
 ### Layout (same pattern)
 
@@ -322,7 +348,74 @@ Replace the raw OS error with:
 
 ---
 
-## 6. Checklist for a new screen
+## 6. App & tray icon
+
+![App & tray icon](screens/icon.png)
+
+**Concept:** an octagon split in two, with a gap where the boundary is. It reads as two machines with the edge between them. **The filled half is where your pointer is.** The app icon is the "here" state: white on a blue gradient tile.
+
+### Tray states
+
+| State | Glyph | When |
+|---|---|---|
+| `idle` | left half filled | Pointer and keyboard are on this machine |
+| `remote` | right half filled | You are driving another machine |
+| `paused` | both halves outlined | Input sharing paused |
+| `error` | far half faded (mono) / red (color) | Daemon stopped or no peer reachable |
+
+The glyph is drawn on 16 px and 24 px pixel grids with 2 px strokes on whole pixels, so it stays crisp at every tray size. Swap the icon whenever the daemon reports a state change, and set the tooltip to match ("Apeirogon: controlling DE_JRR906W9J9").
+
+### Files (`icons/`)
+
+| Platform | Use | File | Sizes |
+|---|---|---|---|
+| Windows | App | `windows/apeirogon.ico` | 16–256 |
+| Windows | Tray | `windows/tray-{state}-{dark\|light}-taskbar.ico` | 16, 20, 24, 32, 40, 48 |
+| macOS | App | `macos/AppIcon.icns` (+ `AppIcon.iconset/`) | 16–1024 |
+| macOS | Menu bar | `macos/tray-{state}Template.png`, `@2x` | 18, 36 |
+| Linux | App | `linux/hicolor/{size}/apps/apeirogon.png`, `scalable/apps/apeirogon.svg` | 16–512 + SVG |
+| Linux | Tray (KDE, others) | `linux/hicolor/scalable/status/apeirogon-{state}.svg`, `{22,24}x…/status/*.png` | SVG + 22/24 |
+| Linux | Tray (GNOME) | `linux/hicolor/scalable/status/apeirogon-{state}-symbolic.svg` | SVG |
+| All | Masters | `svg/` (app icon, mono / on-dark / on-light glyphs on 16 and 24 grids) | — |
+
+Platform rules:
+- **macOS:** menu bar icons must be **template images** (black + alpha only), so the system tints them for light, dark and highlighted menu bars. Never use the colored glyph there.
+- **Windows:** the taskbar theme can differ from the app theme. Pick `dark`/`light` from `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize\SystemUsesLightTheme` (0 = dark taskbar), and swap when it changes.
+- **Linux:** install the `hicolor` tree to `/usr/share/icons/hicolor` (or `~/.local/share/icons/hicolor`) and refer to icons **by name** (`apeirogon-idle`), so the desktop can choose symbolic or color. Stock GNOME needs the AppIndicator extension to show tray icons at all.
+
+### Wiring it up (sketch, `tray-icon` crate)
+
+```rust
+use tray_icon::{Icon, TrayIconBuilder};
+
+fn icon(png: &[u8]) -> Icon {
+    let img = image::load_from_memory(png).unwrap().into_rgba8();
+    let (w, h) = img.dimensions();
+    Icon::from_rgba(img.into_raw(), w, h).unwrap()
+}
+
+#[cfg(target_os = "macos")]
+const IDLE: &[u8] = include_bytes!("../icons/macos/tray-idleTemplate@2x.png");
+#[cfg(target_os = "linux")]
+const IDLE: &[u8] = include_bytes!("../icons/linux/hicolor/24x24/status/apeirogon-idle.png");
+// Windows: prefer Icon::from_path("tray-idle-dark-taskbar.ico", Some((16, 16)))
+// (or from_resource), so Windows picks the right size from the .ico.
+
+let tray = TrayIconBuilder::new()
+    .with_icon(icon(IDLE))
+    .with_icon_as_template(cfg!(target_os = "macos"))
+    .with_tooltip("Apeirogon")
+    .build()?;
+// on state change: tray.set_icon(Some(icon(REMOTE)))?;
+```
+
+Check the method names against the `tray-icon` version you use. On Linux, `tray-icon` writes the icon to a temporary file for the panel, so the PNG route above works on both KDE and GNOME.
+
+To regenerate every format after changing a color or the geometry, run `python3 icons/gen.py icons/out` (needs `cairosvg` and `Pillow`).
+
+---
+
+## 7. Checklist for a new screen
 
 - [ ] One `page_header` with a title, one sentence and the actions aligned right
 - [ ] Exactly one Primary button
