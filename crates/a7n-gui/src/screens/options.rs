@@ -301,7 +301,13 @@ impl App {
                             "feedback.style",
                             &t!("Style"),
                             "glow",
-                            &[("glow", t!("Glow").as_ref()), ("beam", t!("Beam").as_ref())][..],
+                            &[
+                                ("glow", t!("Glow").as_ref()),
+                                ("beam", t!("Beam").as_ref()),
+                                ("aperture", t!("Aperture").as_ref()),
+                                ("sparks", t!("Sparks").as_ref()),
+                                ("ripple", t!("Ripple").as_ref()),
+                            ][..],
                         ),
                         (
                             "feedback.landing_style",
@@ -311,17 +317,6 @@ impl App {
                                 ("ring", t!("Ring").as_ref()),
                                 ("pulse", t!("Pulse").as_ref()),
                                 ("dot", t!("Dot").as_ref()),
-                            ][..],
-                        ),
-                        (
-                            "feedback.color",
-                            &t!("Colour"),
-                            "accent",
-                            &[
-                                ("accent", t!("Accent").as_ref()),
-                                ("green", t!("Green").as_ref()),
-                                ("orange", t!("Orange").as_ref()),
-                                ("pink", t!("Pink").as_ref()),
                             ][..],
                         ),
                         (
@@ -348,6 +343,7 @@ impl App {
                             }
                         });
                     }
+                    self.feedback_color(ui);
                 });
             });
         }

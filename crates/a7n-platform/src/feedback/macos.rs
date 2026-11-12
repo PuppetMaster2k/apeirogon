@@ -10,6 +10,8 @@
 //! callback, on the main thread. Without `main_thread::run` there is no main
 //! run loop and [`start`] returns `None`, so tests never touch `AppKit`.
 
+mod blit;
+
 use std::ffi::c_void;
 use std::sync::mpsc as sync;
 use std::thread;
@@ -18,10 +20,10 @@ use std::time::{Duration, Instant};
 use objc2::MainThreadMarker;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2_app_kit::{
-    NSBackingStoreType, NSBox, NSBoxType, NSColor, NSEvent, NSHapticFeedbackManager,
-    NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer, NSPanel,
-    NSScreen, NSStatusWindowLevel, NSTitlePosition, NSWindowCollectionBehavior,
-    NSWindowSharingType, NSWindowStyleMask, NSWorkspace,
+    NSBackingStoreType, NSColor, NSEvent, NSHapticFeedbackManager, NSHapticFeedbackPattern,
+    NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer, NSImageView, NSPanel, NSScreen,
+    NSStatusWindowLevel, NSWindowCollectionBehavior, NSWindowSharingType, NSWindowStyleMask,
+    NSWorkspace,
 };
 use objc2_core_foundation::{
     CFAbsoluteTimeGetCurrent, CFRetained, CFRunLoop, CFRunLoopTimer, CFRunLoopTimerContext,
@@ -32,10 +34,11 @@ use tokio::sync::mpsc;
 
 use super::look::{self, BEAM_THICKNESS};
 use super::macos_geometry::{self as geometry, LANDING_DIAMETER, Rect};
-use super::{Color, Command, Feedback, Landing, Look, Style};
+use super::raster::{self, Along, EdgeEffect, Frame};
+use super::{Command, Feedback, Look, Style};
 use crate::main_thread::{self, Waker};
+use blit::Bitmap;
 
-const GLOW_ALPHA: f64 = 0.65;
 const LANDING_RING_WIDTH: f64 = 4.0;
 /// Long enough to notice, short enough not to linger over the new window.
 const LANDING_FADE: Duration = Duration::from_millis(700);
@@ -55,10 +58,17 @@ struct Ui {
 struct Panels {
     mtm: MainThreadMarker,
     glow: Retained<NSPanel>,
-    glow_fill: Retained<NSBox>,
-    colors: [(Color, Retained<NSColor>); 4],
+    glow_fill: Retained<NSImageView>,
+    glow_frame: Frame,
+    edge_effect: Option<EdgeEffect>,
+    edge_started: Instant,
+    landing_visible: bool,
+    timer_running: bool,
+    glow_bitmap: Bitmap,
+    landing_frame: Frame,
+    landing_bitmap: Bitmap,
     landing: Retained<NSPanel>,
-    landing_fill: Retained<NSBox>,
+    landing_fill: Retained<NSImageView>,
     landing_started: Instant,
     landing_center: (f64, f64),
     landing_look: Look,
@@ -130,7 +140,7 @@ unsafe extern "C-unwind" fn hide_landing(_: *mut CFRunLoopTimer, info: *mut c_vo
     // SAFETY: Same contract as drain_commands.
     let ui = unsafe { &mut *info.cast::<Ui>() };
     if let Some(panels) = &mut ui.panels {
-        panels.fade_landing();
+        panels.animate_frame();
     }
 }
 
@@ -163,13 +173,15 @@ impl Ui {
         }
     }
 
-    fn hide_glow(&self) {
-        if let Some(panels) = &self.panels {
+    fn hide_glow(&mut self) {
+        if let Some(panels) = &mut self.panels {
+            panels.edge_effect = None;
             panels.glow.orderOut(None);
+            panels.arm_timer();
         }
     }
 
-    fn hide_all(&self) {
+    fn hide_all(&mut self) {
         self.hide_glow();
         if let Some(panels) = &self.panels {
             panels.landing.orderOut(None);
@@ -189,22 +201,9 @@ impl Ui {
 
 impl Panels {
     fn new(mtm: MainThreadMarker, timer_info: *mut c_void) -> Option<Self> {
-        let colors = [Color::Accent, Color::Green, Color::Orange, Color::Pink].map(|color| {
-            let [r, g, b] = color.rgb(true);
-            (
-                color,
-                NSColor::colorWithSRGBRed_green_blue_alpha(
-                    f64::from(r) / 255.0,
-                    f64::from(g) / 255.0,
-                    f64::from(b) / 255.0,
-                    1.0,
-                ),
-            )
-        });
-        let accent = NSColor::controlAccentColor();
-        let glow_fill = filled_box(mtm, &accent.colorWithAlphaComponent(GLOW_ALPHA));
+        let glow_fill = image_view(mtm);
         let glow = make_panel(mtm, &glow_fill);
-        let landing_fill = plain_box(mtm);
+        let landing_fill = image_view(mtm);
         let landing = make_panel(mtm, &landing_fill);
         let mut timer_context = CFRunLoopTimerContext {
             version: 0,
@@ -232,7 +231,14 @@ impl Panels {
             mtm,
             glow,
             glow_fill,
-            colors,
+            glow_frame: Frame::default(),
+            edge_effect: None,
+            edge_started: Instant::now(),
+            landing_visible: false,
+            timer_running: false,
+            glow_bitmap: Bitmap::default(),
+            landing_frame: Frame::default(),
+            landing_bitmap: Bitmap::default(),
             landing,
             landing_fill,
             landing_started: Instant::now(),
@@ -244,7 +250,7 @@ impl Panels {
     }
 
     fn show_glow(
-        &self,
+        &mut self,
         display: crate::input::Bounds,
         edge: a7n_proto::v1::Edge,
         progress: u16,
@@ -283,21 +289,72 @@ impl Panels {
                 BEAM_THICKNESS * look.size.multiplier(),
             )
         } else {
-            geometry::glow_rect(screen, edge, progress, look.size)
+            let mut rect = geometry::glow_rect(screen, edge, progress, look.size);
+            if look.style.animated() {
+                let thickness = (f64::from(raster::EDGE_DEPTH) * look.size.multiplier())
+                    .min(screen.width)
+                    .min(screen.height);
+                rect = rect.map(|mut rect| {
+                    match edge {
+                        a7n_proto::v1::Edge::Top => {
+                            rect.height = thickness;
+                            rect.y = screen.y + screen.height - thickness;
+                        }
+                        a7n_proto::v1::Edge::Bottom => rect.height = thickness,
+                        a7n_proto::v1::Edge::Left => rect.width = thickness,
+                        a7n_proto::v1::Edge::Right => {
+                            rect.width = thickness;
+                            rect.x = screen.x + screen.width - thickness;
+                        }
+                        a7n_proto::v1::Edge::Unspecified => {}
+                    }
+                    rect
+                });
+            }
+            rect
         };
         let Some(rect) = rect else {
+            self.edge_effect = None;
             self.glow.orderOut(None);
+            self.arm_timer();
             return;
         };
-        if let Some((_, color)) = self.colors.iter().find(|(color, _)| *color == look.color) {
-            self.glow_fill.setFillColor(color);
-        }
-        self.glow.setAlphaValue(if look.style == Style::Beam {
-            1.0
-        } else {
-            GLOW_ALPHA
+        self.glow.setFrame_display(ns_rect(rect), false);
+        let scale = self.glow.backingScaleFactor();
+        self.glow_frame.resize(
+            pixel_size(rect.width * scale),
+            pixel_size(rect.height * scale),
+        );
+        self.glow_frame.dark = true;
+        self.glow_frame.opacity = if look.style == Style::Beam { 1.0 } else { 0.65 };
+        let pointer = NSEvent::mouseLocation();
+        let horizontal = matches!(edge, a7n_proto::v1::Edge::Top | a7n_proto::v1::Edge::Bottom);
+        let along = Along {
+            start: if horizontal {
+                (rect.x - screen.x) * scale
+            } else {
+                (screen.y + screen.height - rect.y - rect.height) * scale
+            },
+            span: if horizontal {
+                screen.width * scale
+            } else {
+                screen.height * scale
+            },
+            push: if horizontal {
+                (pointer.x - rect.x) * scale
+            } else {
+                (rect.y + rect.height - pointer.y) * scale
+            },
+        };
+        self.glow_frame.animate = !reduce_motion();
+        self.edge_effect = Some(EdgeEffect {
+            look,
+            edge,
+            progress,
+            along,
         });
-        self.glow.setFrame_display(ns_rect(rect), true);
+        self.render_edge();
+        self.arm_timer();
         self.glow.orderFrontRegardless();
     }
 
@@ -317,45 +374,72 @@ impl Panels {
         self.landing_started = Instant::now();
         self.landing_look = look;
         self.animate = !reduce_motion();
+        self.landing_visible = true;
         self.fade_landing();
         self.landing.orderFrontRegardless();
-        self.hide_landing
-            .set_next_fire_date(CFAbsoluteTimeGetCurrent() + LANDING_FRAME_SECONDS);
+        self.arm_timer();
     }
 
-    fn fade_landing(&self) {
+    fn render_edge(&mut self) {
+        if let Some(effect) = self.edge_effect {
+            effect.render(&mut self.glow_frame, self.edge_started.elapsed());
+            self.glow_bitmap.show(&self.glow_fill, &self.glow_frame);
+        }
+    }
+
+    fn animate_frame(&mut self) {
+        if self
+            .edge_effect
+            .is_some_and(|effect| effect.look.style.animated())
+            && self.glow_frame.animate
+        {
+            self.render_edge();
+        }
+        if self.landing_visible {
+            self.fade_landing();
+        }
+        self.arm_timer();
+    }
+
+    fn arm_timer(&mut self) {
+        let edge = self
+            .edge_effect
+            .is_some_and(|effect| effect.look.style.animated())
+            && self.glow_frame.animate;
+        let running = edge || (self.landing_visible && self.animate);
+        if running && self.timer_running {
+            return;
+        }
+        self.timer_running = running;
+        let delay = if running {
+            LANDING_FRAME_SECONDS
+        } else if self.landing_visible {
+            LANDING_STATIC_HOLD
+                .saturating_sub(self.landing_started.elapsed())
+                .as_secs_f64()
+        } else {
+            TIMER_DISARMED_SECONDS
+        };
+        self.hide_landing
+            .set_next_fire_date(CFAbsoluteTimeGetCurrent() + delay);
+    }
+
+    fn fade_landing(&mut self) {
         let look = self.landing_look;
         let duration = if self.animate {
             LANDING_FADE
         } else {
             LANDING_STATIC_HOLD
         };
-        let (radius, alpha) =
-            look.landing
-                .frame(self.landing_started.elapsed(), duration, self.animate);
+        let (_, alpha) = look
+            .landing
+            .frame(self.landing_started.elapsed(), duration, self.animate);
         if alpha == 0.0 {
             self.landing.orderOut(None);
-            self.hide_landing
-                .set_next_fire_date(CFAbsoluteTimeGetCurrent() + TIMER_DISARMED_SECONDS);
+            self.landing_visible = false;
             return;
         }
-        let radius = LANDING_DIAMETER / 2.0 * look.size.multiplier() * radius;
-        let dot = look.landing == Landing::Dot;
-        if let Some((_, color)) = self.colors.iter().find(|(color, _)| *color == look.color) {
-            self.landing_fill.setBorderColor(color);
-            if dot {
-                self.landing_fill.setFillColor(color);
-            } else {
-                self.landing_fill.setFillColor(&NSColor::clearColor());
-            }
-        }
-        self.landing_fill.setBorderWidth(if dot {
-            0.0
-        } else {
-            LANDING_RING_WIDTH * look.size.multiplier()
-        });
-        self.landing_fill.setCornerRadius(radius);
-        self.landing.setAlphaValue(alpha);
+        let radius = LANDING_DIAMETER / 2.0 * look.size.multiplier();
         self.landing.setFrame_display(
             ns_rect(Rect {
                 x: self.landing_center.0 - radius,
@@ -363,14 +447,31 @@ impl Panels {
                 width: radius * 2.0,
                 height: radius * 2.0,
             }),
-            true,
+            false,
         );
+        let scale = self.landing.backingScaleFactor();
+        self.landing_frame.resize(
+            pixel_size(radius * 2.0 * scale),
+            pixel_size(radius * 2.0 * scale),
+        );
+        self.landing_frame.animate = self.animate;
+        self.landing_frame.dark = true;
+        self.landing_frame.opacity = 1.0;
+        self.landing_frame.stroke = LANDING_RING_WIDTH * look.size.multiplier() * scale;
+        raster::render_landing(
+            &mut self.landing_frame,
+            look,
+            self.landing_started.elapsed(),
+            duration,
+        );
+        self.landing_bitmap
+            .show(&self.landing_fill, &self.landing_frame);
     }
 }
 
 /// A borderless panel that cannot become key, ignores the mouse, floats over
 /// every Space and full-screen app, and is excluded from screen capture.
-fn make_panel(mtm: MainThreadMarker, content: &NSBox) -> Retained<NSPanel> {
+fn make_panel(mtm: MainThreadMarker, content: &NSImageView) -> Retained<NSPanel> {
     let style = NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel;
     let panel = NSPanel::initWithContentRect_styleMask_backing_defer(
         mtm.alloc::<NSPanel>(),
@@ -396,18 +497,14 @@ fn make_panel(mtm: MainThreadMarker, content: &NSBox) -> Retained<NSPanel> {
     panel
 }
 
-fn filled_box(mtm: MainThreadMarker, fill: &NSColor) -> Retained<NSBox> {
-    let view = plain_box(mtm);
-    view.setBorderWidth(0.0);
-    view.setFillColor(fill);
-    view
+fn image_view(mtm: MainThreadMarker) -> Retained<NSImageView> {
+    NSImageView::initWithFrame(mtm.alloc::<NSImageView>(), NSRect::ZERO)
 }
 
-fn plain_box(mtm: MainThreadMarker) -> Retained<NSBox> {
-    let view = NSBox::initWithFrame(mtm.alloc::<NSBox>(), NSRect::ZERO);
-    view.setBoxType(NSBoxType::Custom);
-    view.setTitlePosition(NSTitlePosition::NoTitle);
-    view
+// Screen dimensions are finite, positive OS values in points.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn pixel_size(value: f64) -> u32 {
+    value.round().max(1.0) as u32
 }
 
 fn reduce_motion() -> bool {

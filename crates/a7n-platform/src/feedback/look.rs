@@ -16,6 +16,15 @@ pub enum Style {
     #[default]
     Glow,
     Beam,
+    Aperture,
+    Sparks,
+    Ripple,
+}
+
+impl Style {
+    pub(super) const fn animated(self) -> bool {
+        matches!(self, Self::Aperture | Self::Sparks | Self::Ripple)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,25 +62,35 @@ impl Landing {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[repr(u8)]
 pub enum Color {
     #[default]
     Accent,
     Green,
     Orange,
     Pink,
-}
-
-impl Color {
-    #[must_use]
-    pub(super) const fn rgb(self, dark: bool) -> [u8; 3] {
-        match self {
-            Self::Accent if !dark => [0x2f, 0x5b, 0xea],
-            Self::Accent => [0x70, 0x88, 0xff],
-            Self::Green => [0x43, 0xc7, 0x7f],
-            Self::Orange => [0xe9, 0xa2, 0x3b],
-            Self::Pink => [0xed, 0x78, 0xb5],
-        }
-    }
+    Ibtesam,
+    Lunada,
+    Stripe,
+    Ali,
+    Alihossein,
+    Transfile,
+    ElectricViolet,
+    Martini,
+    Superman,
+    EdsSunsetGradient,
+    SublimeLight,
+    Argon,
+    JShine,
+    Flare,
+    UltraVoilet,
+    KyooPal,
+    KyeMeh,
+    Wiretap,
+    Rastafari,
+    SinCityRed,
+    AzurLane,
+    WitchingHour,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

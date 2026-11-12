@@ -41,6 +41,8 @@ use tokio::sync::mpsc;
 use crate::input::Bounds;
 
 mod look;
+mod palette;
+mod raster;
 pub use look::{Color, Landing, Look, Size, Style};
 
 #[cfg(target_os = "macos")]

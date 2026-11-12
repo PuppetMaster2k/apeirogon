@@ -268,8 +268,12 @@ crates/
   Enable toggles `feedback.edge`, `feedback.landing` and `feedback.haptics` stay local.
   Setting `feedback.edge`
   (default true) draws a glow along the pushed edge that grows with the built-up
-  resistance; `feedback.style` chooses `glow` (default) or a growing solid
-  `beam`, `feedback.color` chooses `accent` (default), `green`, `orange` or `pink`,
+  resistance; `feedback.style` chooses `glow` (default), a growing solid
+  `beam`, an opening `aperture`, flying `sparks`, or travelling `ripple` waves.
+  `feedback.color` chooses `accent` (default), `green`, `orange`, `pink`, or one
+  of the 22 fixed gradients from issue #258 (the shared palette defines their
+  names and stops). Gradients run along the pushed edge, around landing rings,
+  and radially across dots. The GUI shows each colour with a swatch,
   and `feedback.size` chooses `small`, `medium` (default) or `large`; `feedback.landing` (default true) briefly marks where the pointer
   lands after a take, using the same colour and size;
   `feedback.landing_style` chooses `ring` (default), an expanding `pulse`, or a
@@ -277,7 +281,12 @@ crates/
   trackpad at each quarter of the push. The daemon decides what to send
   (progress changes of at least 5 % and quarter crossings); each OS backend draws
   a click-through overlay that never takes focus and honours the OS reduce-motion
-  setting itself. Windows, macOS and X11 are supported; Wayland has none, because a background
+  setting itself. Animated edges redraw at approximately 60 fps only while
+  visible; reduce-motion freezes their motion while retaining push progress.
+  X11 reads GNOME/KDE animation preferences at startup and uses static frames
+  on unknown desktops. Native backends blit shared premultiplied raster frames;
+  X11 retains solid-colour drawing without an ARGB visual or compositor.
+  Windows, macOS and X11 are supported; Wayland has none, because a background
   daemon cannot place an overlay at the screen edges there (layer-shell is
   compositor-specific and not used).
 
