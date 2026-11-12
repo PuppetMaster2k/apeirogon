@@ -1,20 +1,26 @@
 {
   "name": "Rust + Claude Code + Codex + Herdr",
-  "image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
+  "image": "mcr.microsoft.com/devcontainers/rust:2.1.5-1-bookworm@sha256:4d944fc913385b14c0507bc4636749a773543067c2f5fc885b6fd4a42e59f006",
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
-      "version": "lts"
+      "version": "26"
     },
     "ghcr.io/devcontainers/features/sshd:1": {
       "version": "latest"
     }
   },
+  "remoteUser": "vscode",
   "forwardPorts": [2222],
   "portsAttributes": {
     "2222": {
       "label": "SSH (Herdr)",
       "onAutoForward": "silent"
     }
+  },
+  "containerEnv": {
+    "CARGO_TARGET_DIR": "/home/vscode/target",
+    "HERDR_SSH_KEY": "${localEnv:HERDR_SSH_KEY}",
+    "HERDR_INSTALL_SHA256": "${localEnv:HERDR_INSTALL_SHA256}"
   },
   "remoteEnv": {
     "PATH": "/home/vscode/.local/bin:${containerEnv:PATH}"
@@ -24,16 +30,20 @@
     "source=codex-cli-config,target=/home/vscode/.codex,type=volume",
     "source=herdr-config,target=/home/vscode/.config/herdr,type=volume",
     "source=rust-cargo-cache,target=/usr/local/cargo/registry,type=volume",
+    "source=rust-cargo-git,target=/usr/local/cargo/git,type=volume",
+    "source=apeirogon-target,target=/home/vscode/target,type=volume",
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/tmp/host-ssh,type=bind,readonly"
   ],
-  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "onCreateCommand": "bash .devcontainer/on-create.sh",
+  "updateContentCommand": "cargo fetch --locked",
+  "postCreateCommand": "bash .devcontainer/setup-ssh.sh",
   "customizations": {
     "vscode": {
       "extensions": [
         "rust-lang.rust-analyzer",
         "tamasfe.even-better-toml",
         "vadimcn.vscode-lldb",
-        "serayuzgur.crates"
+        "fill-labs.dependi"
       ],
       "settings": {
         "rust-analyzer.check.command": "clippy"
