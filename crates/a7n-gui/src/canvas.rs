@@ -82,7 +82,7 @@ impl Canvas {
             theme::badge(
                 ui,
                 theme::BadgeKind::Warning,
-                &t!("Another machine replaced your last layout edit."),
+                &t!("Layout changed on another machine."),
             );
         }
         let (area, _) = ui.allocate_exact_size(
@@ -153,10 +153,10 @@ impl Canvas {
         theme::small(
             ui,
             &t!(
-                "Drag machines to place them; they snap to each other's edges. Tab selects a machine; arrow keys move it (Shift for fine movement). Edges connect where rectangles touch.",
+                "Drag to arrange; touching edges connect. Tab selects, arrows move; Shift moves finely.",
             ),
         );
-        theme::small(ui, &t!("Click an edge third to switch it off or on"));
+        theme::small(ui, &t!("Click an edge third to toggle it."));
         let validation = validate(&self.draft.placements);
         if let Err(error) = validation {
             theme::error(ui, &t!(error.to_string()));

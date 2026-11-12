@@ -103,7 +103,7 @@ fn button_paint(p: &Palette, kind: ButtonKind, hovered: bool, pressed: bool) -> 
 /// Text button with optional leading Phosphor icon.
 ///
 /// ```ignore
-/// if theme::button(ui, ButtonKind::Primary, ButtonSize::Md, Some(ph::FLOPPY_DISK), "Save changes").clicked() { … }
+/// if theme::button(ui, ButtonKind::Primary, ButtonSize::Md, Some(ph::FLOPPY_DISK), "Save").clicked() { … }
 /// ```
 pub(crate) fn button(
     ui: &mut Ui,

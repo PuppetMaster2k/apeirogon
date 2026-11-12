@@ -56,3 +56,21 @@ pub(super) fn chord_editor(
     })
     .inner
 }
+
+pub(super) fn chord_summary(value: &str) -> String {
+    if value.is_empty() {
+        return t!("Off").into_owned();
+    }
+    value
+        .split(',')
+        .take(3)
+        .map(|chord| {
+            chord
+                .split('+')
+                .map(theme::key_name)
+                .collect::<Vec<_>>()
+                .join("+")
+        })
+        .collect::<Vec<_>>()
+        .join(" · ")
+}

@@ -10,11 +10,11 @@ use theme::{BadgeKind, ButtonKind, ButtonSize};
 const PERMISSIONS: [(Permission, &str); 2] = [
     (
         Permission::Accessibility,
-        "Lets Apeirogon move the pointer and type on this Mac when another machine drives it.",
+        "Let paired machines control this Mac's keyboard and mouse.",
     ),
     (
         Permission::InputMonitoring,
-        "Lets Apeirogon see your keyboard and mouse so it can send them to another machine when the pointer crosses an edge.",
+        "Read keyboard and mouse input to share with paired machines.",
     ),
 ];
 
@@ -41,7 +41,7 @@ impl App {
                         },
                         ButtonSize::Md,
                         None,
-                        &t!("Open System Settings"),
+                        &t!("Open settings"),
                     )
                     .clicked()
                     {
@@ -53,9 +53,7 @@ impl App {
         }
         theme::small(
             ui,
-            &t!(
-                "After you switch it on, Apeirogon continues automatically. If apeirogond is not in the list, add it with the + button.",
-            ),
+            &t!("Add apeirogond with + if missing; setup resumes automatically.",),
         );
     }
 }

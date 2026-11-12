@@ -10,9 +10,11 @@ use super::chord_editor::chord_editor;
 
 impl App {
     pub(super) fn gestures(&mut self, ui: &mut egui::Ui) {
-        let summary = ["swipe_up", "swipe_down", "swipe_left", "swipe_right"]
-            .map(|name| self.value(&format!("gestures.{name}"), ""))
-            .join(" · ");
+        let count = ["swipe_up", "swipe_down", "swipe_left", "swipe_right"]
+            .iter()
+            .filter(|name| !self.value(&format!("gestures.{name}"), "").is_empty())
+            .count();
+        let summary = t!("%{count} of %{total} on", count = count, total = 4);
         theme::accordion(
             ui,
             "gestures",
@@ -23,9 +25,7 @@ impl App {
             |ui| {
                 theme::small(
                     ui,
-                    &t!(
-                        "When a Mac trackpad swipes on this PC, apeirogon presses these Windows shortcuts."
-                    ),
+                    &t!("Mac trackpad swipes trigger these Windows shortcuts."),
                 );
                 for (index, (name, title)) in [
                     ("swipe_up", &t!("Swipe up")),
@@ -45,15 +45,9 @@ impl App {
 
     fn gesture_row(&mut self, ui: &mut egui::Ui, index: usize, name: &str, title: &str) {
         let key = format!("gestures.{name}");
-        theme::setting_row(
-            ui,
-            title,
-            &t!("Shortcut pressed on this PC. Clear to turn off."),
-            Some(&key),
-            |ui| {
-                self.gesture_editor(ui, index, &key);
-            },
-        );
+        theme::setting_row(ui, title, &t!("Clear to turn off."), Some(&key), |ui| {
+            self.gesture_editor(ui, index, &key);
+        });
     }
 
     fn gesture_editor(&mut self, ui: &mut egui::Ui, index: usize, key: &str) {

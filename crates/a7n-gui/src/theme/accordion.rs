@@ -6,6 +6,8 @@ use super::{Palette, font_icon, font_medium, font_regular, icon, size};
 
 const HEADER_HEIGHT: f32 = 52.0;
 const BODY_INDENT: i8 = 40;
+const SUMMARY_GAP: f32 = 24.0;
+const HEADER_RIGHT_MARGIN: f32 = 20.0;
 
 #[derive(Clone)]
 struct HeaderPaint {
@@ -157,7 +159,9 @@ pub(crate) fn accordion<R>(
         );
         if let Some(summary) = summary {
             let available = (rect.width()
-                - 60.0
+                - f32::from(BODY_INDENT)
+                - HEADER_RIGHT_MARGIN
+                - SUMMARY_GAP
                 - ui.fonts_mut(|fonts| {
                     fonts
                         .layout_no_wrap(title.to_owned(), font_medium(14.0), p.text)
@@ -165,19 +169,29 @@ pub(crate) fn accordion<R>(
                         .x
                 }))
             .max(0.0);
-            let mut job = egui::text::LayoutJob::simple_singleline(
-                summary.to_owned(),
-                font_regular(12.0),
-                color(p.text3),
-            );
-            job.wrap.max_width = available;
-            job.wrap.max_rows = 1;
-            let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
-            ui.painter().galley(
-                rect.right_center() - egui::vec2(20.0 + galley.size().x, galley.size().y / 2.0),
-                galley,
-                color(p.text3),
-            );
+            if available > 0.0 {
+                let mut job = egui::text::LayoutJob::simple_singleline(
+                    summary.to_owned(),
+                    font_regular(12.0),
+                    color(p.text3),
+                );
+                job.wrap = egui::text::TextWrapping::truncate_at_width(available);
+                let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
+                ui.painter()
+                    .with_clip_rect(egui::Rect::from_min_max(
+                        egui::pos2(rect.right() - HEADER_RIGHT_MARGIN - available, rect.top()),
+                        egui::pos2(rect.right() - HEADER_RIGHT_MARGIN, rect.bottom()),
+                    ))
+                    .galley(
+                        rect.right_center()
+                            - egui::vec2(
+                                HEADER_RIGHT_MARGIN + galley.size().x,
+                                galley.size().y / 2.0,
+                            ),
+                        galley,
+                        color(p.text3),
+                    );
+            }
         }
         state
             .show_body_unindented(ui, |ui| {

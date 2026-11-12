@@ -37,8 +37,8 @@ impl App {
             theme::empty_card(
                 ui,
                 icon::SHIELD_CHECK,
-                &t!("No paired machines yet."),
-                &t!("Pair a machine on the Machines page"),
+                &t!("No paired machines."),
+                &t!("Pair one under Machines."),
             );
         }
         for peer in peers {
@@ -57,9 +57,9 @@ impl App {
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let (chevron, tooltip) = if state.is_open() {
-                        (icon::CARET_DOWN, t!("Collapse peer settings"))
+                        (icon::CARET_DOWN, t!("Collapse"))
                     } else {
-                        (icon::CARET_RIGHT, t!("Expand peer settings"))
+                        (icon::CARET_RIGHT, t!("Expand"))
                     };
                     if theme::icon_button(ui, IconButtonKind::Ghost, chevron, &tooltip, false)
                         .clicked()
@@ -112,22 +112,22 @@ impl App {
 
     fn peer_summary(&self, prefix: &str) -> String {
         let drive = if self.value(&format!("{prefix}.allow_drive"), "true") == "true" {
-            t!("Drive allowed")
+            t!("Allowed")
         } else {
-            t!("Drive denied")
+            t!("Denied")
         };
         let clipboard = match self.value(&format!("{prefix}.clipboard"), "both").as_str() {
-            "send" => t!("Clipboard send"),
-            "receive" => t!("Clipboard receive"),
-            "ask" => t!("Clipboard ask"),
-            "off" => t!("Clipboard off"),
-            _ => t!("Clipboard both"),
+            "send" => t!("Send"),
+            "receive" => t!("Receive"),
+            "ask" => t!("Ask"),
+            "off" => t!("Off"),
+            _ => t!("Both"),
         };
         let remaps = match self
             .value(&format!("{prefix}.modifier_mode"), "auto")
             .as_str()
         {
-            "off" => t!("No remaps"),
+            "off" => t!("Off"),
             "custom" => {
                 let count = MODIFIERS
                     .iter()
@@ -136,12 +136,12 @@ impl App {
                     })
                     .count();
                 if count == 0 {
-                    t!("No remaps")
+                    t!("Off")
                 } else {
                     t!("%{count} remaps", count = count)
                 }
             }
-            _ => t!("Auto remaps"),
+            _ => t!("Auto"),
         };
         format!("{drive} · {clipboard} · {remaps}")
     }
@@ -153,7 +153,7 @@ impl App {
             theme::setting_row(
                 ui,
                 &t!("Receive directory"),
-                &t!("Files from all peers are saved here. Use an absolute path."),
+                &t!("Save received files here; use an absolute path."),
                 Some(key),
                 |ui| {
                     ui.allocate_ui_with_layout(
@@ -190,7 +190,7 @@ impl App {
                                     ButtonKind::Ghost,
                                     ButtonSize::Sm,
                                     None,
-                                    &t!("Change…"),
+                                    &t!("Change"),
                                 )
                                 .clicked()
                                 {
@@ -206,14 +206,14 @@ impl App {
 
     fn peer_settings(&mut self, ui: &mut egui::Ui, peer: &PeerInfo) {
         let prefix = format!("peers.{}", peer.id);
-        theme::overline(ui, &t!("Peers & policies"));
+        theme::overline(ui, &t!("Peer permissions"));
         ui.scope(|ui| {
             let key = format!("{prefix}.allow_drive");
             let mut allowed = self.value(&key, "true") == "true";
             theme::setting_row(
                 ui,
                 &t!("Allow drive"),
-                &t!("This machine may take over keyboard and mouse here."),
+                &t!("Allow this peer to control input here."),
                 Some("allow_drive"),
                 |ui| {
                     if theme::toggle(ui, &mut allowed).changed() {
@@ -226,8 +226,8 @@ impl App {
             let mut drive_peer = self.value(&key, "true") == "true";
             theme::setting_row(
                 ui,
-                &t!("Drive this machine from here"),
-                &t!("Off: edges, jump keys and switching never move input to this machine."),
+                &t!("Control this machine"),
+                &t!("Off excludes this machine from all input switching."),
                 Some("drive_peer"),
                 |ui| {
                     if theme::toggle(ui, &mut drive_peer).changed() {
@@ -241,7 +241,7 @@ impl App {
             theme::setting_row(
                 ui,
                 &t!("Wake automatically"),
-                &t!("Wake this machine when you switch to it while offline."),
+                &t!("Wake on switching if offline."),
                 Some("wake"),
                 |ui| {
                     if theme::toggle(ui, &mut wake).changed() {
@@ -254,13 +254,13 @@ impl App {
                     "clipboard",
                     &t!("Clipboard"),
                     "both",
-                    &t!("Direction clipboard contents are shared."),
+                    &t!("Choose the sharing direction."),
                 ),
                 (
                     "files",
                     &t!("Files"),
                     "ask",
-                    &t!("Ask shows a confirmation before files are saved."),
+                    &t!("Ask before saving incoming files."),
                 ),
             ] {
                 ui.separator();
@@ -285,7 +285,7 @@ impl App {
                     }
                 });
                 if name == "clipboard" && selected == "ask" {
-                    theme::small(ui, &t!("Incoming copies wait for your confirmation."));
+                    theme::small(ui, &t!("Confirm incoming copies."));
                 }
             }
         });
@@ -293,7 +293,7 @@ impl App {
         theme::overline(ui, &t!("Input from this machine"));
         self.peer_input(ui, &prefix);
         ui.add_space(theme::size::SECTION_GAP);
-        theme::overline(ui, &t!("Modifier remaps"));
+        theme::overline(ui, &t!("Modifier keys"));
         self.modifier_remaps(ui, &prefix);
     }
 
@@ -302,12 +302,12 @@ impl App {
             (
                 "pointer_speed",
                 &t!("Pointer speed"),
-                &t!("Multiplies your base pointer speed when this machine drives you."),
+                &t!("Pointer speed factor for input from this peer."),
             ),
             (
                 "scroll_speed",
                 &t!("Scroll speed"),
-                &t!("Wheel and trackpad speed when this machine drives you."),
+                &t!("Scroll speed for input from this peer."),
             ),
         ] {
             let key = format!("{prefix}.{name}");
@@ -337,7 +337,7 @@ impl App {
                 theme::setting_row(
                     ui,
                     &t!("Reverse scrolling"),
-                    &t!("Reverse both scroll directions received from this machine."),
+                    &t!("Reverse scrolling from this peer."),
                     None,
                     |ui| {
                         if theme::toggle(ui, &mut reverse).changed() {
@@ -355,7 +355,7 @@ impl App {
         let mut selected = value.as_str();
         theme::setting_row(
             ui,
-            &t!("Modifier remaps"),
+            &t!("Modifier keys"),
             &t!("Auto swaps Cmd and Ctrl between a Mac and a PC."),
             Some("modifier_mode"),
             |ui| {
@@ -381,18 +381,12 @@ impl App {
         let key = format!("{prefix}.modifier_remap");
         theme::setting_row(
             ui,
-            &t!("Modifier remaps"),
-            &t!("Physical key on this keyboard → key sent to the peer. Same key = unchanged."),
+            &t!("Modifier keys"),
+            &t!("Local key → sent key; same key leaves it unchanged."),
             Some("modifier_remap"),
             |ui| {
-                if theme::button(
-                    ui,
-                    ButtonKind::Ghost,
-                    ButtonSize::Sm,
-                    None,
-                    &t!("Reset all"),
-                )
-                .clicked()
+                if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, &t!("Reset"))
+                    .clicked()
                 {
                     for source in MODIFIERS {
                         self.edit(&format!("{key}.{source}"), source, source);

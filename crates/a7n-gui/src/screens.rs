@@ -27,8 +27,8 @@ impl App {
             theme::empty_card(
                 ui,
                 icon::ARROW_CLOCKWISE,
-                &t!("Config is unavailable."),
-                &t!("Reload config to try again."),
+                &t!("Config unavailable."),
+                &t!("Reload to try again."),
             );
             return;
         }
@@ -55,10 +55,7 @@ impl App {
             theme::error(ui, &error);
         }
         ui.add_space(theme::size::SECTION_GAP);
-        theme::small(
-            ui,
-            &t!("Saving rewrites config.toml without comments, like a7n config set."),
-        );
+        theme::small(ui, &t!("Saving removes comments from config.toml."));
     }
 
     pub(super) fn page_header(&mut self, ui: &mut egui::Ui) {
@@ -66,14 +63,14 @@ impl App {
             theme::page_header(
                 ui,
                 &t!("Daemon isn't running"),
-                &t!("Start the daemon to manage machines and share input."),
+                &t!("Start the daemon to share input."),
                 |_| {},
             );
         } else if self.missing_permissions().is_some() {
             theme::page_header(
                 ui,
-                &t!("Allow Apeirogon to share your keyboard and mouse"),
-                &t!("macOS asks you to approve each permission once."),
+                &t!("Allow input sharing"),
+                &t!("Approve each macOS permission once."),
                 |_| {},
             );
         } else {
@@ -89,17 +86,14 @@ impl App {
 
     fn settings_page_header(&mut self, ui: &mut egui::Ui) {
         let (title, subtitle) = match self.screen {
-            Screen::Hotkeys => (
-                t!("Hotkeys"),
-                t!("Shortcuts for returning home and moving input between machines."),
-            ),
+            Screen::Hotkeys => (t!("Hotkeys"), t!("Return here or switch machines.")),
             Screen::Feedback => (
                 t!("Feedback & theming"),
-                t!("Choose visual feedback and the window theme."),
+                t!("Choose indicators and theme."),
             ),
             _ => (
-                t!("Peers & policies"),
-                t!("What each paired machine is allowed to do."),
+                t!("Peer permissions"),
+                t!("Set permissions for paired machines."),
             ),
         };
         self.settings_header(ui, &title, &subtitle);
@@ -117,7 +111,7 @@ impl App {
                         ButtonKind::Primary,
                         ButtonSize::Md,
                         Some(icon::FLOPPY_DISK),
-                        &t!("Save changes"),
+                        &t!("Save"),
                     )
                     .clicked()
                     {
@@ -129,7 +123,7 @@ impl App {
                 ui,
                 IconButtonKind::Bordered,
                 icon::ARROW_CLOCKWISE,
-                &t!("Discard edits and reload config"),
+                &t!("Reload"),
                 false,
             )
             .clicked()
@@ -198,7 +192,7 @@ impl App {
                         ButtonKind::Primary,
                         ButtonSize::Md,
                         Some(icon::POWER),
-                        &t!("Start daemon"),
+                        &t!("Start"),
                     )
                     .clicked()
                     {
@@ -214,7 +208,7 @@ impl App {
         theme::page_header(
             ui,
             &t!("Layout"),
-            &t!("Arrange machines to match their positions on your desk."),
+            &t!("Match the positions on your desk."),
             |ui| {
                 ui.add_enabled_ui(
                     self.layout
@@ -226,7 +220,7 @@ impl App {
                             ButtonKind::Primary,
                             ButtonSize::Md,
                             Some(icon::FLOPPY_DISK),
-                            &t!("Save layout"),
+                            &t!("Save"),
                         )
                         .clicked();
                     },
@@ -238,7 +232,7 @@ impl App {
                     Some(icon::ARROW_CLOCKWISE),
                     &t!("Reload"),
                 )
-                .on_hover_text(t!("Discard edits and reload layout"))
+                .on_hover_text(t!("Reload"))
                 .clicked()
                 {
                     self.send(Command::Request(a7n_ipc::Request::GetLayout));
@@ -248,7 +242,7 @@ impl App {
                     ButtonKind::Secondary,
                     ButtonSize::Md,
                     None,
-                    &t!("Use real sizes"),
+                    &t!("Real sizes"),
                 )
                 .clicked()
                     && let Some(canvas) = &mut self.layout
@@ -256,14 +250,8 @@ impl App {
                 {
                     self.message = t!("No canvas space to place machines").into();
                 }
-                if theme::button(
-                    ui,
-                    ButtonKind::Secondary,
-                    ButtonSize::Md,
-                    None,
-                    &t!("Fit to canvas"),
-                )
-                .clicked()
+                if theme::button(ui, ButtonKind::Secondary, ButtonSize::Md, None, &t!("Fit"))
+                    .clicked()
                     && let Some(canvas) = &mut self.layout
                 {
                     canvas.fit();
@@ -292,8 +280,8 @@ impl App {
             theme::empty_card(
                 ui,
                 icon::SQUARE_SPLIT_HORIZONTAL,
-                &t!("Layout is unavailable."),
-                &t!("Reload to request the desk layout."),
+                &t!("Layout unavailable."),
+                &t!("Reload to try again."),
             );
         }
     }

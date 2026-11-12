@@ -34,9 +34,7 @@ impl App {
             theme::setting_row(
                 ui,
                 &t!("Appearance"),
-                &t!(
-                    "Choose the window theme. System follows this machine's light or dark setting."
-                ),
+                &t!("System follows your light or dark theme."),
                 Some(KEY),
                 |ui| {
                     if theme::segmented(
@@ -67,7 +65,7 @@ impl App {
             &[Toggle {
                 key: "gui.hide_addresses",
                 title: &t!("Hide addresses"),
-                help: &t!("Mask IP addresses and ports in this window."),
+                help: &t!("Hide IP addresses and ports here."),
                 default: "false",
                 unavailable: None,
             }],
@@ -80,7 +78,7 @@ impl App {
         theme::accordion(
             ui,
             "updates",
-            &t!("Check for updates"),
+            &t!("Updates"),
             Some(&summary),
             false,
             false,
@@ -177,18 +175,19 @@ impl App {
                 },
                 Toggle {
                     key: "input.hide_idle_cursor",
-                    title: &t!("Hide the cursor on the machine without input"),
-                    help: &t!("Hide while driving another machine or after remote input leaves. Show it when input returns."),
+                    title: &t!("Hide idle cursor"),
+                    help: &t!("Hide while idle; show when input returns."),
                     default: "true",
                     unavailable: (!a7n_platform::input::idle_cursor_supported())
                         .then_some(&t!(NOT_ON_WAYLAND)),
                 },
                 Toggle {
                     key: "input.fullscreen_hold",
-                    title: &t!("Keep the pointer in full-screen apps"),
-                    help: &t!("Edges don't switch machines while a full-screen app or game has focus. Shortcuts still work."),
+                    title: &t!("Full-screen hold"),
+                    help: &t!("Block edge switching in full-screen apps; hotkeys still work."),
                     default: "false",
-                    unavailable: (!a7n_platform::fullscreen::supported()).then_some(&t!(NOT_ON_WAYLAND)),
+                    unavailable: (!a7n_platform::fullscreen::supported())
+                        .then_some(&t!(NOT_ON_WAYLAND)),
                 },
             ],
         );
@@ -198,10 +197,8 @@ impl App {
                 None,
                 &[Toggle {
                     key: "input.notch_crossing",
-                    title: &t!("Top edge: only through the notch"),
-                    help: &t!(
-                        "On the notched display, push through the notch to reach the machine above."
-                    ),
+                    title: &t!("Notch crossing"),
+                    help: &t!("Cross the top edge only through the display notch."),
                     default: "false",
                     unavailable: None,
                 }],
@@ -213,26 +210,18 @@ impl App {
 
     fn local_keys(&mut self, ui: &mut egui::Ui) {
         const KEY: &str = "input.local_keys";
-        let summary = self.value(KEY, "");
+        let summary = super::chord_editor::chord_summary(&self.value(KEY, ""));
         theme::accordion(
             ui,
             KEY,
-            &t!("Local keys and buttons"),
+            &t!("Local inputs"),
             Some(&summary),
             false,
             false,
             |ui| {
-                theme::small(
-                    ui,
-                    &t!(
-                        "Keep these inputs on this machine while driving another. Hotkeys still take priority.",
-                    ),
-                );
+                theme::small(ui, &t!("Keep these inputs local; hotkeys take priority."));
                 if !a7n_platform::input::LOCAL_INPUTS_SUPPORTED {
-                    theme::small(
-                        ui,
-                        &t!("Local pass-through is unavailable on X11 and Wayland."),
-                    );
+                    theme::small(ui, &t!("Unavailable on X11 and Wayland."));
                 }
                 let mut names: Vec<String> = self
                     .value(KEY, "")
@@ -278,25 +267,21 @@ impl App {
                 Toggle {
                     key: "feedback.edge",
                     title: &t!("Edge glow"),
-                    help: &t!(
-                        "Show a glow along the screen edge as you push toward another machine."
-                    ),
+                    help: &t!("Glow as you push toward another machine."),
                     default: "true",
                     unavailable,
                 },
                 Toggle {
                     key: "feedback.landing",
                     title: &t!("Landing indicator"),
-                    help: &t!(
-                        "Briefly mark where the pointer arrives when another machine takes over."
-                    ),
+                    help: &t!("Briefly mark the pointer's arrival."),
                     default: "true",
                     unavailable,
                 },
                 Toggle {
                     key: "feedback.haptics",
                     title: &t!("Trackpad haptics"),
-                    help: &t!("Tick on the trackpad as the edge push builds up."),
+                    help: &t!("Tick as you push against an edge."),
                     default: "false",
                     unavailable: (!a7n_platform::feedback::haptics_supported())
                         .then_some(&t!("Only available on macOS")),
@@ -369,18 +354,21 @@ impl App {
     }
 
     fn toggle_card(&mut self, ui: &mut egui::Ui, heading: Option<&str>, toggles: &[Toggle<'_>]) {
-        let summary = toggles
+        let enabled = toggles
             .iter()
-            .map(|toggle| {
-                let state = if self.value(toggle.key, toggle.default) == "true" {
-                    t!("On")
-                } else {
-                    t!("Off")
-                };
-                format!("{}: {state}", toggle.title)
-            })
-            .collect::<Vec<_>>()
-            .join(" · ");
+            .filter(|toggle| self.value(toggle.key, toggle.default) == "true")
+            .count();
+        let summary = if toggles.len() > 1 {
+            t!(
+                "%{count} of %{total} on",
+                count = enabled,
+                total = toggles.len()
+            )
+        } else if enabled == 1 {
+            t!("On")
+        } else {
+            t!("Off")
+        };
         theme::accordion(
             ui,
             toggles[0].key,

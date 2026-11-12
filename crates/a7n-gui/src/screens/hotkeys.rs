@@ -15,37 +15,53 @@ impl App {
                 (
                     "double_tap",
                     &t!("Trigger key"),
-                    &t!("Double-tap or hold this key to return to this machine. Holding it with another key does nothing."),
+                    &t!("Tap twice or hold alone to return here."),
                 ),
-                ("home", &t!("Home"), &t!("Return keyboard and mouse to this machine.")),
-                (
-                    "lock",
-                    &t!("Lock"),
-                    &t!("Keep input on the current machine; press again to unlock."),
-                ),
+                ("home", &t!("Home"), &t!("Return input here.")),
+                ("lock", &t!("Lock"), &t!("Press again to unlock.")),
                 (
                     "jump",
                     &t!("Jump"),
-                    &t!("Hold with 1–9 to jump to a paired machine. Unpaired slots do nothing; other numbers stay the same."),
+                    &t!("Hold with 1–9 to switch; unpaired slots do nothing."),
                 ),
             ]
             .into_iter()
             .enumerate()
             {
-                let summary = self.value(&format!("hotkeys.{name}"), "");
-                let summary = if name == "double_tap" {
+                let value = self.value(&format!("hotkeys.{name}"), "");
+                let summary = super::chord_editor::chord_summary(&value);
+                let summary = if name == "double_tap" && !value.is_empty() {
                     let mode = match self.value("hotkeys.trigger_mode", "double_tap").as_str() {
-                        "hold" => t!("Hold"), "both" => t!("Both"), _ => t!("Double tap"),
+                        "hold" => t!("Hold"),
+                        "both" => t!("Both"),
+                        _ => t!("Double tap"),
                     };
-                    format!("{mode} · {}", theme::key_name(&summary))
-                } else { summary };
+                    format!("{mode} · {summary}")
+                } else {
+                    summary
+                };
                 theme::accordion(ui, name, title, Some(&summary), false, false, |ui| {
                     self.hotkey_row(ui, index, name, title, help);
-                    if name == "double_tap" { self.trigger_options(ui); }
+                    if name == "double_tap" {
+                        self.trigger_options(ui);
+                    }
                 });
             }
-            let summary = t!("Shake: %{count} reversals", count = self.value("hotkeys.shake", "6"));
-            theme::accordion(ui, "shake", &t!("Shake to return"), Some(&summary), false, false, |ui| self.shake_option(ui));
+            let count = self.value("hotkeys.shake", "6");
+            let summary = if count == "0" {
+                t!("Off").into_owned()
+            } else {
+                format!("{} · {count}", t!("On"))
+            };
+            theme::accordion(
+                ui,
+                "shake",
+                &t!("Shake to return"),
+                Some(&summary),
+                false,
+                false,
+                |ui| self.shake_option(ui),
+            );
         });
     }
 
@@ -76,7 +92,7 @@ impl App {
             theme::small(
                 ui,
                 &t!(
-                    "Windows' Alt+Shift input-language hotkey also fires on this chord; turn it off under Settings > Time & language > Typing > Advanced keyboard settings > Input language hot keys, or pick other jump keys.",
+                    "Alt+Shift also switches Windows' input language; disable it in keyboard settings or choose another chord.",
                 ),
             );
         }
@@ -128,9 +144,7 @@ impl App {
         }
         theme::small(
             ui,
-            &t!(
-                "Shake the mouse left and right this many times to return to this machine. Enter zero to turn it off."
-            ),
+            &t!("Shake left and right to return; zero turns it off."),
         );
     }
 
@@ -140,7 +154,7 @@ impl App {
         theme::setting_row(
             ui,
             &t!("Trigger mode"),
-            &t!("How the trigger returns input home."),
+            &t!("Tap twice, hold, or both."),
             Some(key),
             |ui| {
                 egui::ComboBox::from_id_salt(key)

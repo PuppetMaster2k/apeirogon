@@ -373,7 +373,7 @@ impl eframe::App for App {
                     (
                         Screen::Policies,
                         theme::icon::SHIELD_CHECK,
-                        &t!("Peers & policies"),
+                        &t!("Peer permissions"),
                     ),
                 ] {
                     if theme::nav_item(ui, icon, name, self.screen == screen).clicked() {
