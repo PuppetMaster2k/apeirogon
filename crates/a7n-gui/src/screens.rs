@@ -87,10 +87,7 @@ impl App {
     fn settings_page_header(&mut self, ui: &mut egui::Ui) {
         let (title, subtitle) = match self.screen {
             Screen::Hotkeys => (t!("Hotkeys"), t!("Return here or switch machines.")),
-            Screen::Feedback => (
-                t!("Feedback & theming"),
-                t!("Choose indicators and theme."),
-            ),
+            Screen::Feedback => (t!("Feedback & theming"), t!("Choose indicators and theme.")),
             _ => (
                 t!("Peer permissions"),
                 t!("Set permissions for paired machines."),
