@@ -2,6 +2,7 @@
 
 //! One task owns identity, trust, desk membership, pairing and the live registry.
 
+use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -65,8 +66,12 @@ type TransferStream = (MachineId, usize, quinn::RecvStream);
 type Inbound = (MachineId, usize, Envelope);
 
 enum Event {
-    Link(Result<Box<Link>, LinkError>, Option<Reply<()>>),
-    Ended(MachineId, usize),
+    Link(
+        Option<MachineId>,
+        Result<Box<Link>, LinkError>,
+        Option<Reply<()>>,
+    ),
+    Ended(MachineId, usize, a7n_ipc::LinkProblem),
     PairingEnded,
     FilesBuilt {
         peer: MachineId,
@@ -144,6 +149,7 @@ pub(crate) struct Daemon {
     info: PeerInfo,
     trust: TrustedPins,
     links: Links,
+    link_problems: HashMap<MachineId, a7n_ipc::LinkProblem>,
     pending_connects: Vec<connections::PendingConnect>,
     nearby: nearby::State,
     pairing: pairing::State,
@@ -210,6 +216,7 @@ impl Daemon {
             info,
             trust,
             links: Links::default(),
+            link_problems: HashMap::new(),
             pending_connects: Vec::new(),
             nearby: nearby::State::default(),
             pairing: pairing::State::default(),
@@ -245,9 +252,14 @@ impl Daemon {
         let endpoint = self.endpoint.clone();
         let info = self.info.clone();
         let events = self.mailboxes.events.clone();
+        let mut peer = self.nearby.nearby.iter().find_map(|(&id, addrs)| {
+            (self.pins.get(&id).is_some() && addrs.contains(&addr)).then_some(id)
+        });
         self.tasks.spawn(async move {
-            let result = endpoint::dial(&endpoint, addr, &info).await.map(Box::new);
-            let _ = events.send(Event::Link(result, Some(reply))).await;
+            let result = endpoint::dial(&endpoint, addr, &info, &mut peer)
+                .await
+                .map(Box::new);
+            let _ = events.send(Event::Link(peer, result, Some(reply))).await;
         });
     }
 
@@ -329,6 +341,8 @@ impl Daemon {
     }
 
     fn drop_untrusted(&mut self) {
+        self.link_problems
+            .retain(|peer, _| self.pins.get(peer).is_some());
         let mut lost = Vec::new();
         self.links.by_peer.retain(|peer, handle| {
             if self.pins.get(peer).is_some() {

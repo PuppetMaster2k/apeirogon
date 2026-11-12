@@ -304,9 +304,15 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
                 } else if peer.connected {
                     "connected"
                 } else {
-                    "offline"
+                    "disconnected"
                 };
-                writeln!(output, "{} {} {state}", peer.name, peer.id)?;
+                write!(output, "{} {} {state}", peer.name, peer.id)?;
+                if !peer.connected
+                    && let Some(problem) = &peer.problem
+                {
+                    write!(output, ": {}", link_problem(problem))?;
+                }
+                writeln!(output)?;
             }
             for held in &status.held_files {
                 files::write_held(output, status, held)?;
@@ -342,3 +348,22 @@ fn write_response(output: &mut impl Write, response: &Response) -> Result<()> {
 
 #[cfg(test)]
 mod tests;
+
+fn link_problem(problem: &a7n_ipc::LinkProblem) -> String {
+    use a7n_ipc::LinkProblem;
+
+    match problem {
+        LinkProblem::Unreachable => "unreachable; check the network and peer firewall".to_owned(),
+        LinkProblem::Refused => "not accepting connections; is apeirogon running there?".to_owned(),
+        LinkProblem::AuthFailed => "certificate does not match; pair again".to_owned(),
+        LinkProblem::VersionMismatch { older: Some(name) } => {
+            format!("different apeirogon versions; update {name}")
+        }
+        LinkProblem::VersionMismatch { older: None } => {
+            "different apeirogon versions; update both machines".to_owned()
+        }
+        LinkProblem::Silent => {
+            "stopped responding; check the peer and its network connection".to_owned()
+        }
+    }
+}

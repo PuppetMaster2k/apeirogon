@@ -37,15 +37,18 @@ fn endpoint_on(socket: UdpSocket, server_config: ServerConfig) -> io::Result<End
 }
 
 /// Dials `addr` and runs the initiator handshake within `HANDSHAKE_TIMEOUT`.
-/// The endpoint needs a default client config.
+/// The endpoint needs a default client config. Once TLS authenticates the peer,
+/// `peer_id` identifies it even if the application handshake fails.
 pub(crate) async fn dial(
     endpoint: &Endpoint,
     addr: SocketAddr,
     local: &PeerInfo,
+    peer_id: &mut Option<a7n_proto::MachineId>,
 ) -> Result<Link, LinkError> {
     let handshake = async {
         let connection = endpoint.connect(addr, TLS_SERVER_NAME)?.await?;
         let peer = peer_machine_id(&connection)?;
+        *peer_id = Some(peer);
         let local = handshake::local_info(&connection, endpoint, local);
         let result = handshake::initiate(connection.clone(), &local).await;
         if result.is_err()

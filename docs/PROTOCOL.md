@@ -180,6 +180,13 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 - Local IPC version 7 exposes `offer_id` on held files and `generation` on held clipboard copies. Accept requests carry these identities (peer and offer id for files, origin machine and generation for clipboard) and are refused if the held item changed. Update the daemon and local clients together.
 - Local IPC version 8 adds optional `screen_mm` dimensions to placed and unplaced machines. Update the daemon and local clients together.
 - Local IPC version 11 adds status field `firewall`, a list of Windows Firewall problems (`missing_allow { program, ports, profiles }`, `blocked { rule, ports }`) found with normal user rights; it is always empty off Windows. The daemon never changes the firewall or asks for elevation. Update the daemon and local clients together; the peer wire protocol is unchanged.
+- Local IPC version 14 adds per-peer `problem` to status: `null` or a
+  snake_case `LinkProblem` (`unreachable`, `refused`, `auth_failed`, `silent`,
+  or `{"version_mismatch":{"older": name_or_null}}`). The daemon remembers
+  the last connection problem until the link comes up; version mismatches
+  name the older machine when known. CLI and GUI show the reason and a next
+  step for disconnected peers. Update daemon and local clients together;
+  the peer wire protocol is unchanged.
 - Local IPC version 13 adds `single` to `RecordHotkey { kind }`, replying with
   `Recorded { value }` for the first named physical key or supported mouse
   button (`middle`, `back`, `forward`). Recording consumes captured events

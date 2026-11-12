@@ -109,6 +109,7 @@ impl App {
                     "Offline"
                 },
             );
+            super::peers::peer_problem(ui, peer);
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if theme::button(

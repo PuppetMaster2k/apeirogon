@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_ipc::PeerInfo;
 use a7n_ipc::config::{MAX_PEER_SPEED, MIN_PEER_SPEED};
+use a7n_ipc::{LinkProblem, PeerInfo};
 use eframe::egui;
 
 use crate::{App, theme};
@@ -98,6 +98,7 @@ impl App {
                     },
                     if peer.connected { "Online" } else { "Offline" },
                 );
+                peer_problem(ui, peer);
                 let id = peer.id.to_string();
                 ui.label(
                     egui::RichText::new(format!("{}…{}", &id[..8], &id[id.len() - 4..]))
@@ -175,6 +176,7 @@ impl App {
     fn peer_settings(&mut self, ui: &mut egui::Ui, peer: &PeerInfo) {
         let prefix = format!("peers.{}", peer.id);
         theme::overline(ui, &peer.name);
+        peer_problem(ui, peer);
         theme::card(ui, |ui| {
             let key = format!("{prefix}.allow_drive");
             let mut allowed = self.value(&key, "true") == "true";
@@ -398,4 +400,22 @@ impl App {
                 }
             });
     }
+}
+
+pub(super) fn peer_problem(ui: &mut egui::Ui, peer: &PeerInfo) {
+    if peer.connected {
+        return;
+    }
+    let Some(problem) = &peer.problem else {
+        return;
+    };
+    let message = match problem {
+        LinkProblem::Unreachable => "Unreachable: check both machines are on the same network and the firewall allows apeirogon.".to_owned(),
+        LinkProblem::Refused => "Not accepting connections: is apeirogon running there?".to_owned(),
+        LinkProblem::AuthFailed => "Certificate does not match: pair again.".to_owned(),
+        LinkProblem::VersionMismatch { older: Some(name) } => format!("Different apeirogon versions: update {name}."),
+        LinkProblem::VersionMismatch { older: None } => "Different apeirogon versions: update both machines.".to_owned(),
+        LinkProblem::Silent => "Stopped responding: check the peer and its network connection.".to_owned(),
+    };
+    theme::small(ui, &message);
 }

@@ -123,7 +123,11 @@ impl Daemon {
         let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
             for addr in addrs {
-                let result = endpoint::dial(&endpoint, addr, &info).await;
+                let mut peer = Some(id);
+                let result = endpoint::dial(&endpoint, addr, &info, &mut peer).await;
+                if peer != Some(id) {
+                    continue;
+                }
                 let result = match result {
                     Ok(link) if link.peer_id != id => {
                         // A LAN hint must not redirect us to another paired machine.
@@ -134,10 +138,14 @@ impl Daemon {
                     Err(LinkError::Superseded(peer)) if peer == id => {
                         Err(LinkError::Superseded(peer))
                     }
-                    Err(_) => continue,
+                    Err(error) => Err(error),
                 };
                 let (reply, receiver) = oneshot::channel();
-                if events.send(Event::Link(result, Some(reply))).await.is_err() {
+                if events
+                    .send(Event::Link(Some(id), result, Some(reply)))
+                    .await
+                    .is_err()
+                {
                     return;
                 }
                 if matches!(receiver.await, Ok(Ok(()))) {

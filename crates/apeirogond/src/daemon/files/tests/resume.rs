@@ -31,8 +31,14 @@ async fn connect(a: &mut Daemon, b: &mut Daemon) {
             .await
             .unwrap()
     };
+    let mut peer_id = None;
     let (outgoing, incoming) = tokio::join!(
-        crate::endpoint::dial(&a.endpoint, b.endpoint.local_addr().unwrap(), &a.info),
+        crate::endpoint::dial(
+            &a.endpoint,
+            b.endpoint.local_addr().unwrap(),
+            &a.info,
+            &mut peer_id
+        ),
         accept
     );
     a.register(outgoing.unwrap()).unwrap();
