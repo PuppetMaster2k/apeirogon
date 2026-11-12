@@ -26,6 +26,7 @@ impl Daemon {
                 machine: p.id,
                 name: self.layout_name(p.id),
                 screen_mm: self.layout_screen_mm(p.id),
+                monitors: self.layout_monitors(p.id),
                 x: p.x,
                 y: p.y,
                 width: p.width,
@@ -44,6 +45,7 @@ impl Daemon {
                 machine,
                 name: self.layout_name(machine),
                 screen_mm: self.layout_screen_mm(machine),
+                monitors: self.layout_monitors(machine),
             })
             .collect();
         LayoutInfo {
@@ -51,6 +53,21 @@ impl Daemon {
             unplaced,
             lost_edit: self.layout.lost_edit,
         }
+    }
+
+    fn layout_monitors(&self, id: MachineId) -> Vec<a7n_ipc::Monitor> {
+        if id == self.identity.machine_id {
+            return self
+                .info
+                .monitors
+                .iter()
+                .map(a7n_ipc::Monitor::from)
+                .collect();
+        }
+        if !self.pins.contains_key(&id) {
+            return Vec::new();
+        }
+        self.peer_monitors.get(&id).cloned().unwrap_or_default()
     }
 
     fn layout_screen_mm(&self, id: MachineId) -> Option<(u32, u32)> {

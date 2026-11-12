@@ -101,18 +101,24 @@ impl App {
     }
 
     pub(super) fn update_notice(&self, ui: &mut egui::Ui) {
-        if let Some(release) = &self.update_check.release {
-            ui.hyperlink_to(
-                t!(
-                    "Apeirogon %{version} is available",
-                    version = release.tag_name
-                ),
-                &release.html_url,
-            );
+        if self.update_check.release.is_none() && self.update_check.message.is_empty() {
+            return;
         }
-        if !self.update_check.message.is_empty() {
-            theme::small(ui, &self.update_check.message);
-        }
+        theme::card(ui, |ui| {
+            if let Some(release) = &self.update_check.release {
+                ui.hyperlink_to(
+                    t!(
+                        "Apeirogon %{version} is available",
+                        version = release.tag_name
+                    ),
+                    &release.html_url,
+                );
+            }
+            if !self.update_check.message.is_empty() {
+                theme::small(ui, &self.update_check.message);
+            }
+        });
+        ui.add_space(theme::size::SECTION_GAP);
     }
 
     pub(super) fn update_options(&mut self, ui: &mut egui::Ui) {

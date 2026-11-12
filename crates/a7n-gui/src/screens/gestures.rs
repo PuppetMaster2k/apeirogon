@@ -10,25 +10,35 @@ use super::chord_editor::chord_editor;
 
 impl App {
     pub(super) fn gestures(&mut self, ui: &mut egui::Ui) {
-        theme::card(ui, |ui| {
-            ui.heading(t!("Trackpad gestures"));
-            theme::small(
-                ui,
-                &t!("Shortcuts for swipes received from a Mac trackpad."),
-            );
-            for (index, (name, title)) in [
-                ("swipe_up", &t!("Swipe up")),
-                ("swipe_down", &t!("Swipe down")),
-                ("swipe_left", &t!("Swipe left")),
-                ("swipe_right", &t!("Swipe right")),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                ui.separator();
-                self.gesture_row(ui, index, name, title);
-            }
-        });
+        let summary = ["swipe_up", "swipe_down", "swipe_left", "swipe_right"]
+            .map(|name| self.value(&format!("gestures.{name}"), ""))
+            .join(" · ");
+        theme::accordion(
+            ui,
+            "gestures",
+            &t!("Trackpad gestures"),
+            Some(&summary),
+            false,
+            false,
+            |ui| {
+                theme::small(
+                    ui,
+                    &t!("Shortcuts for swipes received from a Mac trackpad."),
+                );
+                for (index, (name, title)) in [
+                    ("swipe_up", &t!("Swipe up")),
+                    ("swipe_down", &t!("Swipe down")),
+                    ("swipe_left", &t!("Swipe left")),
+                    ("swipe_right", &t!("Swipe right")),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    ui.separator();
+                    self.gesture_row(ui, index, name, title);
+                }
+            },
+        );
     }
 
     fn gesture_row(&mut self, ui: &mut egui::Ui, index: usize, name: &str, title: &str) {

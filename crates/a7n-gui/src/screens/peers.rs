@@ -6,7 +6,7 @@ use eframe::egui;
 use rust_i18n::t;
 
 use crate::{App, theme};
-use theme::{BadgeKind, ButtonKind, ButtonSize, icon};
+use theme::{BadgeKind, ButtonKind, ButtonSize, IconButtonKind, icon};
 
 const MODIFIERS: [&str; 8] = [
     "left_ctrl",
@@ -18,13 +18,12 @@ const MODIFIERS: [&str; 8] = [
     "left_meta",
     "right_meta",
 ];
-const PEER_DETAILS_MIN_WIDTH: f32 = 640.0;
-const PEER_LIST_WIDTH: f32 = 200.0;
-
 impl App {
     pub(super) fn peers(&mut self, ui: &mut egui::Ui) {
+        theme::overline(ui, &t!("Receive directory"));
         self.receive_directory(ui);
         ui.add_space(theme::size::SECTION_GAP);
+        theme::overline(ui, &t!("Paired machines"));
         let Some(status) = &self.status else {
             return;
         };
@@ -35,84 +34,116 @@ impl App {
             .cloned()
             .collect();
         if peers.is_empty() {
-            self.selected_peer = None;
             theme::empty_card(
                 ui,
                 icon::SHIELD_CHECK,
                 &t!("No paired machines yet."),
                 &t!("Pair a machine on the Machines page"),
             );
-            return;
         }
-        if !peers.iter().any(|peer| Some(peer.id) == self.selected_peer) {
-            self.selected_peer = Some(peers[0].id);
+        for peer in peers {
+            ui.push_id(peer.id, |ui| self.peer_card(ui, &peer));
         }
-        let wide = ui.available_width() >= PEER_LIST_WIDTH + PEER_DETAILS_MIN_WIDTH + 16.0;
-        let layout = if wide {
-            egui::Layout::left_to_right(egui::Align::Min)
-        } else {
-            egui::Layout::top_down(egui::Align::Min)
-        };
-        ui.with_layout(layout, |ui| {
-            let list_width = if wide {
-                PEER_LIST_WIDTH
-            } else {
-                ui.available_width()
-            };
-            ui.allocate_ui_with_layout(
-                egui::vec2(list_width, 0.0),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| self.peer_list(ui, &peers),
+    }
+
+    fn peer_card(&mut self, ui: &mut egui::Ui, peer: &PeerInfo) {
+        theme::card(ui, |ui| {
+            let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+                ui.ctx(),
+                ui.make_persistent_id("peer_settings"),
+                false,
             );
-            ui.add_space(8.0);
-            ui.vertical(|ui| {
-                if let Some(peer) = peers
-                    .iter()
-                    .find(|peer| Some(peer.id) == self.selected_peer)
-                {
-                    self.peer_settings(ui, peer);
-                }
+            let prefix = format!("peers.{}", peer.id);
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let (chevron, tooltip) = if state.is_open() {
+                        (icon::CARET_DOWN, t!("Collapse peer settings"))
+                    } else {
+                        (icon::CARET_RIGHT, t!("Expand peer settings"))
+                    };
+                    if theme::icon_button(ui, IconButtonKind::Ghost, chevron, &tooltip, false)
+                        .clicked()
+                    {
+                        state.toggle(ui);
+                    }
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.vertical(|ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(&peer.name).font(theme::font_medium(14.0)),
+                                );
+                                theme::badge(
+                                    ui,
+                                    if peer.connected {
+                                        BadgeKind::Online
+                                    } else {
+                                        BadgeKind::Offline
+                                    },
+                                    &if peer.connected {
+                                        t!("Online")
+                                    } else {
+                                        t!("Offline")
+                                    },
+                                );
+                            });
+                            ui.label(
+                                egui::RichText::new(&prefix)
+                                    .font(theme::font_mono(12.0))
+                                    .color(theme::Palette::of(ui.ctx()).text3),
+                            );
+                        });
+                    });
+                });
             });
+            if !state.is_open() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(self.peer_summary(&prefix))
+                            .size(12.0)
+                            .color(theme::Palette::of(ui.ctx()).text3),
+                    )
+                    .truncate(),
+                );
+            }
+            peer_problem(ui, peer);
+            state.show_body_unindented(ui, |ui| self.peer_settings(ui, peer));
         });
     }
 
-    fn peer_list(&mut self, ui: &mut egui::Ui, peers: &[PeerInfo]) {
-        theme::overline(ui, &t!("Paired machines"));
-        for peer in peers {
-            ui.push_id(peer.id, |ui| {
-                if theme::nav_item(
-                    ui,
-                    icon::MONITOR,
-                    &peer.name,
-                    Some(peer.id) == self.selected_peer,
-                )
-                .clicked()
-                {
-                    self.selected_peer = Some(peer.id);
+    fn peer_summary(&self, prefix: &str) -> String {
+        let drive = if self.value(&format!("{prefix}.allow_drive"), "true") == "true" {
+            t!("Drive allowed")
+        } else {
+            t!("Drive denied")
+        };
+        let clipboard = match self.value(&format!("{prefix}.clipboard"), "both").as_str() {
+            "send" => t!("Clipboard send"),
+            "receive" => t!("Clipboard receive"),
+            "ask" => t!("Clipboard ask"),
+            "off" => t!("Clipboard off"),
+            _ => t!("Clipboard both"),
+        };
+        let remaps = match self
+            .value(&format!("{prefix}.modifier_mode"), "auto")
+            .as_str()
+        {
+            "off" => t!("No remaps"),
+            "custom" => {
+                let count = MODIFIERS
+                    .iter()
+                    .filter(|source| {
+                        self.value(&format!("{prefix}.modifier_remap.{source}"), source) != **source
+                    })
+                    .count();
+                if count == 0 {
+                    t!("No remaps")
+                } else {
+                    t!("%{count} remaps", count = count)
                 }
-                theme::badge(
-                    ui,
-                    if peer.connected {
-                        BadgeKind::Online
-                    } else {
-                        BadgeKind::Offline
-                    },
-                    &if peer.connected {
-                        t!("Online")
-                    } else {
-                        t!("Offline")
-                    },
-                );
-                peer_problem(ui, peer);
-                let id = peer.id.to_string();
-                ui.label(
-                    egui::RichText::new(format!("{}…{}", &id[..8], &id[id.len() - 4..]))
-                        .font(theme::font_mono(12.0))
-                        .color(theme::Palette::of(ui.ctx()).text3),
-                );
-                ui.add_space(theme::size::ROW_GAP);
-            });
-        }
+            }
+            _ => t!("Auto remaps"),
+        };
+        format!("{drive} · {clipboard} · {remaps}")
     }
 
     fn receive_directory(&mut self, ui: &mut egui::Ui) {
@@ -135,7 +166,7 @@ impl App {
                                     &t!("Directory"),
                                     &mut value,
                                     &t!("Absolute path"),
-                                    true,
+                                    false,
                                 )
                                 .changed()
                                 {
@@ -153,12 +184,7 @@ impl App {
                                     self.editing_receive_dir = false;
                                 }
                             } else {
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(&value).font(theme::font_mono(13.0)),
-                                    )
-                                    .truncate(),
-                                );
+                                ui.add(egui::Label::new(egui::RichText::new(&value)).truncate());
                                 if theme::button(
                                     ui,
                                     ButtonKind::Ghost,
@@ -180,9 +206,8 @@ impl App {
 
     fn peer_settings(&mut self, ui: &mut egui::Ui, peer: &PeerInfo) {
         let prefix = format!("peers.{}", peer.id);
-        theme::overline(ui, &peer.name);
-        peer_problem(ui, peer);
-        theme::card(ui, |ui| {
+        theme::overline(ui, &t!("Peers & policies"));
+        ui.scope(|ui| {
             let key = format!("{prefix}.allow_drive");
             let mut allowed = self.value(&key, "true") == "true";
             theme::setting_row(
@@ -265,13 +290,14 @@ impl App {
             }
         });
         ui.add_space(theme::size::SECTION_GAP);
-        theme::card(ui, |ui| self.peer_input(ui, &prefix));
+        theme::overline(ui, &t!("Input from this machine"));
+        self.peer_input(ui, &prefix);
         ui.add_space(theme::size::SECTION_GAP);
-        theme::card(ui, |ui| self.modifier_remaps(ui, &prefix));
+        theme::overline(ui, &t!("Modifier remaps"));
+        self.modifier_remaps(ui, &prefix);
     }
 
     fn peer_input(&mut self, ui: &mut egui::Ui, prefix: &str) {
-        ui.heading(t!("Input from this machine"));
         for (name, title, help) in [
             (
                 "pointer_speed",
@@ -285,33 +311,40 @@ impl App {
             ),
         ] {
             let key = format!("{prefix}.{name}");
-            let mut percent = self.value(&key, "1.0").parse::<f64>().unwrap_or(1.0) * 100.0;
-            theme::setting_row(ui, title, help, None, |ui| {
-                if ui
-                    .add(
-                        egui::Slider::new(
-                            &mut percent,
-                            MIN_PEER_SPEED * 100.0..=MAX_PEER_SPEED * 100.0,
-                        )
-                        .suffix(" %"),
-                    )
-                    .changed()
-                {
-                    self.edit(&key, &(percent / 100.0).to_string(), "1.0");
-                }
-            });
+            let mut speed = self.value(&key, "1.0").parse::<f64>().unwrap_or(1.0);
+            if theme::slider(
+                ui,
+                title,
+                &mut speed,
+                MIN_PEER_SPEED..=MAX_PEER_SPEED,
+                None,
+                |value| format!("{value:.2}×"),
+            )
+            .changed()
+            {
+                self.edit(&key, &speed.to_string(), "1.0");
+            }
+            theme::small(ui, help);
         }
-        let key = format!("{prefix}.reverse_scroll");
-        let mut reverse = self.value(&key, "false") == "true";
-        theme::setting_row(
+        theme::disclosure(
             ui,
-            &t!("Reverse scrolling"),
-            &t!("Reverse both scroll directions received from this machine."),
-            None,
+            "advanced_input",
+            &t!("Advanced settings"),
+            false,
             |ui| {
-                if ui.checkbox(&mut reverse, t!("Reverse scrolling")).changed() {
-                    self.edit(&key, if reverse { "true" } else { "false" }, "false");
-                }
+                let key = format!("{prefix}.reverse_scroll");
+                let mut reverse = self.value(&key, "false") == "true";
+                theme::setting_row(
+                    ui,
+                    &t!("Reverse scrolling"),
+                    &t!("Reverse both scroll directions received from this machine."),
+                    None,
+                    |ui| {
+                        if theme::toggle(ui, &mut reverse).changed() {
+                            self.edit(&key, if reverse { "true" } else { "false" }, "false");
+                        }
+                    },
+                );
             },
         );
     }

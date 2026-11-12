@@ -147,6 +147,7 @@ pub(crate) struct Daemon {
     settings: SettingsStore,
     endpoint: Endpoint,
     info: PeerInfo,
+    peer_monitors: HashMap<MachineId, Vec<a7n_ipc::Monitor>>,
     trust: TrustedPins,
     links: Links,
     link_problems: HashMap<MachineId, a7n_ipc::LinkProblem>,
@@ -217,6 +218,7 @@ impl Daemon {
             trust,
             links: Links::default(),
             link_problems: HashMap::new(),
+            peer_monitors: HashMap::new(),
             pending_connects: Vec::new(),
             nearby: nearby::State::default(),
             pairing: pairing::State::default(),
@@ -341,6 +343,8 @@ impl Daemon {
     }
 
     fn drop_untrusted(&mut self) {
+        self.peer_monitors
+            .retain(|id, _| self.pins.contains_key(id));
         self.link_problems
             .retain(|peer, _| self.pins.get(peer).is_some());
         let mut lost = Vec::new();

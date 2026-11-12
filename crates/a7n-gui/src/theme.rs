@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod accordion;
 mod badge;
 mod button;
 mod card;
+mod disclosure;
 pub(crate) mod icon;
 mod icon_button;
 mod keycap;
@@ -12,6 +14,8 @@ mod paint;
 mod palette;
 mod segmented;
 mod setting_row;
+mod slider;
+mod stepped_slider;
 mod style;
 mod text;
 mod text_input;
@@ -36,3 +40,8 @@ pub(crate) use typography::{
     family, font_icon, font_medium, font_mono, font_regular, font_semibold, overline_style, size,
     title_style,
 };
+
+pub(crate) use accordion::{accordion, accordion_group};
+pub(crate) use disclosure::disclosure;
+pub(crate) use slider::slider;
+pub(crate) use stepped_slider::stepped_slider;

@@ -10,8 +10,7 @@ use theme::{ButtonKind, ButtonSize};
 
 impl App {
     pub(super) fn hotkeys(&mut self, ui: &mut egui::Ui) {
-        theme::card(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = theme::size::ROW_GAP;
+        ui.scope(|ui| {
             for (index, (name, title, help)) in [
                 (
                     "double_tap",
@@ -33,15 +32,20 @@ impl App {
             .into_iter()
             .enumerate()
             {
-                if index > 0 {
-                    ui.separator();
-                }
-                self.hotkey_row(ui, index, name, title, help);
+                let summary = self.value(&format!("hotkeys.{name}"), "");
+                let summary = if name == "double_tap" {
+                    let mode = match self.value("hotkeys.trigger_mode", "double_tap").as_str() {
+                        "hold" => t!("Hold"), "both" => t!("Both"), _ => t!("Double tap"),
+                    };
+                    format!("{mode} · {}", theme::key_name(&summary))
+                } else { summary };
+                theme::accordion(ui, name, title, Some(&summary), false, false, |ui| {
+                    self.hotkey_row(ui, index, name, title, help);
+                    if name == "double_tap" { self.trigger_options(ui); }
+                });
             }
-            ui.separator();
-            self.trigger_options(ui);
-            ui.separator();
-            self.shake_option(ui);
+            let summary = t!("Shake: %{count} reversals", count = self.value("hotkeys.shake", "6"));
+            theme::accordion(ui, "shake", &t!("Shake to return"), Some(&summary), false, false, |ui| self.shake_option(ui));
         });
     }
 
@@ -109,20 +113,32 @@ impl App {
 
     fn shake_option(&mut self, ui: &mut egui::Ui) {
         let key = "hotkeys.shake";
-        let mut value = self.value(key, "");
-        theme::setting_row(
+        let mut value = self.value(key, "6").parse().unwrap_or(6);
+        if theme::stepped_slider(
             ui,
             &t!("Shake to return"),
+            &mut value,
+            &[
+                (0, "0"),
+                (3, "3"),
+                (4, "4"),
+                (5, "5"),
+                (6, "6"),
+                (7, "7"),
+                (8, "8"),
+                (9, "9"),
+                (10, "10"),
+            ],
+        )
+        .changed()
+        {
+            self.edit(key, &value.to_string(), "6");
+        }
+        theme::small(
+            ui,
             &t!(
-                "Shake the mouse left and right this many times to return to this machine. Enter zero to turn it off.",
+                "Shake the mouse left and right this many times to return to this machine. Enter zero to turn it off."
             ),
-            Some(key),
-            |ui| {
-                if theme::text_input(ui, &t!("Number of reversals"), &mut value, "", true).changed()
-                {
-                    self.edit(key, &value, "");
-                }
-            },
         );
     }
 

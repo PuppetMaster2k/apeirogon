@@ -28,6 +28,7 @@ impl App {
             |_| {},
         );
         self.page_message(ui);
+        theme::overline(ui, &t!("Permissions"));
         for (permission, reason) in PERMISSIONS {
             theme::card(ui, |ui| {
                 let title = match permission {
@@ -39,7 +40,11 @@ impl App {
                         theme::badge(ui, BadgeKind::Online, &t!("Granted"));
                     } else if theme::button(
                         ui,
-                        ButtonKind::Primary,
+                        if missing.first() == Some(&permission) {
+                            ButtonKind::Primary
+                        } else {
+                            ButtonKind::Secondary
+                        },
                         ButtonSize::Md,
                         None,
                         &t!("Open System Settings"),

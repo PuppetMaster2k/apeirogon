@@ -24,6 +24,7 @@ enum Screen {
     Machines,
     Layout,
     Hotkeys,
+    Feedback,
     Policies,
 }
 
@@ -33,7 +34,6 @@ struct App {
     status: Option<StatusInfo>,
     message: String,
     daemon_error: Option<String>,
-    selected_peer: Option<a7n_ipc::MachineId>,
     editing_hotkeys: [bool; 4],
     editing_gestures: [bool; 4],
     recording_hotkey: Option<String>,
@@ -75,7 +75,6 @@ impl App {
             status: None,
             message,
             daemon_error: None,
-            selected_peer: None,
             editing_hotkeys: [false; 4],
             editing_gestures: [false; 4],
             recording_hotkey: None,
@@ -367,6 +366,11 @@ impl eframe::App for App {
                     ),
                     (Screen::Hotkeys, theme::icon::KEYBOARD, &t!("Hotkeys")),
                     (
+                        Screen::Feedback,
+                        theme::icon::PALETTE,
+                        &t!("Feedback & theming"),
+                    ),
+                    (
                         Screen::Policies,
                         theme::icon::SHIELD_CHECK,
                         &t!("Peers & policies"),
@@ -421,7 +425,9 @@ impl eframe::App for App {
                             match self.screen {
                                 Screen::Machines => self.machines(ui),
                                 Screen::Layout => self.layout_screen(ui),
-                                Screen::Hotkeys | Screen::Policies => self.settings(ui),
+                                Screen::Hotkeys | Screen::Feedback | Screen::Policies => {
+                                    self.settings(ui);
+                                }
                             }
                         });
                 });

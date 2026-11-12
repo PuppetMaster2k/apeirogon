@@ -22,18 +22,21 @@ impl App {
     }
 
     pub(super) fn settings(&mut self, ui: &mut egui::Ui) {
-        let (title, subtitle) = if self.screen == Screen::Hotkeys {
-            (
-                &t!("Hotkeys"),
-                &t!("Shortcuts for returning home and moving input between machines."),
-            )
-        } else {
-            (
-                &t!("Peers & policies"),
-                &t!("What each paired machine is allowed to do."),
-            )
+        let (title, subtitle) = match self.screen {
+            Screen::Hotkeys => (
+                t!("Hotkeys"),
+                t!("Shortcuts for returning home and moving input between machines."),
+            ),
+            Screen::Feedback => (
+                t!("Feedback & theming"),
+                t!("Choose visual feedback and the window theme."),
+            ),
+            _ => (
+                t!("Peers & policies"),
+                t!("What each paired machine is allowed to do."),
+            ),
         };
-        self.settings_header(ui, title, subtitle);
+        self.settings_header(ui, &title, &subtitle);
         self.page_message(ui);
         if self.config.is_none() {
             theme::empty_card(
@@ -44,20 +47,24 @@ impl App {
             );
             return;
         }
-        if self.screen == Screen::Hotkeys {
-            self.appearance_options(ui);
-            ui.add_space(theme::size::SECTION_GAP);
-            self.input_options(ui);
-            ui.add_space(theme::size::SECTION_GAP);
-            self.feedback_options(ui);
-            ui.add_space(theme::size::SECTION_GAP);
-            self.hotkeys(ui);
-            if a7n_platform::input::GESTURE_CHORDS_SUPPORTED {
-                ui.add_space(theme::size::SECTION_GAP);
-                self.gestures(ui);
+        match self.screen {
+            Screen::Hotkeys => {
+                theme::overline(ui, &t!("Hotkeys"));
+                theme::accordion_group(ui, |ui| {
+                    self.hotkeys(ui);
+                    self.general_options(ui);
+                    self.input_options(ui);
+                    if a7n_platform::input::GESTURE_CHORDS_SUPPORTED {
+                        self.gestures(ui);
+                    }
+                });
             }
-        } else {
-            self.peers(ui);
+            Screen::Feedback => {
+                self.appearance_options(ui);
+                ui.add_space(theme::size::SECTION_GAP);
+                self.feedback_options(ui);
+            }
+            _ => self.peers(ui),
         }
         if let Some(error) = self.config_validation_error() {
             theme::error(ui, &error);
@@ -149,8 +156,12 @@ impl App {
             theme::card(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     theme::icon_tile(ui, icon::POWER);
-                    ui.heading(t!("Daemon isn't running"));
-                    ui.label(t!("Start the daemon to manage machines and share input."));
+                    theme::page_header(
+                        ui,
+                        &t!("Daemon isn't running"),
+                        &t!("Start the daemon to manage machines and share input."),
+                        |_| {},
+                    );
                     if let Some(error) = &self.daemon_error {
                         ui.label(
                             egui::RichText::new(error)
@@ -237,6 +248,7 @@ impl App {
             },
         );
         self.page_message(ui);
+        theme::overline(ui, &t!("Layout"));
         if let Some(canvas) = &mut self.layout {
             let p = theme::Palette::of(ui.ctx());
             ui.scope(|ui| {

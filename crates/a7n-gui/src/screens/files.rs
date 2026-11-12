@@ -37,8 +37,14 @@ impl App {
             });
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if theme::button(ui, ButtonKind::Primary, ButtonSize::Md, None, &t!("Accept"))
-                        .clicked()
+                    if theme::button(
+                        ui,
+                        ButtonKind::Secondary,
+                        ButtonSize::Md,
+                        None,
+                        &t!("Accept"),
+                    )
+                    .clicked()
                     {
                         self.send(Command::Request(Request::FilesAccept {
                             peer: held.peer,

@@ -29,6 +29,7 @@ impl App {
         const KEY: &str = "gui.appearance";
         let current = self.value(KEY, "system");
         let mut value = current.as_str();
+        theme::overline(ui, &t!("Appearance"));
         theme::card(ui, |ui| {
             theme::setting_row(
                 ui,
@@ -55,7 +56,11 @@ impl App {
                 },
             );
         });
+    }
+
+    pub(super) fn general_options(&mut self, ui: &mut egui::Ui) {
         self.language_options(ui);
+
         self.toggle_card(
             ui,
             None,
@@ -67,44 +72,98 @@ impl App {
                 unavailable: None,
             }],
         );
-        self.update_options(ui);
+        let summary = if self.value("gui.update_check", "false") == "true" {
+            t!("On")
+        } else {
+            t!("Off")
+        };
+        theme::accordion(
+            ui,
+            "updates",
+            &t!("Check for updates"),
+            Some(&summary),
+            false,
+            false,
+            |ui| {
+                self.update_options(ui);
+            },
+        );
     }
 
     fn language_options(&mut self, ui: &mut egui::Ui) {
         const KEY: &str = "gui.language";
         let current = self.value(KEY, "system");
         let mut value = current.as_str();
-        theme::card(ui, |ui| {
-            theme::setting_row(
-                ui,
-                &t!("Language"),
-                &t!("System follows this machine's language."),
-                Some(KEY),
-                |ui| {
-                    if theme::segmented(
-                        ui,
-                        &mut value,
-                        &[
-                            ("system", &t!("System")),
-                            ("english", &t!("English")),
-                            ("german", &t!("German")),
-                        ],
-                    )
-                    .changed()
-                    {
-                        self.edit(KEY, value, "system");
-                        crate::set_language(match value {
-                            "english" => a7n_ipc::config::Language::English,
-                            "german" => a7n_ipc::config::Language::German,
-                            _ => a7n_ipc::config::Language::System,
-                        });
-                    }
-                },
-            );
-        });
+        let summary = match value {
+            "english" => t!("English"),
+            "german" => t!("German"),
+            _ => t!("System"),
+        };
+        theme::accordion(
+            ui,
+            KEY,
+            &t!("Language"),
+            Some(&summary),
+            false,
+            false,
+            |ui| {
+                theme::setting_row(
+                    ui,
+                    &t!("Language"),
+                    &t!("System follows this machine's language."),
+                    Some(KEY),
+                    |ui| {
+                        if theme::segmented(
+                            ui,
+                            &mut value,
+                            &[
+                                ("system", &t!("System")),
+                                ("english", &t!("English")),
+                                ("german", &t!("German")),
+                            ],
+                        )
+                        .changed()
+                        {
+                            self.edit(KEY, value, "system");
+                            crate::set_language(match value {
+                                "english" => a7n_ipc::config::Language::English,
+                                "german" => a7n_ipc::config::Language::German,
+                                _ => a7n_ipc::config::Language::System,
+                            });
+                        }
+                    },
+                );
+            },
+        );
     }
 
     pub(super) fn input_options(&mut self, ui: &mut egui::Ui) {
+        let speed = self.value("input.speed", "1.0");
+        theme::accordion(
+            ui,
+            "input.speed",
+            &t!("Pointer speed"),
+            Some(&format!("{speed}×")),
+            false,
+            false,
+            |ui| {
+                let key = "input.speed";
+                let mut speed = self.value(key, "1.0").parse::<f64>().unwrap_or(1.0);
+                if theme::slider(
+                    ui,
+                    &t!("Pointer speed"),
+                    &mut speed,
+                    a7n_ipc::config::MIN_SPEED..=a7n_ipc::config::MAX_SPEED,
+                    None,
+                    |value| format!("{value:.2}×"),
+                )
+                .changed()
+                {
+                    self.edit(key, &speed.to_string(), "1.0");
+                }
+            },
+        );
+
         self.toggle_card(
             ui,
             None,
@@ -148,59 +207,69 @@ impl App {
                 }],
             );
         }
+
         self.local_keys(ui);
     }
 
     fn local_keys(&mut self, ui: &mut egui::Ui) {
         const KEY: &str = "input.local_keys";
-        theme::card(ui, |ui| {
-            ui.heading(t!("Local keys and buttons"));
-            theme::small(
-                ui,
-                &t!(
-                    "Keep these inputs on this machine while driving another. Hotkeys still take priority.",
-                ),
-            );
-            if !a7n_platform::input::LOCAL_INPUTS_SUPPORTED {
+        let summary = self.value(KEY, "");
+        theme::accordion(
+            ui,
+            KEY,
+            &t!("Local keys and buttons"),
+            Some(&summary),
+            false,
+            false,
+            |ui| {
                 theme::small(
                     ui,
-                    &t!("Local pass-through is unavailable on X11 and Wayland."),
+                    &t!(
+                        "Keep these inputs on this machine while driving another. Hotkeys still take priority.",
+                    ),
                 );
-            }
-            let mut names: Vec<String> = self
-                .value(KEY, "")
-                .split(',')
-                .filter(|name| !name.is_empty())
-                .map(str::to_owned)
-                .collect();
-            let mut removed = None;
-            for (index, name) in names.iter().enumerate() {
-                ui.push_id(index, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(name);
-                        if theme::button(
-                            ui,
-                            theme::ButtonKind::Ghost,
-                            theme::ButtonSize::Sm,
-                            None,
-                            &t!("Remove"),
-                        )
-                        .clicked()
-                        {
-                            removed = Some(index);
-                        }
+                if !a7n_platform::input::LOCAL_INPUTS_SUPPORTED {
+                    theme::small(
+                        ui,
+                        &t!("Local pass-through is unavailable on X11 and Wayland."),
+                    );
+                }
+                let mut names: Vec<String> = self
+                    .value(KEY, "")
+                    .split(',')
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned)
+                    .collect();
+                let mut removed = None;
+                for (index, name) in names.iter().enumerate() {
+                    ui.push_id(index, |ui| {
+                        ui.horizontal(|ui| {
+                            theme::keycap(ui, name);
+                            if theme::button(
+                                ui,
+                                theme::ButtonKind::Ghost,
+                                theme::ButtonSize::Sm,
+                                None,
+                                &t!("Remove"),
+                            )
+                            .clicked()
+                            {
+                                removed = Some(index);
+                            }
+                        });
                     });
-                });
-            }
-            if let Some(index) = removed {
-                names.remove(index);
-                self.edit(KEY, &names.join(","), "");
-            }
-            self.record_hotkey(ui, KEY, a7n_ipc::HotkeyKind::Single);
-        });
+                }
+                if let Some(index) = removed {
+                    names.remove(index);
+                    self.edit(KEY, &names.join(","), "");
+                }
+                self.record_hotkey(ui, KEY, a7n_ipc::HotkeyKind::Single);
+            },
+        );
     }
 
     pub(super) fn feedback_options(&mut self, ui: &mut egui::Ui) {
+        theme::overline(ui, &t!("Feedback"));
         let feedback_supported = a7n_platform::feedback::supported();
         let unavailable_text = t!(NOT_ON_WAYLAND);
         let unavailable = (!feedback_supported).then_some(unavailable_text.as_ref());
@@ -292,12 +361,27 @@ impl App {
     }
 
     fn toggle_card(&mut self, ui: &mut egui::Ui, heading: Option<&str>, toggles: &[Toggle<'_>]) {
-        theme::card(ui, |ui| {
-            if let Some(heading) = heading {
-                ui.heading(heading);
-            }
-            self.toggle_rows(ui, toggles);
-        });
+        let summary = toggles
+            .iter()
+            .map(|toggle| {
+                let state = if self.value(toggle.key, toggle.default) == "true" {
+                    t!("On")
+                } else {
+                    t!("Off")
+                };
+                format!("{}: {state}", toggle.title)
+            })
+            .collect::<Vec<_>>()
+            .join(" · ");
+        theme::accordion(
+            ui,
+            toggles[0].key,
+            heading.unwrap_or(toggles[0].title),
+            Some(&summary),
+            false,
+            false,
+            |ui| self.toggle_rows(ui, toggles),
+        );
     }
 
     fn toggle_rows(&mut self, ui: &mut egui::Ui, toggles: &[Toggle<'_>]) {

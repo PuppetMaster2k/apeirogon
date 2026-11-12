@@ -22,6 +22,7 @@ pub(in crate::daemon) mod feedback_sink;
 mod gestures;
 mod hotkeys;
 mod recording;
+mod startup;
 
 use a7n_core::input::landing_point;
 use feedback_sink::FeedbackSink;
@@ -253,13 +254,6 @@ impl Daemon {
             Some(Err(reason)) => self.input.unavailable = Some(reason),
             None => {}
         }
-    }
-
-    fn attach_input(&mut self, (capture, injector): Handles) {
-        self.input.capture = Some(capture);
-        self.input.injector = Some(injector);
-        self.input.unavailable = None;
-        self.input.failed = false;
     }
 
     pub(super) async fn retry_input_after_permission_loss(&mut self) {

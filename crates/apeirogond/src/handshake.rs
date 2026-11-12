@@ -67,7 +67,7 @@ pub(crate) async fn read_frame(
     buf: &mut Vec<u8>,
     kind: FrameKind,
 ) -> Result<Envelope, LinkError> {
-    crate::frame::read(
+    let mut envelope: Envelope = crate::frame::read(
         recv,
         buf,
         kind,
@@ -75,7 +75,16 @@ pub(crate) async fn read_frame(
         Some(limits::FRAME_READ_TIMEOUT),
     )
     .await?
-    .ok_or(LinkError::StreamClosed)
+    .ok_or(LinkError::StreamClosed)?;
+    let info = match &mut envelope.body {
+        Some(Body::Hello(hello)) => hello.info.as_mut(),
+        Some(Body::Welcome(welcome)) => welcome.info.as_mut(),
+        _ => None,
+    };
+    if let Some(info) = info {
+        info.discard_invalid_monitors();
+    }
+    Ok(envelope)
 }
 
 fn into_link(

@@ -8,6 +8,7 @@ use rust_i18n::t;
 use crate::theme;
 
 mod drag;
+mod monitors;
 mod segments;
 mod snap;
 
@@ -186,6 +187,7 @@ impl Canvas {
                 transform.rect(placement),
                 &self.draft.names[index],
                 placement,
+                &self.draft.monitors[index],
                 self.selected == index,
                 overlapping,
             );
@@ -231,6 +233,7 @@ fn paint_machine(
     rect: egui::Rect,
     name: &str,
     placement: &Placement,
+    monitors: &[a7n_ipc::Monitor],
     selected: bool,
     overlapping: bool,
 ) {
@@ -255,6 +258,7 @@ fn paint_machine(
         ),
         egui::StrokeKind::Inside,
     );
+    monitors::paint(ui, rect, monitors);
     let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
     let name = egui::WidgetText::from(name).into_galley(
         ui,
@@ -389,6 +393,7 @@ mod tests {
             machine: a7n_ipc::MachineId::try_from([id; 16].as_slice()).unwrap(),
             name: format!("machine-{id}"),
             screen_mm,
+            monitors: vec![],
             x,
             y: 100,
             width: 1920,

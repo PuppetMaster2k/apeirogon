@@ -406,6 +406,11 @@ do not.
     them. Only a missing allow offers an elevated `netsh advfirewall` command
     to add our own rule. The daemon never creates rules or asks for elevation.
     Other platforms report nothing.
+  - Local IPC version 15 adds relative pixel monitor rectangles to layout
+    replies. The canvas shows them inside each machine without changing
+    machine placement or routing. Geometry comes from the startup capture
+    snapshot and peer handshakes, retained for the daemon session.
+    Update daemon and local clients together.
   - Local IPC version 14 adds per-peer `problem` to status, reporting the last
     unreachable, refused, TLS/pin failure, protocol version mismatch (with the
     older machine when known), or liveness silence drop. It is session state,
