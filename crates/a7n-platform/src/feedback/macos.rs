@@ -19,10 +19,9 @@ use objc2::MainThreadMarker;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2_app_kit::{
     NSAnimatablePropertyContainer, NSAnimationContext, NSBackingStoreType, NSBox, NSBoxType,
-    NSColor, NSEvent, NSHapticFeedbackManager, NSHapticFeedbackPattern,
-    NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer, NSPanel, NSScreen,
-    NSStatusWindowLevel, NSTitlePosition, NSWindowCollectionBehavior, NSWindowSharingType,
-    NSWindowStyleMask, NSWorkspace,
+    NSColor, NSHapticFeedbackManager, NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime,
+    NSHapticFeedbackPerformer, NSPanel, NSScreen, NSStatusWindowLevel, NSTitlePosition,
+    NSWindowCollectionBehavior, NSWindowSharingType, NSWindowStyleMask, NSWorkspace,
 };
 use objc2_core_foundation::{
     CFAbsoluteTimeGetCurrent, CFRetained, CFRunLoop, CFRunLoopTimer, CFRunLoopTimerContext,
@@ -132,9 +131,13 @@ impl Ui {
         match command {
             Command::Tick => tick_haptics(),
             Command::Clear => self.hide_glow(),
-            Command::Edge { edge, progress, .. } => {
+            Command::Edge {
+                display,
+                edge,
+                progress,
+            } => {
                 if let Some(panels) = self.panels() {
-                    panels.show_glow(edge, progress);
+                    panels.show_glow(display, edge, progress);
                 }
             }
             Command::Landing { x, y } => {
@@ -207,12 +210,25 @@ impl Panels {
         })
     }
 
-    fn show_glow(&self, edge: a7n_proto::v1::Edge, progress: u16) {
+    fn show_glow(&self, display: crate::input::Bounds, edge: a7n_proto::v1::Edge, progress: u16) {
         let screens = screen_frames(self.mtm);
-        let pointer = NSEvent::mouseLocation();
-        let Some(screen) = geometry::screen_containing(&screens, pointer.x, pointer.y) else {
+        let Some(primary) = screens.first() else {
             return;
         };
+        let top = primary.height - f64::from(display.y);
+        let Some(mut screen) = geometry::screen_containing(
+            &screens,
+            f64::from(display.x) + f64::from(display.width) / 2.0,
+            top - f64::from(display.height) / 2.0,
+        ) else {
+            return;
+        };
+        // The daemon narrows the display rectangle for a notch push.
+        if f64::from(display.width) < screen.width {
+            screen.x = f64::from(display.x);
+            screen.width = f64::from(display.width);
+            screen.height = top - screen.y;
+        }
         let Some(rect) = geometry::glow_rect(screen, edge, progress) else {
             self.glow.orderOut(None);
             return;

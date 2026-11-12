@@ -36,6 +36,8 @@ pub const GESTURE_CHORDS_SUPPORTED: bool = cfg!(windows);
 /// Whether this backend can send or receive the gesture capability.
 pub const LOCAL_INPUTS_SUPPORTED: bool = cfg!(any(windows, target_os = "macos"));
 
+pub const NOTCH_CROSSING_SUPPORTED: bool = cfg!(target_os = "macos");
+
 pub const GESTURES_SUPPORTED: bool = cfg!(any(windows, target_os = "macos"));
 
 /// Background cursor hiding is available on Windows, macOS and X11.
@@ -92,6 +94,8 @@ pub struct Capture {
     pub bounds: Bounds,
     /// Startup monitor snapshot, shared without allocating on pointer events.
     pub monitors: std::sync::Arc<[Bounds]>,
+    /// Startup notch rectangle in the same desktop coordinates as monitors.
+    pub notch: Option<Bounds>,
     pub events: mpsc::Receiver<Captured>,
     pub control: mpsc::Sender<CaptureControl>,
 }
@@ -109,6 +113,8 @@ pub struct Injector {
     pub bounds: Bounds,
     /// Startup monitor snapshot, shared without allocating on pointer events.
     pub monitors: std::sync::Arc<[Bounds]>,
+    /// Startup notch rectangle in the same desktop coordinates as monitors.
+    pub notch: Option<Bounds>,
     pub commands: mpsc::Sender<Inject>,
     /// Absolute pointer position and raw delta after each motion or warp.
     pub pointer: mpsc::Receiver<Captured>,

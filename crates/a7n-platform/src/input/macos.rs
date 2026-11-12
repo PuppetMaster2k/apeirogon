@@ -6,6 +6,7 @@
 mod capture;
 mod inject;
 mod keymap;
+pub(crate) mod notch;
 
 use std::io;
 
@@ -42,12 +43,14 @@ pub(super) fn start() -> Result<(Capture, Injector), InputError> {
         Capture {
             bounds,
             monitors: monitors.clone(),
+            notch: notch::snapshot(),
             events: events_rx,
             control,
         },
         Injector {
             bounds,
             monitors,
+            notch: notch::snapshot(),
             commands,
             pointer: pointer_rx,
         },

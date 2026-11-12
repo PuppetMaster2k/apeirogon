@@ -91,6 +91,15 @@ impl App {
                 },
             ],
         );
+        if a7n_platform::input::NOTCH_CROSSING_SUPPORTED {
+            self.toggle_card(ui, None, &[Toggle {
+                key: "input.notch_crossing",
+                title: "Top edge: only through the notch",
+                help: "On the notched display, push through the notch to reach the machine above.",
+                default: "false",
+                unavailable: None,
+            }]);
+        }
         self.local_keys(ui);
     }
 

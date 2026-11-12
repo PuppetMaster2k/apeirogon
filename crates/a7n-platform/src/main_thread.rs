@@ -109,6 +109,7 @@ mod macos {
         // Without this a plain process would get a Dock icon and Cmd-Tab entry.
         NSApplication::sharedApplication(mtm)
             .setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+        crate::input::macos::notch::init(mtm);
         let run_loop = CFRunLoop::main().expect("the main thread has a run loop");
         // SAFETY: `stop_run_loop` ignores its info pointer, which is null.
         let waker = unsafe { Waker::new(run_loop, stop_run_loop, std::ptr::null_mut()) }

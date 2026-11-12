@@ -82,12 +82,14 @@ pub(super) fn start() -> Result<(Capture, Injector), InputError> {
     let capture = Capture {
         bounds: capture_bounds,
         monitors: capture_monitors.into(),
+        notch: None,
         events: events_rx,
         control: control_tx,
     };
     let injector = Injector {
         bounds: inject_bounds,
         monitors: inject_monitors.into(),
+        notch: None,
         commands: commands_tx,
         pointer: pointer_rx,
     };

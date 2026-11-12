@@ -47,12 +47,14 @@ pub(super) fn start() -> Result<(Capture, Injector), InputError> {
         Capture {
             bounds,
             monitors: monitors.clone(),
+            notch: None,
             events: events_rx,
             control: control_tx,
         },
         Injector {
             bounds,
             monitors,
+            notch: None,
             commands: commands_tx,
             pointer: pointer_rx,
         },
