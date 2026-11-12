@@ -246,6 +246,7 @@ crates/
   edits resolve by last-writer-wins with a version counter (ties by machine
   id) and a notice to the loser. Each leaving edge can disable individual thirds;
   diagonal pushes within an 8-pixel corner box reach corner-only neighbours after edge exits.
+- **Notch crossing:** local `input.notch_crossing` (default false, never synced, macOS only) restricts top-edge pushes on the notched display to the notch span; other top-edge positions build no pressure or glow. The layout still selects the machine above with bbox-relative offsets, and feedback appears as a short bar below the notch. Other displays and edges are unchanged.
 - **Edge resistance:** outward travel at an edge builds pressure in pixels;
   inward travel subtracts its component, floored at zero. Pressure decays at
   240 px/s, including while resting; zero or tangential motion preserves the

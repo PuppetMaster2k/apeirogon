@@ -18,7 +18,9 @@ impl Bounds {
         (self.x, self.y, self.width, self.height)
     }
 
-    pub(super) fn contains(self, x: i64, y: i64) -> bool {
+    /// Whether a desktop point is inside this rectangle.
+    #[must_use]
+    pub fn contains(self, x: i64, y: i64) -> bool {
         x >= i64::from(self.x)
             && y >= i64::from(self.y)
             && x < i64::from(self.x) + i64::from(self.width)

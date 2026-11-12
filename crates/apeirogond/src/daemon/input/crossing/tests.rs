@@ -85,3 +85,29 @@ async fn cross_edge_outside_left_point_reaches_paired_target() {
     assert_eq!(pending.peer, target);
     assert!(daemon.input.edge_no_target.is_none());
 }
+
+#[tokio::test]
+async fn crossing_push_notch_enabled_only_accepts_top_push_inside_span() {
+    // Arrange
+    let (mut daemon, _dir, _) = placed_daemon(0);
+    let bounds = (0, 0, 100, 100);
+    let monitors = [bounds.into()];
+    let (_, events) = tokio::sync::mpsc::channel(1);
+    let (control, _) = tokio::sync::mpsc::channel(1);
+    daemon.input.capture = Some(a7n_platform::input::Capture {
+        bounds: bounds.into(),
+        monitors: monitors.to_vec().into(),
+        notch: Some((40, 0, 20, 5).into()),
+        events,
+        control,
+    });
+    daemon.config.input.notch_crossing = true;
+
+    // Act
+    let outside = daemon.crossing_push(bounds, &monitors, (20, 0), (0, -1), false);
+    let inside = daemon.crossing_push(bounds, &monitors, (50, 0), (0, -1), false);
+
+    // Assert
+    assert!(outside.is_none());
+    assert!(inside.is_some_and(|push| push.0 == Edge::Top));
+}

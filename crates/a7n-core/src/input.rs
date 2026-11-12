@@ -127,6 +127,12 @@ pub fn clamp_position(
     )
 }
 
+/// Whether a desktop x coordinate falls within the notch's horizontal span.
+#[must_use]
+pub fn within_notch(notch: Bounds, x: i32) -> bool {
+    i64::from(x) >= i64::from(notch.x) && i64::from(x) < i64::from(notch.x) + i64::from(notch.width)
+}
+
 /// Detect outward motion at or beyond an edge; horizontal motion wins at corners.
 #[must_use]
 #[allow(clippy::cast_possible_truncation)] // Normalized fractions in 0..=1 fit f32.

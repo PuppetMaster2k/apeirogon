@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use a7n_core::input::{clamp_position, corner_push, edge_push};
+use a7n_core::input::{clamp_position, corner_push, edge_push, within_notch};
 use a7n_proto::v1::Landing;
 
 use super::{Bounds, Daemon, Edge, MachineId, now};
@@ -59,7 +59,7 @@ impl Daemon {
             self.input.fullscreen_hold.reset();
             return None;
         }
-        let Some(push) = edge_push(bounds, monitors, x, y, dx, dy) else {
+        let Some(mut push) = edge_push(bounds, monitors, x, y, dx, dy) else {
             self.input.fullscreen_hold.reset();
             if let Some((edge, _)) = self.input.resistance.progress() {
                 let inward = match edge {
@@ -74,6 +74,22 @@ impl Daemon {
             }
             return None;
         };
+        let notch = if driven {
+            self.input.injector.as_ref().and_then(|input| input.notch)
+        } else {
+            self.input.capture.as_ref().and_then(|input| input.notch)
+        };
+        let notch = notch.filter(|notch| {
+            self.config.input.notch_crossing
+                && push.0 == Edge::Top
+                && push.3.contains(i64::from(notch.x), i64::from(notch.y))
+        });
+        if notch.is_some_and(|notch| !within_notch(notch, x)) {
+            self.input.fullscreen_hold.reset();
+            self.input.resistance.push(Edge::Unspecified, 0, now());
+            self.input.sink.clear();
+            return None;
+        }
         // ponytail: synchronous query on the async task; offload if measured latency grows.
         if self
             .input
@@ -82,6 +98,15 @@ impl Daemon {
         {
             self.input.resistance.push(Edge::Unspecified, 0, now());
             return None;
+        }
+        if let Some(notch) = notch {
+            // The notch has no pixels; place the glow just below it.
+            push.3 = Bounds {
+                x: notch.x,
+                y: notch.y.saturating_add_unsigned(notch.height),
+                width: notch.width,
+                height: push.3.height.saturating_sub(notch.height),
+            };
         }
         Some(push)
     }

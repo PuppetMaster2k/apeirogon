@@ -90,10 +90,12 @@ impl Default for SyncConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+#[allow(clippy::struct_excessive_bools)] // Independent user-facing input toggles.
 pub struct InputConfig {
     pub speed: f64,
     pub natural_scrolling: bool,
     pub fullscreen_hold: bool,
+    pub notch_crossing: bool,
     pub local_keys: Vec<String>,
     pub hide_idle_cursor: bool,
 }
@@ -104,6 +106,7 @@ impl Default for InputConfig {
             speed: 1.0,
             natural_scrolling: false,
             fullscreen_hold: false,
+            notch_crossing: false,
             local_keys: Vec::new(),
             hide_idle_cursor: true,
         }
@@ -422,7 +425,7 @@ impl Config {
                 })?),
                 [
                     "input",
-                    "natural_scrolling" | "fullscreen_hold" | "hide_idle_cursor",
+                    "natural_scrolling" | "fullscreen_hold" | "hide_idle_cursor" | "notch_crossing",
                 ]
                 | ["feedback", "edge" | "landing" | "haptics"]
                 | ["notifications", "files"]
