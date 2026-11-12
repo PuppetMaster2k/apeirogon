@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.40.0...v0.41.0) (2026-11-12)
+
+
+### Features
+
+* **gui:** translate the GUI, starting with German ([#255](https://github.com/PuppetMaster2k/apeirogon/issues/255)) ([fd8f4e2](https://github.com/PuppetMaster2k/apeirogon/commit/fd8f4e21e872572d0ab27c5a9704dd940d939793))
+
 ## [0.40.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.39.1...v0.40.0) (2026-11-12)
 
 
