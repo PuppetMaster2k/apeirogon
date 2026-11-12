@@ -12,8 +12,14 @@ pub(super) fn chord_editor(
     placeholder: &str,
 ) -> bool {
     if *editing {
-        ui.set_max_width(320.0);
-        let changed = theme::text_input(ui, &t!("Shortcut"), value, placeholder, true).changed();
+        let width = ui.available_width().min(240.0);
+        let changed = ui
+            .allocate_ui_with_layout(
+                egui::vec2(width, 0.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| theme::text_input(ui, &t!("Shortcut"), value, placeholder, true).changed(),
+            )
+            .inner;
         if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, &t!("Done")).clicked() {
             *editing = false;
         }

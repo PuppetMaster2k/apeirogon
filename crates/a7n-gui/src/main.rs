@@ -408,6 +408,7 @@ impl eframe::App for App {
             .show(ui, |ui| {
                 ui.set_max_width(ui.available_width().min(theme::size::CONTENT_MAX_W));
                 ui.add_enabled_ui(self.worker.commands.capacity() > 0, |ui| {
+                    self.page_header(ui);
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .show(ui, |ui| {

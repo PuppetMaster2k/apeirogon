@@ -22,21 +22,6 @@ impl App {
     }
 
     pub(super) fn settings(&mut self, ui: &mut egui::Ui) {
-        let (title, subtitle) = match self.screen {
-            Screen::Hotkeys => (
-                t!("Hotkeys"),
-                t!("Shortcuts for returning home and moving input between machines."),
-            ),
-            Screen::Feedback => (
-                t!("Feedback & theming"),
-                t!("Choose visual feedback and the window theme."),
-            ),
-            _ => (
-                t!("Peers & policies"),
-                t!("What each paired machine is allowed to do."),
-            ),
-        };
-        self.settings_header(ui, &title, &subtitle);
         self.page_message(ui);
         if self.config.is_none() {
             theme::empty_card(
@@ -74,6 +59,50 @@ impl App {
             ui,
             &t!("Saving rewrites config.toml without comments, like a7n config set."),
         );
+    }
+
+    pub(super) fn page_header(&mut self, ui: &mut egui::Ui) {
+        if self.status.is_none() {
+            theme::page_header(
+                ui,
+                &t!("Daemon isn't running"),
+                &t!("Start the daemon to manage machines and share input."),
+                |_| {},
+            );
+        } else if self.missing_permissions().is_some() {
+            theme::page_header(
+                ui,
+                &t!("Allow Apeirogon to share your keyboard and mouse"),
+                &t!("macOS asks you to approve each permission once."),
+                |_| {},
+            );
+        } else {
+            match self.screen {
+                Screen::Machines => self.machines_header(ui),
+                Screen::Layout => self.layout_header(ui),
+                Screen::Hotkeys | Screen::Feedback | Screen::Policies => {
+                    self.settings_page_header(ui);
+                }
+            }
+        }
+    }
+
+    fn settings_page_header(&mut self, ui: &mut egui::Ui) {
+        let (title, subtitle) = match self.screen {
+            Screen::Hotkeys => (
+                t!("Hotkeys"),
+                t!("Shortcuts for returning home and moving input between machines."),
+            ),
+            Screen::Feedback => (
+                t!("Feedback & theming"),
+                t!("Choose visual feedback and the window theme."),
+            ),
+            _ => (
+                t!("Peers & policies"),
+                t!("What each paired machine is allowed to do."),
+            ),
+        };
+        self.settings_header(ui, &title, &subtitle);
     }
 
     fn settings_header(&mut self, ui: &mut egui::Ui, title: &str, subtitle: &str) {
@@ -156,12 +185,6 @@ impl App {
             theme::card(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     theme::icon_tile(ui, icon::POWER);
-                    theme::page_header(
-                        ui,
-                        &t!("Daemon isn't running"),
-                        &t!("Start the daemon to manage machines and share input."),
-                        |_| {},
-                    );
                     if let Some(error) = &self.daemon_error {
                         ui.label(
                             egui::RichText::new(error)
@@ -186,7 +209,7 @@ impl App {
         });
     }
 
-    pub(super) fn layout_screen(&mut self, ui: &mut egui::Ui) {
+    fn layout_header(&mut self, ui: &mut egui::Ui) {
         let mut save = false;
         theme::page_header(
             ui,
@@ -247,6 +270,16 @@ impl App {
                 }
             },
         );
+        if save
+            && let Some(canvas) = &self.layout
+            && canvas.is_valid()
+        {
+            let placed = canvas.placed();
+            self.send(Command::Request(a7n_ipc::Request::SetLayout { placed }));
+        }
+    }
+
+    pub(super) fn layout_screen(&mut self, ui: &mut egui::Ui) {
         self.page_message(ui);
         theme::overline(ui, &t!("Layout"));
         if let Some(canvas) = &mut self.layout {
@@ -255,10 +288,6 @@ impl App {
                 ui.visuals_mut().widgets.noninteractive.bg_fill = p.bg;
                 theme::card(ui, |ui| canvas.show(ui));
             });
-            if save && canvas.is_valid() {
-                let placed = canvas.placed();
-                self.send(Command::Request(a7n_ipc::Request::SetLayout { placed }));
-            }
         } else {
             theme::empty_card(
                 ui,

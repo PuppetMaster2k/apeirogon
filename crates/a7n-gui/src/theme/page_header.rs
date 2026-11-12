@@ -47,7 +47,10 @@ pub(crate) fn page_header(ui: &mut Ui, title: &str, subtitle: &str, actions: imp
                     heading(ui);
                 },
             );
-            ui.with_layout(Layout::right_to_left(Align::Center), actions);
+            ui.with_layout(
+                Layout::right_to_left(Align::Center).with_main_wrap(true),
+                actions,
+            );
         });
     }
     ui.add_space(size::SECTION_GAP - 8.0);

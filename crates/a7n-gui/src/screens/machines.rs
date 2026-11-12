@@ -12,7 +12,7 @@ use crate::{App, Command, theme};
 use theme::{BadgeKind, ButtonKind, ButtonSize, IconButtonKind, icon};
 
 impl App {
-    pub(crate) fn machines(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn machines_header(&mut self, ui: &mut egui::Ui) {
         let Some(status) = self.status.clone() else {
             return;
         };
@@ -44,6 +44,12 @@ impl App {
                 }
             },
         );
+    }
+
+    pub(crate) fn machines(&mut self, ui: &mut egui::Ui) {
+        let Some(status) = self.status.clone() else {
+            return;
+        };
         self.page_message(ui);
         firewall_warnings(ui, &status.firewall, self.hide_addresses());
         self.held_files(ui, &status);

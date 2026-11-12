@@ -23,7 +23,9 @@ impl App {
             |ui| {
                 theme::small(
                     ui,
-                    &t!("Shortcuts for swipes received from a Mac trackpad."),
+                    &t!(
+                        "When a Mac trackpad swipes on this PC, apeirogon presses these Windows shortcuts."
+                    ),
                 );
                 for (index, (name, title)) in [
                     ("swipe_up", &t!("Swipe up")),
@@ -46,10 +48,10 @@ impl App {
         theme::setting_row(
             ui,
             title,
-            &t!("Three or four fingers. Clear to turn off."),
+            &t!("Shortcut pressed on this PC. Clear to turn off."),
             Some(&key),
             |ui| {
-                ui.horizontal(|ui| self.gesture_editor(ui, index, &key));
+                ui.horizontal_wrapped(|ui| self.gesture_editor(ui, index, &key));
             },
         );
     }

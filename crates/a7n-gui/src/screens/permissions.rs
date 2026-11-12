@@ -21,12 +21,6 @@ const PERMISSIONS: [(Permission, &str); 2] = [
 impl App {
     /// First-run onboarding; the daemon continues by itself once both are granted.
     pub(crate) fn permissions(&mut self, ui: &mut egui::Ui, missing: &[Permission]) {
-        theme::page_header(
-            ui,
-            &t!("Allow Apeirogon to share your keyboard and mouse"),
-            &t!("macOS asks you to approve each permission once."),
-            |_| {},
-        );
         self.page_message(ui);
         theme::overline(ui, &t!("Permissions"));
         for (permission, reason) in PERMISSIONS {
