@@ -16,4 +16,5 @@ pub enum Appearance {
 pub struct GuiConfig {
     pub appearance: Appearance,
     pub hide_addresses: bool,
+    pub update_check: bool,
 }

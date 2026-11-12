@@ -16,6 +16,7 @@ pub(super) enum Command {
     Config,
     SaveConfig(Vec<(String, String)>),
     Start,
+    CheckUpdates,
 }
 
 #[allow(
@@ -27,6 +28,7 @@ pub(super) enum Update {
     Config(Result<Box<Config>, String>),
     Notice(String),
     Recorded(Result<String, String>),
+    Release(Result<Option<crate::update_check::Release>, String>),
 }
 
 pub(super) struct Worker {
@@ -57,6 +59,15 @@ impl Worker {
                         _ = poll.tick() => Command::Request(Request::Status),
                     };
                     let update = match command {
+                        Command::CheckUpdates => {
+                            let sender = sender.clone();
+                            let ctx = ctx.clone();
+                            tokio::task::spawn_blocking(move || {
+                                let _ = sender.send(Update::Release(crate::update_check::check()));
+                                ctx.request_repaint();
+                            });
+                            continue;
+                        }
                         Command::Request(Request::RecordHotkey { kind }) => {
                             Update::Recorded(match request_daemon(&mut client, &Request::RecordHotkey { kind }).await {
                                 Ok(Response::Recorded { value }) => Ok(value),

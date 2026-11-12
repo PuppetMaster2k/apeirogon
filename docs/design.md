@@ -41,7 +41,7 @@ crates.io (optionally npm/PyPI) before the repo goes public.
 - **Open source only.** License **GPL-3.0-or-later**; reusable library crates
   (e.g. `a7n-proto`) may be MIT/Apache-2.0. Contributions under **DCO**
   sign-off, no CLA.
-- **No telemetry, ever.** No update pings unless opted in.
+- **No telemetry, ever.** The GUI's local `gui.update_check` (default `false`) opts in to a startup and at most daily HTTPS GET to `https://api.github.com/repos/PuppetMaster2k/apeirogon/releases/latest` with only a generic `apeirogon-gui` User-Agent and no machine data; “Check now” makes one request even when off, and nothing downloads or installs.
 
 ## Platforms
 

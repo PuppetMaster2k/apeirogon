@@ -59,6 +59,7 @@ impl App {
                 unavailable: None,
             }],
         );
+        self.update_options(ui);
     }
 
     pub(super) fn input_options(&mut self, ui: &mut egui::Ui) {
