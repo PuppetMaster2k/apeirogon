@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.38.0...v0.39.0) (2026-11-12)
+
+
+### Features
+
+* choose the landing animation ([#249](https://github.com/PuppetMaster2k/apeirogon/issues/249)) ([1a5baee](https://github.com/PuppetMaster2k/apeirogon/commit/1a5baee079e03af6950102cc1133ea5d1549e6cd))
+
 ## [0.38.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.37.0...v0.38.0) (2026-11-12)
 
 
