@@ -87,14 +87,14 @@ fn header_background(ui: &Ui, response: &egui::Response) {
         background: ui.painter().add(egui::Shape::Noop),
         enabled: ui.is_enabled(),
     };
-    if ui.data(|data| data.get_temp::<Vec<HeaderPaint>>(headers_id()).is_some()) {
-        ui.data_mut(|data| {
-            data.get_temp_mut_or_default::<Vec<HeaderPaint>>(headers_id())
-                .push(header);
-        });
-    } else {
-        header.paint(ui, response.rect, egui::CornerRadius::ZERO);
-    }
+    debug_assert!(
+        ui.data(|data| data.get_temp::<Vec<HeaderPaint>>(headers_id()).is_some()),
+        "accordions must be direct children of an accordion_group"
+    );
+    ui.data_mut(|data| {
+        data.get_temp_mut_or_default::<Vec<HeaderPaint>>(headers_id())
+            .push(header);
+    });
 }
 
 #[allow(
@@ -185,7 +185,7 @@ pub(crate) fn accordion<R>(
                     .inner_margin(Margin {
                         left: BODY_INDENT,
                         right: 20,
-                        top: 0,
+                        top: 8,
                         bottom: 20,
                     })
                     .show(ui, |ui| {

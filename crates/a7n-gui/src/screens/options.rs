@@ -273,20 +273,23 @@ impl App {
         let feedback_supported = a7n_platform::feedback::supported();
         let unavailable_text = t!(NOT_ON_WAYLAND);
         let unavailable = (!feedback_supported).then_some(unavailable_text.as_ref());
-        theme::card(ui, |ui| {
-            ui.heading(t!("Feedback"));
-            self.toggle_rows(ui, &[
+        theme::accordion_group(ui, |ui| {
+            for toggle in [
                 Toggle {
                     key: "feedback.edge",
                     title: &t!("Edge glow"),
-                    help: &t!("Show a glow along the screen edge as you push toward another machine."),
+                    help: &t!(
+                        "Show a glow along the screen edge as you push toward another machine."
+                    ),
                     default: "true",
                     unavailable,
                 },
                 Toggle {
                     key: "feedback.landing",
                     title: &t!("Landing indicator"),
-                    help: &t!("Briefly mark where the pointer arrives when another machine takes over."),
+                    help: &t!(
+                        "Briefly mark where the pointer arrives when another machine takes over."
+                    ),
                     default: "true",
                     unavailable,
                 },
@@ -298,10 +301,15 @@ impl App {
                     unavailable: (!a7n_platform::feedback::haptics_supported())
                         .then_some(&t!("Only available on macOS")),
                 },
-            ]);
-            let edge = self.value("feedback.edge", "true") == "true";
-            let landing = self.value("feedback.landing", "true") == "true";
-            if edge || landing {
+            ] {
+                self.toggle_card(ui, None, &[toggle]);
+            }
+        });
+        let edge = self.value("feedback.edge", "true") == "true";
+        let landing = self.value("feedback.landing", "true") == "true";
+        if edge || landing {
+            ui.add_space(theme::size::ROW_GAP);
+            theme::card(ui, |ui| {
                 ui.add_enabled_ui(feedback_supported, |ui| {
                     for (key, title, default, choices) in [
                         (
@@ -356,8 +364,8 @@ impl App {
                         });
                     }
                 });
-            }
-        });
+            });
+        }
     }
 
     fn toggle_card(&mut self, ui: &mut egui::Ui, heading: Option<&str>, toggles: &[Toggle<'_>]) {

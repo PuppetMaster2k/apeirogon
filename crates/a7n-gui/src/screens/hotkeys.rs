@@ -53,32 +53,24 @@ impl App {
         let key = format!("hotkeys.{name}");
         let mut value = self.value(&key, "");
         theme::setting_row(ui, title, help, Some(&key), |ui| {
-            ui.allocate_ui_with_layout(
-                egui::vec2(ui.available_width(), theme::size::CONTROL_H),
-                egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true),
-                |ui| {
-                    let kind = match name {
-                        "double_tap" => a7n_ipc::HotkeyKind::Trigger,
-                        "jump" => a7n_ipc::HotkeyKind::Modifiers,
-                        _ => a7n_ipc::HotkeyKind::Chord,
-                    };
-                    self.record_hotkey(ui, &key, kind);
-                    let placeholder = match name {
-                        "home" => "scroll_lock,ctrl+alt+shift+home",
-                        "jump" => "ctrl+alt+shift",
-                        "lock" => "ctrl+alt+shift+l",
-                        _ => "right_alt",
-                    };
-                    if chord_editor(
-                        ui,
-                        &mut value,
-                        &mut self.editing_hotkeys[index],
-                        placeholder,
-                    ) {
-                        self.edit(&key, &value, "");
-                    }
-                },
-            );
+            let kind = match name {
+                "double_tap" => a7n_ipc::HotkeyKind::Trigger,
+                "jump" => a7n_ipc::HotkeyKind::Modifiers,
+                _ => a7n_ipc::HotkeyKind::Chord,
+            };
+            let placeholder = match name {
+                "home" => "scroll_lock,ctrl+alt+shift+home",
+                "jump" => "ctrl+alt+shift",
+                "lock" => "ctrl+alt+shift+l",
+                _ => "right_alt",
+            };
+            let mut editing = self.editing_hotkeys[index];
+            if chord_editor(ui, &mut value, &mut editing, placeholder, |ui| {
+                self.record_hotkey(ui, &key, kind);
+            }) {
+                self.edit(&key, &value, "");
+            }
+            self.editing_hotkeys[index] = editing;
         });
         if name == "jump" {
             theme::small(

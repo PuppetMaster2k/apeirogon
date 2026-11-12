@@ -10,33 +10,49 @@ pub(super) fn chord_editor(
     value: &mut String,
     editing: &mut bool,
     placeholder: &str,
+    actions: impl FnOnce(&mut egui::Ui),
 ) -> bool {
     if *editing {
-        let width = ui.available_width().min(240.0);
-        let changed = ui
-            .allocate_ui_with_layout(
-                egui::vec2(width, 0.0),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| theme::text_input(ui, &t!("Shortcut"), value, placeholder, true).changed(),
-            )
-            .inner;
-        if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, &t!("Done")).clicked() {
-            *editing = false;
-        }
-        return changed;
+        let p = theme::Palette::of(ui.ctx());
+        ui.label(
+            egui::RichText::new(t!("Shortcut"))
+                .font(theme::font_medium(13.0))
+                .color(p.text),
+        );
     }
-    for (index, chord) in value
-        .split(',')
-        .filter(|chord| !chord.is_empty())
-        .enumerate()
-    {
-        if index > 0 {
-            theme::small(ui, &t!("or"));
-        }
-        theme::chord(ui, chord.trim());
-    }
-    if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, &t!("Edit")).clicked() {
-        *editing = true;
-    }
-    false
+    ui.horizontal_wrapped(|ui| {
+        ui.set_min_height(theme::size::CONTROL_H);
+        let changed = if *editing {
+            let width = ui.available_width().min(240.0);
+            let changed = ui
+                .allocate_ui_with_layout(
+                    egui::vec2(width, theme::size::CONTROL_H),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| theme::text_field(ui, value, placeholder, true, false).changed(),
+                )
+                .inner;
+            if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, &t!("Done")).clicked() {
+                *editing = false;
+            }
+            changed
+        } else {
+            for (index, chord) in value
+                .split(',')
+                .filter(|chord| !chord.is_empty())
+                .enumerate()
+            {
+                if index > 0 {
+                    theme::small(ui, &t!("or"));
+                }
+                theme::chord(ui, chord.trim());
+            }
+            if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, &t!("Edit")).clicked() {
+                *editing = true;
+            }
+            false
+        };
+        actions(ui);
+        changed
+    })
+    .inner
 }

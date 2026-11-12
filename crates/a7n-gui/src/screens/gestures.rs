@@ -51,7 +51,7 @@ impl App {
             &t!("Shortcut pressed on this PC. Clear to turn off."),
             Some(&key),
             |ui| {
-                ui.horizontal_wrapped(|ui| self.gesture_editor(ui, index, &key));
+                self.gesture_editor(ui, index, &key);
             },
         );
     }
@@ -61,17 +61,24 @@ impl App {
         if value.is_empty() && !self.editing_gestures[index] {
             theme::small(ui, &t!("Off"));
         }
+        let can_clear = !value.is_empty();
+        let mut clear = false;
         if chord_editor(
             ui,
             &mut value,
             &mut self.editing_gestures[index],
             "ctrl+meta+left",
+            |ui| {
+                if can_clear {
+                    clear =
+                        theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, &t!("Clear"))
+                            .clicked();
+                }
+            },
         ) {
             self.edit(key, &value, "");
         }
-        if !value.is_empty()
-            && theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, &t!("Clear")).clicked()
-        {
+        if clear {
             self.edit(key, "", "");
         }
     }
