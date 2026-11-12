@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.34.0...v0.35.0) (2026-11-12)
+
+
+### Features
+
+* **gui:** opt-in check for new releases ([#240](https://github.com/PuppetMaster2k/apeirogon/issues/240)) ([2b13353](https://github.com/PuppetMaster2k/apeirogon/commit/2b133533effc5e7fa2b0daefe6ec3fefba9eda76))
+
 ## [0.34.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.33.0...v0.34.0) (2026-11-11)
 
 
