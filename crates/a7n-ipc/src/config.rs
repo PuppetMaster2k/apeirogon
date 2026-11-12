@@ -426,7 +426,7 @@ impl Config {
                 ]
                 | ["feedback", "edge" | "landing" | "haptics"]
                 | ["notifications", "files"]
-                | ["gui", "hide_addresses"]
+                | ["gui", "hide_addresses" | "update_check"]
                 | [
                     "peers",
                     _,

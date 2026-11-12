@@ -16,6 +16,9 @@ default = ["tray"]
 tray = ["a7n-platform/tray"]
 
 [dependencies]
+ureq.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 egui-phosphor.workspace = true
 eframe.workspace = true
 a7n-platform.workspace = true

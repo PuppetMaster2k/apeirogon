@@ -10,6 +10,7 @@ use eframe::egui;
 mod canvas;
 mod screens;
 mod theme;
+mod update_check;
 mod worker;
 
 use worker::{Command, Update, Worker};
@@ -39,6 +40,7 @@ struct App {
     layout: Option<canvas::Canvas>,
     config: Option<Config>,
     edits: Vec<(String, String)>,
+    update_check: update_check::State,
     #[cfg(feature = "tray")]
     quit: bool,
     #[cfg(feature = "tray")]
@@ -76,6 +78,7 @@ impl App {
             layout: None,
             config: None,
             edits: Vec::new(),
+            update_check: update_check::State::default(),
             #[cfg(feature = "tray")]
             quit: false,
             #[cfg(feature = "tray")]
@@ -100,6 +103,7 @@ impl App {
     fn updates(&mut self, ctx: &egui::Context) {
         while let Ok(update) = self.worker.updates.try_recv() {
             match update {
+                Update::Release(result) => self.update_checked(result),
                 Update::Recorded(result) => {
                     if let Some(key) = self.recording_hotkey.take() {
                         match result {
@@ -293,6 +297,7 @@ impl App {
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.updates(ctx);
+        self.check_updates(false);
         #[cfg(feature = "tray")]
         self.tray(ctx);
         // Keeps the pairing expiry and native tray responsive while idle.
@@ -372,6 +377,7 @@ impl eframe::App for App {
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                             ui.set_width(ui.available_width());
+                            self.update_notice(ui);
                             if self.status.is_none() {
                                 self.daemon_unavailable(ui);
                                 return;
