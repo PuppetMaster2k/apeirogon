@@ -87,6 +87,7 @@ pub(super) struct Rect {
 
 #[cfg(not(target_os = "macos"))]
 impl Rect {
+    #[cfg(all(unix, not(target_os = "macos")))]
     pub(super) fn from_bounds(bounds: Bounds) -> Self {
         Self {
             x: f64::from(bounds.x),
