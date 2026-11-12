@@ -54,6 +54,9 @@ impl Daemon {
                         .driving(matches!(cursor, Cursor::Driving(_)));
                     self.input.cursor_visibility(change).await;
                     self.input.shake = ShakeDetector::new(self.config.hotkeys.shake);
+                    if cursor == Cursor::Home {
+                        self.input.sink.landing_at_cursor();
+                    }
                     self.input.reset_edge_state();
                     if let Cursor::Driving(peer) = cursor {
                         self.input.counter.reset();
@@ -76,10 +79,12 @@ impl Daemon {
                     self.configure_input_scales(owner);
                     self.input.resistance = EdgeResistance::new(resistance_px);
                     self.sync_grab().await;
-                    if let (Some(landing), Some(injector)) = (landing, &self.input.injector) {
-                        let (x, y) = landing_point(injector.bounds, &injector.monitors, &landing);
+                    if let (Some(landing), Some(injector)) = (&landing, &self.input.injector) {
+                        let (x, y) = landing_point(injector.bounds, &injector.monitors, landing);
                         self.input.inject(Inject::Warp { x, y }).await;
                         self.input.sink.landing(x, y);
+                    } else if landing.is_none() {
+                        self.input.sink.landing_at_cursor();
                     }
                 }
             }

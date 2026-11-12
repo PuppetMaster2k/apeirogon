@@ -154,6 +154,12 @@ impl Ui {
                     panels.show_landing(x, y, look);
                 }
             }
+            Command::LandingAtCursor { look } => {
+                if let Some(panels) = self.panels() {
+                    let point = NSEvent::mouseLocation();
+                    panels.show_landing_at((point.x, point.y), look);
+                }
+            }
         }
     }
 
@@ -300,7 +306,14 @@ impl Panels {
             .first()
             .map_or(0.0, |frame| frame.height);
         let rect = geometry::landing_rect(x, y, primary_height);
-        self.landing_center = (rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
+        self.show_landing_at(
+            (rect.x + rect.width / 2.0, rect.y + rect.height / 2.0),
+            look,
+        );
+    }
+
+    fn show_landing_at(&mut self, center: (f64, f64), look: Look) {
+        self.landing_center = center;
         self.landing_started = Instant::now();
         self.landing_look = look;
         self.animate = !reduce_motion();

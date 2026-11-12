@@ -114,7 +114,10 @@ impl Overlay {
             };
             let handled = match received {
                 Ok(command) => {
-                    if matches!(command, Command::Landing { .. }) {
+                    if matches!(
+                        command,
+                        Command::Landing { .. } | Command::LandingAtCursor { .. }
+                    ) {
                         landing_deadline = Some(Instant::now() + LANDING_DURATION);
                     }
                     self.handle(command)
@@ -141,6 +144,15 @@ impl Overlay {
             } => self.show_glow(display, edge, progress, look),
             Command::Clear => self.unmap(self.glow),
             Command::Landing { x, y, look } => self.show_landing(x, y, look),
+            Command::LandingAtCursor { look } => {
+                let pointer = self
+                    .connection
+                    .query_pointer(self.root)
+                    .ok()?
+                    .reply()
+                    .ok()?;
+                self.show_landing(i32::from(pointer.root_x), i32::from(pointer.root_y), look)
+            }
             Command::Tick => Some(()),
         }
     }
