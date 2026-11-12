@@ -2,6 +2,8 @@
 
 //! Local edge appearance and shared beam geometry in top-left coordinates.
 
+use std::time::Duration;
+
 use a7n_proto::v1::Edge;
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +16,39 @@ pub enum Style {
     #[default]
     Glow,
     Beam,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Landing {
+    #[default]
+    Ring,
+    Pulse,
+    Dot,
+}
+
+impl Landing {
+    /// Radius relative to the backend's full ring, and opacity, at this instant.
+    pub(super) fn frame(self, elapsed: Duration, duration: Duration, animate: bool) -> (f64, f64) {
+        const PULSE_START: f64 = 0.2;
+        const DOT_RADIUS: f64 = 0.35;
+        let progress = (elapsed.as_secs_f64() / duration.as_secs_f64()).clamp(0.0, 1.0);
+        let motion = if animate { progress } else { 0.0 };
+        let radius = match self {
+            Self::Ring => 1.0,
+            Self::Pulse if !animate => 1.0,
+            Self::Pulse => PULSE_START + (1.0 - PULSE_START) * motion,
+            Self::Dot => DOT_RADIUS * (1.0 - motion),
+        };
+        let alpha = if progress >= 1.0 {
+            0.0
+        } else if animate {
+            1.0 - progress
+        } else {
+            1.0
+        };
+        (radius, alpha)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +105,8 @@ impl Size {
 #[serde(default, deny_unknown_fields)]
 pub struct Look {
     pub style: Style,
+    #[serde(rename = "landing_style")]
+    pub landing: Landing,
     pub color: Color,
     pub size: Size,
 }
@@ -164,6 +201,28 @@ pub(super) fn beam_rect(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frame_elapsed_pulse_grows_and_dot_shrinks() {
+        // Arrange
+        let duration = Duration::from_millis(400);
+        for (style, grows) in [(Landing::Pulse, true), (Landing::Dot, false)] {
+            // Act
+            let start = style.frame(Duration::ZERO, duration, true);
+            let later = style.frame(duration / 2, duration, true);
+            let reduced = style.frame(duration / 2, duration, false);
+
+            // Assert
+            assert!(if grows {
+                later.0 > start.0
+            } else {
+                later.0 < start.0
+            });
+            assert!(later.1 < start.1);
+            assert_eq!(reduced, style.frame(Duration::ZERO, duration, false));
+            assert_eq!(style.frame(duration, duration, true).1, 0.0);
+        }
+    }
 
     #[test]
     fn beam_rect_progress_grows_along_pushed_edge() {

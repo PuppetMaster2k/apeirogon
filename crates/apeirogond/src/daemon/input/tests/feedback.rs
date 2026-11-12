@@ -128,7 +128,12 @@ async fn input_actions_driven_landing_sends_landing_and_edge_off_sends_no_edge()
         edge: false,
         landing: true,
         haptics: false,
-        ..FeedbackConfig::default()
+        look: feedback::Look {
+            landing: feedback::Landing::Pulse,
+            color: feedback::Color::Pink,
+            size: feedback::Size::Large,
+            ..feedback::Look::default()
+        },
     };
     let (mut daemon, _dir, mut commands) = daemon_with_feedback(config);
     let landing = Landing {
@@ -149,7 +154,14 @@ async fn input_actions_driven_landing_sends_landing_and_edge_off_sends_no_edge()
     daemon.input_actions(vec![driven]).await;
 
     // Assert
-    assert_eq!(drain(&mut commands), [Command::Landing { x: 0, y: 49 }]);
+    assert_eq!(
+        drain(&mut commands),
+        [Command::Landing {
+            x: 0,
+            y: 49,
+            look: config.look
+        }]
+    );
 }
 
 #[tokio::test]
@@ -248,7 +260,11 @@ async fn input_actions_bbox_landing_projects_warp_and_mark_onto_monitor() {
     ));
     assert_eq!(
         drain(&mut commands),
-        [Command::Landing { x: 1920, y: 1295 }]
+        [Command::Landing {
+            x: 1920,
+            y: 1295,
+            look: a7n_platform::feedback::Look::default()
+        }]
     );
 }
 

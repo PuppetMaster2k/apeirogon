@@ -268,7 +268,9 @@ crates/
   resistance; local `feedback.style` chooses `glow` (default) or a growing solid
   `beam`, `feedback.color` chooses `accent` (default), `green`, `orange` or `pink`,
   and `feedback.size` chooses `small`, `medium` (default) or `large`; `feedback.landing` (default true) briefly marks where the pointer
-  lands after a take; `feedback.haptics` (default false, macOS only) ticks the
+  lands after a take, using the same colour and size; local
+  `feedback.landing_style` chooses `ring` (default), an expanding `pulse`, or a
+  shrinking filled `dot`, with motion disabled under reduce-motion; `feedback.haptics` (default false, macOS only) ticks the
   trackpad at each quarter of the push. The daemon decides what to send
   (progress changes of at least 5 % and quarter crossings); each OS backend draws
   a click-through overlay that never takes focus and honours the OS reduce-motion

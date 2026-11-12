@@ -13,16 +13,15 @@
 use std::ffi::c_void;
 use std::sync::mpsc as sync;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use objc2::MainThreadMarker;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2_app_kit::{
-    NSAnimatablePropertyContainer, NSAnimationContext, NSBackingStoreType, NSBox, NSBoxType,
-    NSColor, NSEvent, NSHapticFeedbackManager, NSHapticFeedbackPattern,
-    NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer, NSPanel, NSScreen,
-    NSStatusWindowLevel, NSTitlePosition, NSWindowCollectionBehavior, NSWindowSharingType,
-    NSWindowStyleMask, NSWorkspace,
+    NSBackingStoreType, NSBox, NSBoxType, NSColor, NSEvent, NSHapticFeedbackManager,
+    NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer, NSPanel,
+    NSScreen, NSStatusWindowLevel, NSTitlePosition, NSWindowCollectionBehavior,
+    NSWindowSharingType, NSWindowStyleMask, NSWorkspace,
 };
 use objc2_core_foundation::{
     CFAbsoluteTimeGetCurrent, CFRetained, CFRunLoop, CFRunLoopTimer, CFRunLoopTimerContext,
@@ -33,7 +32,7 @@ use tokio::sync::mpsc;
 
 use super::look::{self, BEAM_THICKNESS};
 use super::macos_geometry::{self as geometry, LANDING_DIAMETER, Rect};
-use super::{Color, Command, Feedback, Look, Style};
+use super::{Color, Command, Feedback, Landing, Look, Style};
 use crate::main_thread::{self, Waker};
 
 const GLOW_ALPHA: f64 = 0.65;
@@ -44,7 +43,7 @@ const LANDING_FADE: Duration = Duration::from_millis(700);
 const LANDING_STATIC_HOLD: Duration = Duration::from_millis(500);
 /// Never fires on its own; every landing re-arms it.
 const TIMER_DISARMED_SECONDS: f64 = 1.0e12;
-const TIMER_NO_INTERVAL: f64 = 0.0;
+const LANDING_FRAME_SECONDS: f64 = 0.016;
 
 /// State of the main-thread callbacks. Leaked on purpose: it lives as long as
 /// the process and is only touched from main run-loop callbacks.
@@ -59,6 +58,11 @@ struct Panels {
     glow_fill: Retained<NSBox>,
     colors: [(Color, Retained<NSColor>); 4],
     landing: Retained<NSPanel>,
+    landing_fill: Retained<NSBox>,
+    landing_started: Instant,
+    landing_center: (f64, f64),
+    landing_look: Look,
+    animate: bool,
     hide_landing: CFRetained<CFRunLoopTimer>,
 }
 
@@ -124,9 +128,9 @@ unsafe extern "C-unwind" fn drain_commands(info: *mut c_void) {
 
 unsafe extern "C-unwind" fn hide_landing(_: *mut CFRunLoopTimer, info: *mut c_void) {
     // SAFETY: Same contract as drain_commands.
-    let ui = unsafe { &*info.cast::<Ui>() };
-    if let Some(panels) = &ui.panels {
-        panels.landing.orderOut(None);
+    let ui = unsafe { &mut *info.cast::<Ui>() };
+    if let Some(panels) = &mut ui.panels {
+        panels.fade_landing();
     }
 }
 
@@ -145,9 +149,9 @@ impl Ui {
                     panels.show_glow(display, edge, progress, look);
                 }
             }
-            Command::Landing { x, y } => {
+            Command::Landing { x, y, look } => {
                 if let Some(panels) = self.panels() {
-                    panels.show_landing(x, y);
+                    panels.show_landing(x, y, look);
                 }
             }
         }
@@ -168,12 +172,12 @@ impl Ui {
     }
 
     /// The panels, created on first use; callbacks run on the main thread.
-    fn panels(&mut self) -> Option<&Panels> {
+    fn panels(&mut self) -> Option<&mut Panels> {
         if self.panels.is_none() {
             let info = std::ptr::from_mut(self).cast();
             self.panels = Panels::new(MainThreadMarker::new()?, info);
         }
-        self.panels.as_ref()
+        self.panels.as_mut()
     }
 }
 
@@ -194,7 +198,8 @@ impl Panels {
         let accent = NSColor::controlAccentColor();
         let glow_fill = filled_box(mtm, &accent.colorWithAlphaComponent(GLOW_ALPHA));
         let glow = make_panel(mtm, &glow_fill);
-        let landing = make_panel(mtm, &ring_box(mtm, &accent));
+        let landing_fill = plain_box(mtm);
+        let landing = make_panel(mtm, &landing_fill);
         let mut timer_context = CFRunLoopTimerContext {
             version: 0,
             info: timer_info,
@@ -208,7 +213,7 @@ impl Panels {
             CFRunLoopTimer::new(
                 None,
                 CFAbsoluteTimeGetCurrent() + TIMER_DISARMED_SECONDS,
-                TIMER_NO_INTERVAL,
+                LANDING_FRAME_SECONDS,
                 0,
                 0,
                 Some(hide_landing),
@@ -223,6 +228,11 @@ impl Panels {
             glow_fill,
             colors,
             landing,
+            landing_fill,
+            landing_started: Instant::now(),
+            landing_center: (0.0, 0.0),
+            landing_look: Look::default(),
+            animate: true,
             hide_landing,
         })
     }
@@ -285,22 +295,63 @@ impl Panels {
         self.glow.orderFrontRegardless();
     }
 
-    fn show_landing(&self, x: i32, y: i32) {
+    fn show_landing(&mut self, x: i32, y: i32, look: Look) {
         let primary_height = screen_frames(self.mtm)
             .first()
             .map_or(0.0, |frame| frame.height);
         let rect = geometry::landing_rect(x, y, primary_height);
-        set_alpha(&self.landing, 1.0, Duration::ZERO);
-        self.landing.setFrame_display(ns_rect(rect), true);
+        self.landing_center = (rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
+        self.landing_started = Instant::now();
+        self.landing_look = look;
+        self.animate = !reduce_motion();
+        self.fade_landing();
         self.landing.orderFrontRegardless();
-        let visible_for = if reduce_motion() {
-            LANDING_STATIC_HOLD
-        } else {
-            set_alpha(&self.landing, 0.0, LANDING_FADE);
-            LANDING_FADE
-        };
         self.hide_landing
-            .set_next_fire_date(CFAbsoluteTimeGetCurrent() + visible_for.as_secs_f64());
+            .set_next_fire_date(CFAbsoluteTimeGetCurrent() + LANDING_FRAME_SECONDS);
+    }
+
+    fn fade_landing(&self) {
+        let look = self.landing_look;
+        let duration = if self.animate {
+            LANDING_FADE
+        } else {
+            LANDING_STATIC_HOLD
+        };
+        let (radius, alpha) =
+            look.landing
+                .frame(self.landing_started.elapsed(), duration, self.animate);
+        if alpha == 0.0 {
+            self.landing.orderOut(None);
+            self.hide_landing
+                .set_next_fire_date(CFAbsoluteTimeGetCurrent() + TIMER_DISARMED_SECONDS);
+            return;
+        }
+        let radius = LANDING_DIAMETER / 2.0 * look.size.multiplier() * radius;
+        let dot = look.landing == Landing::Dot;
+        if let Some((_, color)) = self.colors.iter().find(|(color, _)| *color == look.color) {
+            self.landing_fill.setBorderColor(color);
+            if dot {
+                self.landing_fill.setFillColor(color);
+            } else {
+                self.landing_fill.setFillColor(&NSColor::clearColor());
+            }
+        }
+        self.landing_fill.setBorderWidth(if dot {
+            0.0
+        } else {
+            LANDING_RING_WIDTH * look.size.multiplier()
+        });
+        self.landing_fill.setCornerRadius(radius);
+        self.landing.setAlphaValue(alpha);
+        self.landing.setFrame_display(
+            ns_rect(Rect {
+                x: self.landing_center.0 - radius,
+                y: self.landing_center.1 - radius,
+                width: radius * 2.0,
+                height: radius * 2.0,
+            }),
+            true,
+        );
     }
 }
 
@@ -339,28 +390,11 @@ fn filled_box(mtm: MainThreadMarker, fill: &NSColor) -> Retained<NSBox> {
     view
 }
 
-fn ring_box(mtm: MainThreadMarker, accent: &NSColor) -> Retained<NSBox> {
-    let view = plain_box(mtm);
-    view.setBorderWidth(LANDING_RING_WIDTH);
-    view.setBorderColor(accent);
-    view.setCornerRadius(LANDING_DIAMETER / 2.0);
-    view.setFillColor(&NSColor::clearColor());
-    view
-}
-
 fn plain_box(mtm: MainThreadMarker) -> Retained<NSBox> {
     let view = NSBox::initWithFrame(mtm.alloc::<NSBox>(), NSRect::ZERO);
     view.setBoxType(NSBoxType::Custom);
     view.setTitlePosition(NSTitlePosition::NoTitle);
     view
-}
-
-/// Animates the panel's alpha; a zero duration applies it at once.
-fn set_alpha(panel: &NSPanel, alpha: f64, duration: Duration) {
-    NSAnimationContext::beginGrouping();
-    NSAnimationContext::currentContext().setDuration(duration.as_secs_f64());
-    panel.animator().setAlphaValue(alpha);
-    NSAnimationContext::endGrouping();
 }
 
 fn reduce_motion() -> bool {
