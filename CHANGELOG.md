@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.39.1...v0.40.0) (2026-11-12)
+
+
+### Features
+
+* sync the feedback design across the desk ([#252](https://github.com/PuppetMaster2k/apeirogon/issues/252)) ([bb16989](https://github.com/PuppetMaster2k/apeirogon/commit/bb16989a574bff958b38a704a48ad4acccbc59c6))
+
 ## [0.39.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.39.0...v0.39.1) (2026-11-12)
 
 
