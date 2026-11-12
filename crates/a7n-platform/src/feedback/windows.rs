@@ -16,10 +16,13 @@ use std::time::{Duration, Instant};
 
 use a7n_proto::v1::Edge;
 use tokio::sync::mpsc;
-use windows_sys::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, POINT};
+use windows_sys::Win32::Foundation::{
+    COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
+};
 use windows_sys::Win32::Graphics::Gdi::{
-    CombineRgn, CreateEllipticRgn, CreateSolidBrush, DeleteObject, GetMonitorInfoW,
-    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint, RGN_DIFF, SetWindowRgn,
+    CombineRgn, CreateEllipticRgn, CreateSolidBrush, DC_BRUSH, DeleteObject, FillRect,
+    GetMonitorInfoW, GetStockObject, InvalidateRect, MONITOR_DEFAULTTONEAREST, MONITORINFO,
+    MonitorFromPoint, RGN_DIFF, SetDCBrushColor, SetWindowRgn,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
@@ -28,23 +31,28 @@ use windows_sys::Win32::UI::HiDpi::{
     SetThreadDpiAwarenessContext,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetCursorPos, GetMessageW, HWND_TOPMOST,
-    KillTimer, LWA_ALPHA, MSG, PostThreadMessageW, RegisterClassW, SPI_GETCLIENTAREAANIMATION,
-    SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SetLayeredWindowAttributes, SetTimer,
-    SetWindowDisplayAffinity, SetWindowPos, ShowWindow, SystemParametersInfoW,
-    WDA_EXCLUDEFROMCAPTURE, WM_APP, WM_QUIT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GWLP_USERDATA, GetClientRect, GetCursorPos,
+    GetMessageW, GetWindowLongPtrW, HWND_TOPMOST, KillTimer, LWA_ALPHA, MSG, PostThreadMessageW,
+    RegisterClassW, SPI_GETCLIENTAREAANIMATION, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE,
+    SetLayeredWindowAttributes, SetTimer, SetWindowDisplayAffinity, SetWindowLongPtrW,
+    SetWindowPos, ShowWindow, SystemParametersInfoW, WDA_EXCLUDEFROMCAPTURE, WM_APP, WM_ERASEBKGND,
+    WM_QUIT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_EX_TRANSPARENT, WS_POPUP,
 };
 use windows_sys::core::{BOOL, PCWSTR, w};
 
 use self::geometry::{Rect, glow_alpha, glow_rect, landing_alpha};
-use super::{Command, Feedback};
+use super::look::{self, BEAM_THICKNESS};
+use super::{Color, Command, Feedback, Look, Style};
 
 /// Carries a boxed [`Command`] in `lParam` from the relay to the UI thread.
 const WM_FEEDBACK: u32 = WM_APP;
 const CLASS_NAME: PCWSTR = w!("ApeirogonFeedback");
-/// The GUI accent `#2F5BEA` as a `COLORREF`, which stores blue first.
-const ACCENT: COLORREF = 0x00EA_5B2F;
+/// Default overlay accent as a Windows `COLORREF` (0x00BBGGRR).
+const ACCENT: COLORREF = colorref(Color::Accent.rgb(true));
+const fn colorref([r, g, b]: [u8; 3]) -> COLORREF {
+    (r as u32) | ((g as u32) << 8) | ((b as u32) << 16)
+}
 const BASE_DPI: u32 = 96;
 const GLOW_THICKNESS_DIP: i32 = 6;
 const LANDING_DIAMETER_DIP: i32 = 56;
@@ -151,22 +159,60 @@ impl Ui {
                 display,
                 edge,
                 progress,
-            } => self.show_glow(Rect::from_bounds(display), edge, progress),
+                look,
+            } => self.show_glow(Rect::from_bounds(display), edge, progress, look),
             Command::Clear => hide(self.glow),
             Command::Landing { x, y } => self.show_landing((x, y)),
             Command::Tick => {}
         }
     }
 
-    fn show_glow(&self, display: Rect, edge: Edge, progress: u16) {
+    fn show_glow(&self, display: Rect, edge: Edge, progress: u16, look: Look) {
         let pointer = cursor_position().unwrap_or_else(|| center(display));
         let monitor = monitor_at(pointer);
         let area = monitor
             .and_then(|monitor| monitor.rect.intersect(display))
             .unwrap_or(display);
         let thickness = scale_dip(GLOW_THICKNESS_DIP, monitor.map_or(BASE_DPI, |m| m.dpi));
-        match glow_rect(area, edge, progress, thickness, pointer) {
-            Some(rect) => show(self.glow, rect, glow_alpha(progress)),
+        let thickness = i32::try_from(look.size.pixels(u32::try_from(thickness).unwrap_or(1)))
+            .unwrap_or(thickness);
+        let rect = if look.style == Style::Beam {
+            let area = look::Rect {
+                x: f64::from(area.left),
+                y: f64::from(area.top),
+                width: f64::from(area.width()),
+                height: f64::from(area.height()),
+            };
+            let dpi = monitor.map_or(BASE_DPI, |m| m.dpi);
+            look::beam_rect(
+                area,
+                edge,
+                (f64::from(pointer.0), f64::from(pointer.1)),
+                progress,
+                BEAM_THICKNESS * f64::from(dpi) / f64::from(BASE_DPI) * look.size.multiplier(),
+            )
+            .map(|rect| Rect::from_bounds(rect.bounds()))
+        } else {
+            glow_rect(area, edge, progress, thickness, pointer)
+        };
+        // SAFETY: This thread owns the window; user data is a plain RGB value.
+        unsafe {
+            SetWindowLongPtrW(
+                self.glow,
+                GWLP_USERDATA,
+                isize::try_from(colorref(look.color.rgb(true))).unwrap_or(0),
+            )
+        };
+        match rect {
+            Some(rect) => show(
+                self.glow,
+                rect,
+                if look.style == Style::Beam {
+                    u8::MAX
+                } else {
+                    glow_alpha(progress)
+                },
+            ),
             None => hide(self.glow),
         }
     }
@@ -209,7 +255,7 @@ fn register_class(module: HINSTANCE) {
     // SAFETY: Creates a brush owned by the class for the process lifetime.
     let accent = unsafe { CreateSolidBrush(ACCENT) };
     let class = WNDCLASSW {
-        lpfnWndProc: Some(DefWindowProcW),
+        lpfnWndProc: Some(overlay_proc),
         hInstance: module,
         lpszClassName: CLASS_NAME,
         hbrBackground: accent,
@@ -247,6 +293,8 @@ fn create_overlay(module: HINSTANCE) -> Option<HWND> {
     if hwnd.is_null() {
         return None;
     }
+    // SAFETY: The window was just created on this thread.
+    unsafe { SetWindowLongPtrW(hwnd, GWLP_USERDATA, isize::try_from(ACCENT).unwrap_or(0)) };
     set_alpha(hwnd, 0);
     // SAFETY: hwnd is live; older Windows versions refuse the flag, which only
     // means the strip can appear in captures.
@@ -268,6 +316,8 @@ fn show(hwnd: HWND, rect: Rect, alpha: u8) {
         );
     }
     set_alpha(hwnd, alpha);
+    // SAFETY: Invalidates this live window so colour changes are repainted.
+    unsafe { InvalidateRect(hwnd, null(), 1) };
     // SAFETY: hwnd is a live window of this thread.
     unsafe { ShowWindow(hwnd, SW_SHOWNOACTIVATE) };
 }
@@ -358,4 +408,29 @@ fn animations_enabled() -> bool {
         SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, (&raw mut enabled).cast(), 0)
     };
     read == 0 || enabled != 0
+}
+
+unsafe extern "system" fn overlay_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if message == WM_ERASEBKGND {
+        let mut rect = RECT::default();
+        // SAFETY: The OS supplies a live window and paint DC; the stock brush
+        // remains system-owned and only this DC's brush colour changes.
+        unsafe {
+            GetClientRect(hwnd, &raw mut rect);
+            let dc = wparam as _;
+            SetDCBrushColor(
+                dc,
+                COLORREF::try_from(GetWindowLongPtrW(hwnd, GWLP_USERDATA)).unwrap_or(ACCENT),
+            );
+            FillRect(dc, &raw const rect, GetStockObject(DC_BRUSH));
+        }
+        return 1;
+    }
+    // SAFETY: Forward untouched window messages to the system default procedure.
+    unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
 }

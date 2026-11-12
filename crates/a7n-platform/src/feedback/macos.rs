@@ -19,9 +19,10 @@ use objc2::MainThreadMarker;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2_app_kit::{
     NSAnimatablePropertyContainer, NSAnimationContext, NSBackingStoreType, NSBox, NSBoxType,
-    NSColor, NSHapticFeedbackManager, NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime,
-    NSHapticFeedbackPerformer, NSPanel, NSScreen, NSStatusWindowLevel, NSTitlePosition,
-    NSWindowCollectionBehavior, NSWindowSharingType, NSWindowStyleMask, NSWorkspace,
+    NSColor, NSEvent, NSHapticFeedbackManager, NSHapticFeedbackPattern,
+    NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer, NSPanel, NSScreen,
+    NSStatusWindowLevel, NSTitlePosition, NSWindowCollectionBehavior, NSWindowSharingType,
+    NSWindowStyleMask, NSWorkspace,
 };
 use objc2_core_foundation::{
     CFAbsoluteTimeGetCurrent, CFRetained, CFRunLoop, CFRunLoopTimer, CFRunLoopTimerContext,
@@ -30,8 +31,9 @@ use objc2_core_foundation::{
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use tokio::sync::mpsc;
 
+use super::look::{self, BEAM_THICKNESS};
 use super::macos_geometry::{self as geometry, LANDING_DIAMETER, Rect};
-use super::{Command, Feedback};
+use super::{Color, Command, Feedback, Look, Style};
 use crate::main_thread::{self, Waker};
 
 const GLOW_ALPHA: f64 = 0.65;
@@ -54,6 +56,8 @@ struct Ui {
 struct Panels {
     mtm: MainThreadMarker,
     glow: Retained<NSPanel>,
+    glow_fill: Retained<NSBox>,
+    colors: [(Color, Retained<NSColor>); 4],
     landing: Retained<NSPanel>,
     hide_landing: CFRetained<CFRunLoopTimer>,
 }
@@ -135,9 +139,10 @@ impl Ui {
                 display,
                 edge,
                 progress,
+                look,
             } => {
                 if let Some(panels) = self.panels() {
-                    panels.show_glow(display, edge, progress);
+                    panels.show_glow(display, edge, progress, look);
                 }
             }
             Command::Landing { x, y } => {
@@ -174,11 +179,21 @@ impl Ui {
 
 impl Panels {
     fn new(mtm: MainThreadMarker, timer_info: *mut c_void) -> Option<Self> {
+        let colors = [Color::Accent, Color::Green, Color::Orange, Color::Pink].map(|color| {
+            let [r, g, b] = color.rgb(true);
+            (
+                color,
+                NSColor::colorWithSRGBRed_green_blue_alpha(
+                    f64::from(r) / 255.0,
+                    f64::from(g) / 255.0,
+                    f64::from(b) / 255.0,
+                    1.0,
+                ),
+            )
+        });
         let accent = NSColor::controlAccentColor();
-        let glow = make_panel(
-            mtm,
-            &filled_box(mtm, &accent.colorWithAlphaComponent(GLOW_ALPHA)),
-        );
+        let glow_fill = filled_box(mtm, &accent.colorWithAlphaComponent(GLOW_ALPHA));
+        let glow = make_panel(mtm, &glow_fill);
         let landing = make_panel(mtm, &ring_box(mtm, &accent));
         let mut timer_context = CFRunLoopTimerContext {
             version: 0,
@@ -205,12 +220,20 @@ impl Panels {
         Some(Self {
             mtm,
             glow,
+            glow_fill,
+            colors,
             landing,
             hide_landing,
         })
     }
 
-    fn show_glow(&self, display: crate::input::Bounds, edge: a7n_proto::v1::Edge, progress: u16) {
+    fn show_glow(
+        &self,
+        display: crate::input::Bounds,
+        edge: a7n_proto::v1::Edge,
+        progress: u16,
+        look: Look,
+    ) {
         let screens = screen_frames(self.mtm);
         let Some(primary) = screens.first() else {
             return;
@@ -229,10 +252,35 @@ impl Panels {
             screen.width = f64::from(display.width);
             screen.height = top - screen.y;
         }
-        let Some(rect) = geometry::glow_rect(screen, edge, progress) else {
+        let rect = if look.style == Style::Beam {
+            let pointer = NSEvent::mouseLocation();
+            let flipped = match edge {
+                a7n_proto::v1::Edge::Top => a7n_proto::v1::Edge::Bottom,
+                a7n_proto::v1::Edge::Bottom => a7n_proto::v1::Edge::Top,
+                other => other,
+            };
+            look::beam_rect(
+                screen,
+                flipped,
+                (pointer.x, pointer.y),
+                progress,
+                BEAM_THICKNESS * look.size.multiplier(),
+            )
+        } else {
+            geometry::glow_rect(screen, edge, progress, look.size)
+        };
+        let Some(rect) = rect else {
             self.glow.orderOut(None);
             return;
         };
+        if let Some((_, color)) = self.colors.iter().find(|(color, _)| *color == look.color) {
+            self.glow_fill.setFillColor(color);
+        }
+        self.glow.setAlphaValue(if look.style == Style::Beam {
+            1.0
+        } else {
+            GLOW_ALPHA
+        });
         self.glow.setFrame_display(ns_rect(rect), true);
         self.glow.orderFrontRegardless();
     }

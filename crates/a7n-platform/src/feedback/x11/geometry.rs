@@ -4,6 +4,7 @@
 
 use a7n_proto::v1::Edge;
 
+use super::super::Size;
 use crate::input::Bounds;
 
 /// Full resistance, as `progress` per-mille.
@@ -24,7 +25,13 @@ pub(super) fn pick_monitor(monitors: &[Bounds], display: Bounds, x: i32, y: i32)
 /// The glow strip along `edge` of `monitor`. Its length grows with `progress`
 /// and is centred on the pointer's coordinate `along` the edge. `None` for an
 /// unspecified edge.
-pub(super) fn glow_rect(monitor: Bounds, edge: Edge, along: i32, progress: u16) -> Option<Bounds> {
+pub(super) fn glow_rect(
+    monitor: Bounds,
+    edge: Edge,
+    along: i32,
+    progress: u16,
+    size: Size,
+) -> Option<Bounds> {
     let horizontal = match edge {
         Edge::Top | Edge::Bottom => true,
         Edge::Left | Edge::Right => false,
@@ -37,7 +44,7 @@ pub(super) fn glow_rect(monitor: Bounds, edge: Edge, along: i32, progress: u16) 
         (monitor.y, monitor.height, monitor.x, monitor.width)
     };
     let (from, length) = strip(start, span, along, progress);
-    let thickness = GLOW_THICKNESS.min(depth_span);
+    let thickness = size.pixels(GLOW_THICKNESS).min(depth_span);
     let depth = if at_far_side {
         depth_start.saturating_add_unsigned(depth_span - thickness)
     } else {
@@ -123,7 +130,7 @@ mod tests {
 
         for (edge, along, progress, expected) in cases {
             // Act
-            let rect = glow_rect(monitor, edge, along, progress);
+            let rect = glow_rect(monitor, edge, along, progress, Size::Medium);
 
             // Assert
             assert_eq!(rect, expected, "{edge:?}");

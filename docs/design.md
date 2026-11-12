@@ -265,7 +265,9 @@ crates/
 
 - **Feedback:** purely local cues, never synced. Settings `feedback.edge`
   (default true) draws a glow along the pushed edge that grows with the built-up
-  resistance; `feedback.landing` (default true) briefly marks where the pointer
+  resistance; local `feedback.style` chooses `glow` (default) or a growing solid
+  `beam`, `feedback.color` chooses `accent` (default), `green`, `orange` or `pink`,
+  and `feedback.size` chooses `small`, `medium` (default) or `large`; `feedback.landing` (default true) briefly marks where the pointer
   lands after a take; `feedback.haptics` (default false, macOS only) ticks the
   trackpad at each quarter of the push. The daemon decides what to send
   (progress changes of at least 5 % and quarter crossings); each OS backend draws

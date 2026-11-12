@@ -39,6 +39,9 @@ use tokio::sync::mpsc;
 
 use crate::input::Bounds;
 
+mod look;
+pub use look::{Color, Look, Size, Style};
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(any(target_os = "macos", test))]
@@ -60,6 +63,7 @@ pub enum Command {
         display: Bounds,
         edge: Edge,
         progress: u16,
+        look: Look,
     },
     Clear,
     Landing {

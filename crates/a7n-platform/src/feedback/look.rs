@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! Local edge appearance and shared beam geometry in top-left coordinates.
+
+use a7n_proto::v1::Edge;
+use serde::{Deserialize, Serialize};
+
+#[cfg(not(target_os = "macos"))]
+use crate::input::Bounds;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Style {
+    #[default]
+    Glow,
+    Beam,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Color {
+    #[default]
+    Accent,
+    Green,
+    Orange,
+    Pink,
+}
+
+impl Color {
+    #[must_use]
+    pub(super) const fn rgb(self, dark: bool) -> [u8; 3] {
+        match self {
+            Self::Accent if !dark => [0x2f, 0x5b, 0xea],
+            Self::Accent => [0x70, 0x88, 0xff],
+            Self::Green => [0x43, 0xc7, 0x7f],
+            Self::Orange => [0xe9, 0xa2, 0x3b],
+            Self::Pink => [0xed, 0x78, 0xb5],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Size {
+    Small,
+    #[default]
+    Medium,
+    Large,
+}
+
+impl Size {
+    #[cfg(not(target_os = "macos"))]
+    // Physical pixel dimensions are rounded after applying the local scale.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub(super) fn pixels(self, base: u32) -> u32 {
+        (f64::from(base) * self.multiplier()).round().max(1.0) as u32
+    }
+
+    #[must_use]
+    pub(super) const fn multiplier(self) -> f64 {
+        match self {
+            Self::Small => 0.5,
+            Self::Medium => 1.0,
+            Self::Large => 2.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Look {
+    pub style: Style,
+    pub color: Color,
+    pub size: Size,
+}
+
+pub(super) const BEAM_THICKNESS: f64 = 3.0;
+const PROGRESS_FULL: f64 = 1000.0;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[cfg(not(target_os = "macos"))]
+impl Rect {
+    pub(super) fn from_bounds(bounds: Bounds) -> Self {
+        Self {
+            x: f64::from(bounds.x),
+            y: f64::from(bounds.y),
+            width: f64::from(bounds.width),
+            height: f64::from(bounds.height),
+        }
+    }
+
+    // Desktop rectangles are bounded by the OS; integer backends need pixel rounding.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub(super) fn bounds(self) -> Bounds {
+        Bounds {
+            x: self.x.round() as i32,
+            y: self.y.round() as i32,
+            width: self.width.round().max(1.0) as u32,
+            height: self.height.round().max(1.0) as u32,
+        }
+    }
+}
+
+pub(super) fn beam_rect(
+    area: Rect,
+    edge: Edge,
+    pointer: (f64, f64),
+    progress: u16,
+    thickness: f64,
+) -> Option<Rect> {
+    let horizontal = match edge {
+        Edge::Top | Edge::Bottom => true,
+        Edge::Left | Edge::Right => false,
+        Edge::Unspecified => return None,
+    };
+    let (start, span, along) = if horizontal {
+        (area.x, area.width, pointer.0)
+    } else {
+        (area.y, area.height, pointer.1)
+    };
+    if span <= 0.0 || thickness <= 0.0 {
+        return None;
+    }
+    let length = (span * f64::from(progress) / PROGRESS_FULL).clamp(1.0_f64.min(span), span);
+    let from = (along - length / 2.0).clamp(start, start + span - length);
+    let thickness = thickness.min(if horizontal { area.height } else { area.width });
+    Some(match edge {
+        Edge::Top => Rect {
+            x: from,
+            y: area.y,
+            width: length,
+            height: thickness,
+        },
+        Edge::Bottom => Rect {
+            x: from,
+            y: area.y + area.height - thickness,
+            width: length,
+            height: thickness,
+        },
+        Edge::Left => Rect {
+            x: area.x,
+            y: from,
+            width: thickness,
+            height: length,
+        },
+        Edge::Right => Rect {
+            x: area.x + area.width - thickness,
+            y: from,
+            width: thickness,
+            height: length,
+        },
+        Edge::Unspecified => return None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn beam_rect_progress_grows_along_pushed_edge() {
+        // Arrange
+        let area = Rect {
+            x: -100.0,
+            y: 20.0,
+            width: 1000.0,
+            height: 800.0,
+        };
+        for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+            // Act
+            let small = beam_rect(area, edge, (400.0, 420.0), 250, BEAM_THICKNESS).unwrap();
+            let large = beam_rect(area, edge, (400.0, 420.0), 750, BEAM_THICKNESS).unwrap();
+
+            // Assert
+            for rect in [small, large] {
+                assert!(rect.x >= area.x && rect.y >= area.y);
+                assert!(rect.x + rect.width <= area.x + area.width);
+                assert!(rect.y + rect.height <= area.y + area.height);
+                match edge {
+                    Edge::Top => assert_eq!(rect.y, area.y),
+                    Edge::Bottom => assert_eq!(rect.y + rect.height, area.y + area.height),
+                    Edge::Left => assert_eq!(rect.x, area.x),
+                    Edge::Right => assert_eq!(rect.x + rect.width, area.x + area.width),
+                    Edge::Unspecified => unreachable!(),
+                }
+            }
+            if matches!(edge, Edge::Top | Edge::Bottom) {
+                assert_eq!((small.width, large.width), (250.0, 750.0));
+            } else {
+                assert_eq!((small.height, large.height), (200.0, 600.0));
+            }
+        }
+    }
+}

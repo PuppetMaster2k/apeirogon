@@ -150,10 +150,9 @@ impl App {
     pub(super) fn feedback_options(&mut self, ui: &mut egui::Ui) {
         let feedback_supported = a7n_platform::feedback::supported();
         let unavailable = (!feedback_supported).then_some(NOT_ON_WAYLAND);
-        self.toggle_card(
-            ui,
-            Some("Feedback"),
-            &[
+        theme::card(ui, |ui| {
+            ui.heading("Feedback");
+            self.toggle_rows(ui, &[
                 Toggle {
                     key: "feedback.edge",
                     title: "Edge glow",
@@ -176,8 +175,45 @@ impl App {
                     unavailable: (!a7n_platform::feedback::haptics_supported())
                         .then_some("Only available on macOS"),
                 },
-            ],
-        );
+            ]);
+            if self.value("feedback.edge", "true") == "true" {
+                ui.add_enabled_ui(feedback_supported, |ui| {
+                    for (key, title, default, choices) in [
+                        (
+                            "feedback.style",
+                            "Style",
+                            "glow",
+                            &[("glow", "Glow"), ("beam", "Beam")][..],
+                        ),
+                        (
+                            "feedback.color",
+                            "Colour",
+                            "accent",
+                            &[
+                                ("accent", "Accent"),
+                                ("green", "Green"),
+                                ("orange", "Orange"),
+                                ("pink", "Pink"),
+                            ][..],
+                        ),
+                        (
+                            "feedback.size",
+                            "Size",
+                            "medium",
+                            &[("small", "Small"), ("medium", "Medium"), ("large", "Large")][..],
+                        ),
+                    ] {
+                        let current = self.value(key, default);
+                        let mut value = current.as_str();
+                        theme::setting_row(ui, title, "", Some(key), |ui| {
+                            if theme::segmented(ui, &mut value, choices).changed() {
+                                self.edit(key, value, default);
+                            }
+                        });
+                    }
+                });
+            }
+        });
     }
 
     fn toggle_card(&mut self, ui: &mut egui::Ui, heading: Option<&str>, toggles: &[Toggle]) {
@@ -185,20 +221,24 @@ impl App {
             if let Some(heading) = heading {
                 ui.heading(heading);
             }
-            for toggle in toggles {
-                let mut value = self.value(toggle.key, toggle.default) == "true";
-                theme::setting_row(ui, toggle.title, toggle.help, Some(toggle.key), |ui| {
-                    ui.add_enabled_ui(toggle.unavailable.is_none(), |ui| {
-                        if theme::toggle(ui, &mut value).changed() {
-                            let text = if value { "true" } else { "false" };
-                            self.edit(toggle.key, text, toggle.default);
-                        }
-                    });
-                    if let Some(reason) = toggle.unavailable {
-                        theme::small(ui, reason);
+            self.toggle_rows(ui, toggles);
+        });
+    }
+
+    fn toggle_rows(&mut self, ui: &mut egui::Ui, toggles: &[Toggle]) {
+        for toggle in toggles {
+            let mut value = self.value(toggle.key, toggle.default) == "true";
+            theme::setting_row(ui, toggle.title, toggle.help, Some(toggle.key), |ui| {
+                ui.add_enabled_ui(toggle.unavailable.is_none(), |ui| {
+                    if theme::toggle(ui, &mut value).changed() {
+                        let text = if value { "true" } else { "false" };
+                        self.edit(toggle.key, text, toggle.default);
                     }
                 });
-            }
-        });
+                if let Some(reason) = toggle.unavailable {
+                    theme::small(ui, reason);
+                }
+            });
+        }
     }
 }

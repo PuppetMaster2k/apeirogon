@@ -25,9 +25,21 @@ impl FeedbackSink {
     }
 
     pub(in crate::daemon) fn configure(&mut self, config: FeedbackConfig) {
-        self.config = config;
+        let changed = self.config.look != config.look;
         if !config.edge {
             self.clear();
+        }
+        self.config = config;
+        if config.edge
+            && changed
+            && let Some((display, edge, progress)) = self.last
+        {
+            self.send(Command::Edge {
+                display,
+                edge,
+                progress,
+                look: config.look,
+            });
         }
     }
 
@@ -51,6 +63,7 @@ impl FeedbackSink {
                 display,
                 edge,
                 progress: value,
+                look: self.config.look,
             });
         }
         if self.config.haptics && quarter_crossed(from, value) {
