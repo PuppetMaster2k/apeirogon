@@ -95,6 +95,14 @@ impl FeedbackSink {
         }
     }
 
+    pub(super) fn landing_at_cursor(&self) {
+        if self.config.landing {
+            self.send(Command::LandingAtCursor {
+                look: self.config.look,
+            });
+        }
+    }
+
     fn send(&self, command: Command) {
         if let Some(backend) = &self.backend {
             backend.send(command);

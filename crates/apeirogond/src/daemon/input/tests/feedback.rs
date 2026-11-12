@@ -58,6 +58,32 @@ fn drain(commands: &mut mpsc::Receiver<Command>) -> Vec<Command> {
 }
 
 #[tokio::test(start_paused = true)]
+async fn input_actions_coming_home_sends_landing_at_cursor() {
+    // Arrange
+    let config = FeedbackConfig {
+        landing: true,
+        look: feedback::Look {
+            landing: feedback::Landing::Pulse,
+            color: feedback::Color::Pink,
+            ..feedback::Look::default()
+        },
+        ..FeedbackConfig::default()
+    };
+    let (mut daemon, _dir, mut commands) = daemon_with_feedback(config);
+
+    // Act
+    daemon
+        .input_actions(vec![Action::Cursor(Cursor::Home)])
+        .await;
+
+    // Assert
+    assert_eq!(
+        drain(&mut commands),
+        [Command::LandingAtCursor { look: config.look }]
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn cross_edge_no_neighbour_sends_no_edge_feedback() {
     // Arrange
     let (mut daemon, _dir, mut commands) = daemon_with_feedback(FeedbackConfig {

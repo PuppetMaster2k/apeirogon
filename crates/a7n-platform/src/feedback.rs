@@ -31,6 +31,7 @@
 //!     pause, focus moved or the setting turned off).
 //!   - [`Command::Landing`]: briefly mark the desktop point `(x, y)` where the
 //!     pointer landed, then fade out on its own.
+//!   - [`Command::LandingAtCursor`]: mark the current OS cursor position.
 //!   - [`Command::Tick`]: one trackpad haptic tick. The daemon only sends it
 //!     when the user enabled haptics; backends without haptics ignore it.
 
@@ -69,6 +70,9 @@ pub enum Command {
     Landing {
         x: i32,
         y: i32,
+        look: Look,
+    },
+    LandingAtCursor {
         look: Look,
     },
     Tick,

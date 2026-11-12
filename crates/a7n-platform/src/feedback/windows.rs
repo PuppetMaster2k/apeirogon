@@ -169,6 +169,11 @@ impl Ui {
             } => self.show_glow(Rect::from_bounds(display), edge, progress, look),
             Command::Clear => hide(self.glow),
             Command::Landing { x, y, look } => self.show_landing((x, y), look),
+            Command::LandingAtCursor { look } => {
+                if let Some(point) = cursor_position() {
+                    self.show_landing(point, look);
+                }
+            }
             Command::Tick => {}
         }
     }
