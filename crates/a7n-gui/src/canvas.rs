@@ -3,6 +3,7 @@
 use a7n_ipc::layout::{LayoutDraft, LayoutDraftError, screen_size_units};
 use a7n_ipc::{LayoutInfo, LayoutPlacement, Placement, validate};
 use eframe::egui;
+use rust_i18n::t;
 
 use crate::theme;
 
@@ -80,7 +81,7 @@ impl Canvas {
             theme::badge(
                 ui,
                 theme::BadgeKind::Warning,
-                "Another machine replaced your last layout edit.",
+                &t!("Another machine replaced your last layout edit."),
             );
         }
         let (area, _) = ui.allocate_exact_size(
@@ -150,12 +151,14 @@ impl Canvas {
         transform.paint_guides(ui, &snapped);
         theme::small(
             ui,
-            "Drag machines to place them; they snap to each other's edges. Tab selects a machine; arrow keys move it (Shift for fine movement). Edges connect where rectangles touch.",
+            &t!(
+                "Drag machines to place them; they snap to each other's edges. Tab selects a machine; arrow keys move it (Shift for fine movement). Edges connect where rectangles touch.",
+            ),
         );
-        theme::small(ui, "Click an edge third to switch it off or on");
+        theme::small(ui, &t!("Click an edge third to switch it off or on"));
         let validation = validate(&self.draft.placements);
-        if let Err(error) = &validation {
-            theme::error(ui, &error.to_string());
+        if let Err(error) = validation {
+            theme::error(ui, &t!(error.to_string()));
         }
     }
 

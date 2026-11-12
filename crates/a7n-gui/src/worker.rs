@@ -6,6 +6,7 @@ use std::time::Duration;
 use a7n_ipc::config::Config;
 use a7n_ipc::{IpcClient, MachineId, Request, Response};
 use eframe::egui;
+use rust_i18n::t;
 use tokio::sync::mpsc as async_mpsc;
 
 const MAILBOX_CAPACITY: usize = 32;
@@ -72,7 +73,7 @@ impl Worker {
                             Update::Recorded(match request_daemon(&mut client, &Request::RecordHotkey { kind }).await {
                                 Ok(Response::Recorded { value }) => Ok(value),
                                 Ok(Response::Error { message, .. }) | Err(message) => Err(message),
-                                Ok(_) => Err("Unexpected daemon response".into()),
+                                Ok(_) => Err(t!("Unexpected daemon response").into()),
                             })
                         }
                         Command::Request(Request::Unpair { machine }) => {
@@ -89,15 +90,15 @@ impl Worker {
                                     if !publish(Update::Config(Ok(Box::new(config)))) { break; }
                                     match request_daemon(&mut client, &Request::ReloadConfig).await {
                                         Ok(response) => Update::Response(Ok(response)),
-                                        Err(error) => Update::Notice(format!("Saved; reload failed: {error}. Applies at next start.")),
+                                        Err(error) => Update::Notice(t!("Saved; reload failed: %{error}. Applies at next start.", error = error).into_owned()),
                                     }
                                 }
-                                Err(error) => Update::Notice(error),
+                                Err(error) => Update::Notice(t!("Could not save config: %{error}", error = error).into_owned()),
                             }
                         }
                         Command::Start => match a7n_ipc::daemon::start().await {
                             Ok(_) => Update::Response(request_daemon(&mut client, &Request::Status).await),
-                            Err(error) => Update::Notice(error.to_string()),
+                            Err(error) => Update::Notice(t!("Could not start daemon: %{error}", error = error).into_owned()),
                         },
                     };
                     if !publish(update) { break; }
@@ -117,7 +118,7 @@ async fn unpair(
     if !matches!(response, Ok(Response::Done)) {
         return Some(Update::Response(response));
     }
-    if !publish(Update::Notice("Machine unpaired".into())) {
+    if !publish(Update::Notice(t!("Machine unpaired").into())) {
         return None;
     }
     Some(Update::Response(
@@ -146,7 +147,7 @@ async fn request_daemon(
 fn load_config() -> Result<Config, String> {
     Config::path()
         .and_then(|path| Config::load(&path))
-        .map_err(|e| e.to_string())
+        .map_err(|e| t!("Could not load config: %{error}", error = e).into_owned())
 }
 
 fn save_config(values: &[(String, String)]) -> Result<Config, String> {

@@ -11,6 +11,8 @@ homepage = "https://github.com/PuppetMaster2k/apeirogon"
 rust-version = "1.85"
 
 [workspace.dependencies]
+rust-i18n = "=3.1.5"
+sys-locale = "=0.3.2"
 ureq = { version = "=3.5.1", default-features = false, features = ["rustls"] }
 netdev = { version = "=0.47.0", default-features = false }
 egui-phosphor = { version = "=0.14.0", default-features = false, features = ["regular"] }

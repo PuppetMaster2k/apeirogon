@@ -4,6 +4,7 @@ use a7n_ipc::{
     FileTransfer, HeldFiles, MachineId, Request, StatusInfo, TransferDirection, format_size,
 };
 use eframe::egui;
+use rust_i18n::t;
 
 use crate::{App, Command, theme};
 use theme::{ButtonKind, ButtonSize, icon};
@@ -13,7 +14,7 @@ impl App {
         if status.held_files.is_empty() {
             return;
         }
-        theme::overline(ui, "File offers");
+        theme::overline(ui, &t!("File offers"));
         for held in &status.held_files {
             self.held_offer(ui, status, held);
         }
@@ -25,18 +26,18 @@ impl App {
             ui.horizontal(|ui| {
                 theme::icon_tile(ui, icon::MONITOR);
                 ui.add(
-                    egui::Label::new(format!(
-                        "{} wants to send {} files ({})",
-                        peer_name(status, held.peer),
-                        held.files,
-                        format_size(held.total_size),
+                    egui::Label::new(t!(
+                        "%{name} wants to send %{count} files (%{size})",
+                        name = peer_name(status, held.peer),
+                        count = held.files,
+                        size = format_size(held.total_size)
                     ))
                     .wrap(),
                 );
             });
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if theme::button(ui, ButtonKind::Primary, ButtonSize::Md, None, "Accept")
+                    if theme::button(ui, ButtonKind::Primary, ButtonSize::Md, None, &t!("Accept"))
                         .clicked()
                     {
                         self.send(Command::Request(Request::FilesAccept {
@@ -44,7 +45,7 @@ impl App {
                             offer_id: held.offer_id,
                         }));
                     }
-                    if theme::button(ui, ButtonKind::Ghost, ButtonSize::Md, None, "Reject")
+                    if theme::button(ui, ButtonKind::Ghost, ButtonSize::Md, None, &t!("Reject"))
                         .clicked()
                     {
                         self.send(Command::Request(Request::FilesReject { peer: held.peer }));
@@ -58,7 +59,7 @@ impl App {
         if status.transfers.is_empty() {
             return;
         }
-        theme::overline(ui, "File transfers");
+        theme::overline(ui, &t!("File transfers"));
         for transfer in &status.transfers {
             self.transfer_card(ui, status, transfer);
         }
@@ -68,17 +69,17 @@ impl App {
     fn transfer_card(&mut self, ui: &mut egui::Ui, status: &StatusInfo, transfer: &FileTransfer) {
         theme::card(ui, |ui| {
             ui.horizontal(|ui| {
-                let (verb, preposition) = match transfer.direction {
-                    TransferDirection::Send => ("Sending", "to"),
-                    TransferDirection::Receive => ("Receiving", "from"),
+                let text = match transfer.direction {
+                    TransferDirection::Send => t!(
+                        "Sending to %{name}",
+                        name = peer_name(status, transfer.peer)
+                    ),
+                    TransferDirection::Receive => t!(
+                        "Receiving from %{name}",
+                        name = peer_name(status, transfer.peer)
+                    ),
                 };
-                ui.add(
-                    egui::Label::new(format!(
-                        "{verb} {preposition} {}",
-                        peer_name(status, transfer.peer)
-                    ))
-                    .truncate(),
-                );
+                ui.add(egui::Label::new(text).truncate());
             });
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -87,7 +88,7 @@ impl App {
                         ButtonKind::DangerQuiet,
                         ButtonSize::Md,
                         Some(icon::X_CIRCLE),
-                        "Cancel",
+                        &t!("Cancel"),
                     )
                     .clicked()
                     {
@@ -100,12 +101,12 @@ impl App {
             ui.add(egui::ProgressBar::new(fraction(transfer)));
             theme::small(
                 ui,
-                &format!(
-                    "{}/{} files, {} / {}",
-                    transfer.files_done,
-                    transfer.files_total,
-                    format_size(transfer.bytes_done),
-                    format_size(transfer.bytes_total),
+                &t!(
+                    "%{done}/%{total} files, %{bytes_done} / %{bytes_total}",
+                    done = transfer.files_done,
+                    total = transfer.files_total,
+                    bytes_done = format_size(transfer.bytes_done),
+                    bytes_total = format_size(transfer.bytes_total)
                 ),
             );
         });

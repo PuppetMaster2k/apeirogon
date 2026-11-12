@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use a7n_ipc::{DEFAULT_UDP_PORT, MachineId, PairingCode, PeerInfo, Request, StatusInfo};
 use eframe::egui;
+use rust_i18n::t;
 
 use super::{address_text, firewall::firewall_warnings};
 use crate::{App, Command, theme};
@@ -17,8 +18,8 @@ impl App {
         };
         theme::page_header(
             ui,
-            "Machines",
-            "Computers sharing this keyboard and mouse.",
+            &t!("Machines"),
+            &t!("Computers sharing this keyboard and mouse."),
             |ui| {
                 if theme::button(
                     ui,
@@ -29,10 +30,10 @@ impl App {
                     } else {
                         icon::PAUSE
                     }),
-                    if status.paused {
-                        "Resume input sharing"
+                    &if status.paused {
+                        t!("Resume input sharing")
                     } else {
-                        "Pause input sharing"
+                        t!("Pause input sharing")
                     },
                 )
                 .clicked()
@@ -47,17 +48,17 @@ impl App {
         firewall_warnings(ui, &status.firewall, self.hide_addresses());
         self.held_files(ui, &status);
         self.active_transfers(ui, &status);
-        theme::overline(ui, "This machine");
+        theme::overline(ui, &t!("This machine"));
         theme::card(ui, |ui| {
             machine_identity(
                 ui,
                 &status.name,
                 status.machine,
                 BadgeKind::Accent,
-                "This machine",
+                &t!("This machine"),
             );
             if let Some(reason) = &status.input {
-                theme::error(ui, &format!("Input unavailable: {reason}"));
+                theme::error(ui, &t!("Input unavailable: %{reason}", reason = reason));
             }
         });
         ui.add_space(theme::size::SECTION_GAP);
@@ -74,13 +75,19 @@ impl App {
             .iter()
             .filter(|peer| peer.id != status.machine)
             .collect();
-        theme::overline(ui, &format!("Paired machines · {}", peers.len()));
+        theme::overline(
+            ui,
+            &t!(
+                "Paired machines · %{count}",
+                count = &peers.len().to_string()
+            ),
+        );
         if peers.is_empty() {
             theme::empty_card(
                 ui,
                 icon::MONITOR,
-                "No paired machines yet.",
-                "Use Host or Join below to pair a machine.",
+                &t!("No paired machines yet."),
+                &t!("Use Host or Join below to pair a machine."),
             );
         }
         for peer in peers {
@@ -101,12 +108,12 @@ impl App {
                 } else {
                     BadgeKind::Offline
                 },
-                if peer.waking {
-                    "Waking…"
+                &if peer.waking {
+                    t!("Waking…")
                 } else if peer.connected {
-                    "Online"
+                    t!("Online")
                 } else {
-                    "Offline"
+                    t!("Offline")
                 },
             );
             super::peers::peer_problem(ui, peer);
@@ -117,7 +124,7 @@ impl App {
                         ButtonKind::DangerQuiet,
                         ButtonSize::Md,
                         Some(icon::X_CIRCLE),
-                        "Unpair",
+                        &t!("Unpair"),
                     )
                     .clicked()
                     {
@@ -130,7 +137,7 @@ impl App {
                                 ButtonKind::Secondary,
                                 ButtonSize::Md,
                                 Some(icon::POWER),
-                                "Wake",
+                                &t!("Wake"),
                             )
                             .clicked()
                             {
@@ -140,11 +147,17 @@ impl App {
                     }
                     let nearby = status.nearby.iter().find(|nearby| nearby.id == peer.id);
                     ui.add_enabled_ui(!peer.connected && nearby.is_some(), |ui| {
-                        if theme::button(ui, ButtonKind::Secondary, ButtonSize::Md, None, "Connect")
-                            .on_hover_text(
-                                "Connect using the discovered address, or enter an address below.",
-                            )
-                            .clicked()
+                        if theme::button(
+                            ui,
+                            ButtonKind::Secondary,
+                            ButtonSize::Md,
+                            None,
+                            &t!("Connect"),
+                        )
+                        .on_hover_text(t!(
+                            "Connect using the discovered address, or enter an address below.",
+                        ))
+                        .clicked()
                             && let Some(nearby) = nearby
                         {
                             self.send(Command::Request(Request::Connect { addr: nearby.addr }));
@@ -156,7 +169,7 @@ impl App {
     }
 
     fn nearby_machines(&mut self, ui: &mut egui::Ui, status: &StatusInfo) {
-        theme::overline(ui, "Nearby machines");
+        theme::overline(ui, &t!("Nearby machines"));
         let nearby: Vec<_> = status
             .nearby
             .iter()
@@ -168,8 +181,8 @@ impl App {
             theme::empty_card(
                 ui,
                 icon::BROADCAST,
-                "No machines found on your network yet.",
-                "Apeirogon listens for other machines running the daemon on the same subnet.",
+                &t!("No machines found on your network yet."),
+                &t!("Apeirogon listens for other machines running the daemon on the same subnet."),
             );
         }
         for nearby in nearby {
@@ -177,7 +190,7 @@ impl App {
                 ui.horizontal(|ui| {
                     theme::icon_tile(ui, icon::MONITOR);
                     ui.vertical(|ui| {
-                        ui.label("Nearby machine");
+                        ui.label(t!("Nearby machine"));
                         machine_id(ui, nearby.id);
                         ui.add(
                             egui::Label::new(
@@ -196,7 +209,7 @@ impl App {
                     ButtonKind::Secondary,
                     ButtonSize::Md,
                     None,
-                    "Pair with this machine",
+                    &t!("Pair with this machine"),
                 )
                 .clicked()
                 {
@@ -207,7 +220,7 @@ impl App {
     }
 
     fn pairing_ui(&mut self, ui: &mut egui::Ui) {
-        theme::overline(ui, "Pair a machine");
+        theme::overline(ui, &t!("Pair a machine"));
         let count = if ui.available_width() < theme::STACK_WIDTH {
             1
         } else {
@@ -215,15 +228,17 @@ impl App {
         };
         ui.columns(count, |columns| {
             theme::card(&mut columns[0], |ui| {
-                ui.heading("Host pairing");
-                ui.label("Show a one-time code on this machine and enter it on the other one.");
+                ui.heading(t!("Host pairing"));
+                ui.label(t!(
+                    "Show a one-time code on this machine and enter it on the other one.",
+                ));
                 if let Some((code, expiry)) = &self.pairing {
                     let remaining = expiry.saturating_duration_since(Instant::now()).as_secs();
                     if remaining == 0 {
-                        theme::small(ui, "Pairing code expired");
+                        theme::small(ui, &t!("Pairing code expired"));
                     } else {
                         ui.label(egui::RichText::new(code).font(theme::font_mono(13.0)));
-                        theme::small(ui, &format!("Expires in {remaining} s"));
+                        theme::small(ui, &t!("Expires in %{remaining} s", remaining = remaining));
                     }
                 }
                 if theme::button(
@@ -231,7 +246,7 @@ impl App {
                     ButtonKind::Primary,
                     ButtonSize::Md,
                     Some(icon::BROADCAST),
-                    "Show pairing code",
+                    &t!("Show pairing code"),
                 )
                 .clicked()
                 {
@@ -243,25 +258,31 @@ impl App {
     }
 
     fn join_pairing(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Join pairing");
-        ui.label("Enter the host's address and the code it shows.");
+        ui.heading(t!("Join pairing"));
+        ui.label(t!("Enter the host's address and the code it shows."));
         let hidden = self.hide_addresses();
         theme::masked_text_input(
             ui,
-            "Address",
+            &t!("Address"),
             &mut self.address,
-            "IP or IP:port",
+            &t!("IP or IP:port"),
             true,
             hidden,
         );
-        theme::text_input(ui, "Pairing code", &mut self.code, "Six digits", true);
+        theme::text_input(
+            ui,
+            &t!("Pairing code"),
+            &mut self.code,
+            &t!("Six digits"),
+            true,
+        );
         let address = parse_address(&self.address);
         let code = PairingCode::parse(self.code.trim());
         if !self.address.is_empty() && address.is_err() {
-            theme::error(ui, "Enter an IP or IP:port; use [IPv6]:port");
+            theme::error(ui, &t!("Enter an IP or IP:port; use [IPv6]:port"));
         }
         if !self.code.is_empty() && code.is_err() {
-            theme::error(ui, "Code must be six ASCII digits");
+            theme::error(ui, &t!("Code must be six ASCII digits"));
         }
         ui.add_enabled_ui(address.is_ok() && code.is_ok(), |ui| {
             if theme::button(
@@ -269,7 +290,7 @@ impl App {
                 ButtonKind::Secondary,
                 ButtonSize::Md,
                 None,
-                "Join pairing",
+                &t!("Join pairing"),
             )
             .clicked()
                 && let (Ok(addr), Ok(code)) = (address, code)
@@ -284,7 +305,7 @@ impl App {
                 ButtonKind::Ghost,
                 ButtonSize::Sm,
                 None,
-                "Connect to paired address",
+                &t!("Connect to paired address"),
             )
             .clicked()
                 && let Ok(addr) = address
@@ -349,7 +370,7 @@ fn copy_id(ui: &mut egui::Ui, id: MachineId) {
         ui,
         IconButtonKind::Ghost,
         icon::COPY,
-        "Copy machine ID",
+        &t!("Copy machine ID"),
         false,
     )
     .clicked()

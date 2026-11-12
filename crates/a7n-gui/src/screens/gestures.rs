@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use eframe::egui;
+use rust_i18n::t;
 
 use crate::{App, theme};
 use theme::{ButtonKind, ButtonSize};
@@ -10,13 +11,16 @@ use super::chord_editor::chord_editor;
 impl App {
     pub(super) fn gestures(&mut self, ui: &mut egui::Ui) {
         theme::card(ui, |ui| {
-            ui.heading("Trackpad gestures");
-            theme::small(ui, "Shortcuts for swipes received from a Mac trackpad.");
+            ui.heading(t!("Trackpad gestures"));
+            theme::small(
+                ui,
+                &t!("Shortcuts for swipes received from a Mac trackpad."),
+            );
             for (index, (name, title)) in [
-                ("swipe_up", "Swipe up"),
-                ("swipe_down", "Swipe down"),
-                ("swipe_left", "Swipe left"),
-                ("swipe_right", "Swipe right"),
+                ("swipe_up", &t!("Swipe up")),
+                ("swipe_down", &t!("Swipe down")),
+                ("swipe_left", &t!("Swipe left")),
+                ("swipe_right", &t!("Swipe right")),
             ]
             .into_iter()
             .enumerate()
@@ -32,7 +36,7 @@ impl App {
         theme::setting_row(
             ui,
             title,
-            "Three or four fingers. Clear to turn off.",
+            &t!("Three or four fingers. Clear to turn off."),
             Some(&key),
             |ui| {
                 ui.horizontal(|ui| self.gesture_editor(ui, index, &key));
@@ -43,7 +47,7 @@ impl App {
     fn gesture_editor(&mut self, ui: &mut egui::Ui, index: usize, key: &str) {
         let mut value = self.value(key, "");
         if value.is_empty() && !self.editing_gestures[index] {
-            theme::small(ui, "Off");
+            theme::small(ui, &t!("Off"));
         }
         if chord_editor(
             ui,
@@ -54,7 +58,7 @@ impl App {
             self.edit(key, &value, "");
         }
         if !value.is_empty()
-            && theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, "Clear").clicked()
+            && theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, &t!("Clear")).clicked()
         {
             self.edit(key, "", "");
         }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use eframe::egui;
+use rust_i18n::t;
 
 use crate::{App, theme};
 
@@ -14,19 +15,19 @@ impl App {
             for (index, (name, title, help)) in [
                 (
                     "double_tap",
-                    "Trigger key",
-                    "Double-tap or hold this key to return to this machine. Holding it with another key does nothing.",
+                    &t!("Trigger key"),
+                    &t!("Double-tap or hold this key to return to this machine. Holding it with another key does nothing."),
                 ),
-                ("home", "Home", "Return keyboard and mouse to this machine."),
+                ("home", &t!("Home"), &t!("Return keyboard and mouse to this machine.")),
                 (
                     "lock",
-                    "Lock",
-                    "Keep input on the current machine; press again to unlock.",
+                    &t!("Lock"),
+                    &t!("Keep input on the current machine; press again to unlock."),
                 ),
                 (
                     "jump",
-                    "Jump",
-                    "Hold with 1–9 to jump to a paired machine. Unpaired slots do nothing; other numbers stay the same.",
+                    &t!("Jump"),
+                    &t!("Hold with 1–9 to jump to a paired machine. Unpaired slots do nothing; other numbers stay the same."),
                 ),
             ]
             .into_iter()
@@ -78,7 +79,9 @@ impl App {
         if name == "jump" {
             theme::small(
                 ui,
-                "Windows' Alt+Shift input-language hotkey also fires on this chord; turn it off under Settings > Time & language > Typing > Advanced keyboard settings > Input language hot keys, or pick other jump keys.",
+                &t!(
+                    "Windows' Alt+Shift input-language hotkey also fires on this chord; turn it off under Settings > Time & language > Typing > Advanced keyboard settings > Input language hot keys, or pick other jump keys.",
+                ),
             );
         }
     }
@@ -90,10 +93,10 @@ impl App {
         kind: a7n_ipc::HotkeyKind,
     ) {
         ui.add_enabled_ui(self.recording_hotkey.is_none(), |ui| {
-            let label = if self.recording_hotkey.as_deref() == Some(key) {
-                "Press keys…"
+            let label = &if self.recording_hotkey.as_deref() == Some(key) {
+                t!("Press keys…")
             } else {
-                "Record"
+                t!("Record")
             };
             if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, label).clicked() {
                 self.recording_hotkey = Some(key.to_owned());
@@ -109,11 +112,14 @@ impl App {
         let mut value = self.value(key, "");
         theme::setting_row(
             ui,
-            "Shake to return",
-            "Shake the mouse left and right this many times to return to this machine. Enter zero to turn it off.",
+            &t!("Shake to return"),
+            &t!(
+                "Shake the mouse left and right this many times to return to this machine. Enter zero to turn it off.",
+            ),
             Some(key),
             |ui| {
-                if theme::text_input(ui, "Number of reversals", &mut value, "", true).changed() {
+                if theme::text_input(ui, &t!("Number of reversals"), &mut value, "", true).changed()
+                {
                     self.edit(key, &value, "");
                 }
             },
@@ -125,21 +131,21 @@ impl App {
         let mut mode = self.value(key, "double_tap");
         theme::setting_row(
             ui,
-            "Trigger mode",
-            "How the trigger returns input home.",
+            &t!("Trigger mode"),
+            &t!("How the trigger returns input home."),
             Some(key),
             |ui| {
                 egui::ComboBox::from_id_salt(key)
                     .selected_text(match mode.as_str() {
-                        "hold" => "Hold",
-                        "both" => "Both",
-                        _ => "Double tap",
+                        "hold" => t!("Hold"),
+                        "both" => t!("Both"),
+                        _ => t!("Double tap"),
                     })
                     .show_ui(ui, |ui| {
                         for (value, label) in [
-                            ("double_tap", "Double tap"),
-                            ("hold", "Hold"),
-                            ("both", "Both"),
+                            ("double_tap", t!("Double tap")),
+                            ("hold", t!("Hold")),
+                            ("both", t!("Both")),
                         ] {
                             if ui
                                 .selectable_value(&mut mode, value.into(), label)
@@ -158,12 +164,18 @@ impl App {
         let mut value = self.value(key, "");
         theme::setting_row(
             ui,
-            "Hold duration (ms)",
-            "300–3000 ms; default 800 ms.",
+            &t!("Hold duration (ms)"),
+            &t!("300–3000 ms; default 800 ms."),
             Some(key),
             |ui| {
-                if theme::text_input(ui, "Hold duration in milliseconds", &mut value, "800", true)
-                    .changed()
+                if theme::text_input(
+                    ui,
+                    &t!("Hold duration in milliseconds"),
+                    &mut value,
+                    "800",
+                    true,
+                )
+                .changed()
                 {
                     self.edit(key, &value, "");
                 }
