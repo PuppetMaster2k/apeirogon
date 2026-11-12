@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.36.0...v0.37.0) (2026-11-12)
+
+
+### Features
+
+* cross through the MacBook notch only ([#244](https://github.com/PuppetMaster2k/apeirogon/issues/244)) ([b05f19b](https://github.com/PuppetMaster2k/apeirogon/commit/b05f19bdd2423c18803d54788b6eb829cc401a02))
+
 ## [0.36.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.35.0...v0.36.0) (2026-11-12)
 
 
