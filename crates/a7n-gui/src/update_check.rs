@@ -48,7 +48,7 @@ pub(super) fn check() -> Result<Option<Release>, String> {
         }
         Ok::<_, Box<dyn std::error::Error>>((latest > current).then_some(release))
     };
-    fetch().map_err(|_| t!("Could not check for updates. Try again later.").into())
+    fetch().map_err(|_| t!("Update check failed; try later.").into())
 }
 
 fn version(value: &str) -> Option<(u64, u64, u64)> {
@@ -81,7 +81,7 @@ impl App {
             self.update_check.manual = Some(manual);
             self.update_check.message.clear();
         } else if manual {
-            self.update_check.message = t!("Could not queue update check. Try again.").into();
+            self.update_check.message = t!("Update check busy; try again.").into();
         }
     }
 
@@ -101,18 +101,24 @@ impl App {
     }
 
     pub(super) fn update_notice(&self, ui: &mut egui::Ui) {
-        if let Some(release) = &self.update_check.release {
-            ui.hyperlink_to(
-                t!(
-                    "Apeirogon %{version} is available",
-                    version = release.tag_name
-                ),
-                &release.html_url,
-            );
+        if self.update_check.release.is_none() && self.update_check.message.is_empty() {
+            return;
         }
-        if !self.update_check.message.is_empty() {
-            theme::small(ui, &self.update_check.message);
-        }
+        theme::card(ui, |ui| {
+            if let Some(release) = &self.update_check.release {
+                ui.hyperlink_to(
+                    t!(
+                        "Apeirogon %{version} is available",
+                        version = release.tag_name
+                    ),
+                    &release.html_url,
+                );
+            }
+            if !self.update_check.message.is_empty() {
+                theme::small(ui, &self.update_check.message);
+            }
+        });
+        ui.add_space(theme::size::SECTION_GAP);
     }
 
     pub(super) fn update_options(&mut self, ui: &mut egui::Ui) {
@@ -121,8 +127,8 @@ impl App {
         theme::card(ui, |ui| {
             theme::setting_row(
                 ui,
-                &t!("Check for updates"),
-                &t!("Check GitHub at startup and daily. Nothing downloads or installs."),
+                &t!("Updates"),
+                &t!("Check GitHub daily; no machine data, downloads or installs."),
                 Some(KEY),
                 |ui| {
                     if theme::toggle(ui, &mut enabled).changed() {
@@ -134,7 +140,7 @@ impl App {
                             theme::ButtonKind::Ghost,
                             theme::ButtonSize::Sm,
                             None,
-                            &t!("Check now"),
+                            &t!("Check"),
                         )
                         .clicked()
                         {

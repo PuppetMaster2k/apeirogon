@@ -349,10 +349,32 @@ pub struct LayoutPlacement {
     pub blocked: u16,
 }
 
+/// A monitor in pixels relative to the machine's virtual desktop bounding box.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Monitor {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl From<&a7n_proto::v1::MonitorRect> for Monitor {
+    fn from(rect: &a7n_proto::v1::MonitorRect) -> Self {
+        Self {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+        }
+    }
+}
+
 /// A placed rectangle with its display name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlacedMachine {
+    pub monitors: Vec<Monitor>,
     pub screen_mm: Option<(u32, u32)>,
     #[serde(with = "machine_id")]
     pub machine: MachineId,
@@ -368,6 +390,7 @@ pub struct PlacedMachine {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UnplacedMachine {
+    pub monitors: Vec<Monitor>,
     pub screen_mm: Option<(u32, u32)>,
     #[serde(with = "machine_id")]
     pub machine: MachineId,

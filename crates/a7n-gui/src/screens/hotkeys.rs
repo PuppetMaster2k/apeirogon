@@ -10,38 +10,58 @@ use theme::{ButtonKind, ButtonSize};
 
 impl App {
     pub(super) fn hotkeys(&mut self, ui: &mut egui::Ui) {
-        theme::card(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = theme::size::ROW_GAP;
+        ui.scope(|ui| {
             for (index, (name, title, help)) in [
                 (
                     "double_tap",
                     &t!("Trigger key"),
-                    &t!("Double-tap or hold this key to return to this machine. Holding it with another key does nothing."),
+                    &t!("Tap twice or hold alone to return here."),
                 ),
-                ("home", &t!("Home"), &t!("Return keyboard and mouse to this machine.")),
-                (
-                    "lock",
-                    &t!("Lock"),
-                    &t!("Keep input on the current machine; press again to unlock."),
-                ),
+                ("home", &t!("Home"), &t!("Return input here.")),
+                ("lock", &t!("Lock"), &t!("Press again to unlock.")),
                 (
                     "jump",
                     &t!("Jump"),
-                    &t!("Hold with 1–9 to jump to a paired machine. Unpaired slots do nothing; other numbers stay the same."),
+                    &t!("Hold with 1–9 to switch; unpaired slots do nothing."),
                 ),
             ]
             .into_iter()
             .enumerate()
             {
-                if index > 0 {
-                    ui.separator();
-                }
-                self.hotkey_row(ui, index, name, title, help);
+                let value = self.value(&format!("hotkeys.{name}"), "");
+                let summary = super::chord_editor::chord_summary(&value);
+                let summary = if name == "double_tap" && !value.is_empty() {
+                    let mode = match self.value("hotkeys.trigger_mode", "double_tap").as_str() {
+                        "hold" => t!("Hold"),
+                        "both" => t!("Both"),
+                        _ => t!("Double tap"),
+                    };
+                    format!("{mode} · {summary}")
+                } else {
+                    summary
+                };
+                theme::accordion(ui, name, title, Some(&summary), false, false, |ui| {
+                    self.hotkey_row(ui, index, name, title, help);
+                    if name == "double_tap" {
+                        self.trigger_options(ui);
+                    }
+                });
             }
-            ui.separator();
-            self.trigger_options(ui);
-            ui.separator();
-            self.shake_option(ui);
+            let count = self.value("hotkeys.shake", "6");
+            let summary = if count == "0" {
+                t!("Off").into_owned()
+            } else {
+                format!("{} · {count}", t!("On"))
+            };
+            theme::accordion(
+                ui,
+                "shake",
+                &t!("Shake to return"),
+                Some(&summary),
+                false,
+                false,
+                |ui| self.shake_option(ui),
+            );
         });
     }
 
@@ -49,38 +69,30 @@ impl App {
         let key = format!("hotkeys.{name}");
         let mut value = self.value(&key, "");
         theme::setting_row(ui, title, help, Some(&key), |ui| {
-            ui.allocate_ui_with_layout(
-                egui::vec2(ui.available_width(), theme::size::CONTROL_H),
-                egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true),
-                |ui| {
-                    let kind = match name {
-                        "double_tap" => a7n_ipc::HotkeyKind::Trigger,
-                        "jump" => a7n_ipc::HotkeyKind::Modifiers,
-                        _ => a7n_ipc::HotkeyKind::Chord,
-                    };
-                    self.record_hotkey(ui, &key, kind);
-                    let placeholder = match name {
-                        "home" => "scroll_lock,ctrl+alt+shift+home",
-                        "jump" => "ctrl+alt+shift",
-                        "lock" => "ctrl+alt+shift+l",
-                        _ => "right_alt",
-                    };
-                    if chord_editor(
-                        ui,
-                        &mut value,
-                        &mut self.editing_hotkeys[index],
-                        placeholder,
-                    ) {
-                        self.edit(&key, &value, "");
-                    }
-                },
-            );
+            let kind = match name {
+                "double_tap" => a7n_ipc::HotkeyKind::Trigger,
+                "jump" => a7n_ipc::HotkeyKind::Modifiers,
+                _ => a7n_ipc::HotkeyKind::Chord,
+            };
+            let placeholder = match name {
+                "home" => "scroll_lock,ctrl+alt+shift+home",
+                "jump" => "ctrl+alt+shift",
+                "lock" => "ctrl+alt+shift+l",
+                _ => "right_alt",
+            };
+            let mut editing = self.editing_hotkeys[index];
+            if chord_editor(ui, &mut value, &mut editing, placeholder, |ui| {
+                self.record_hotkey(ui, &key, kind);
+            }) {
+                self.edit(&key, &value, "");
+            }
+            self.editing_hotkeys[index] = editing;
         });
         if name == "jump" {
             theme::small(
                 ui,
                 &t!(
-                    "Windows' Alt+Shift input-language hotkey also fires on this chord; turn it off under Settings > Time & language > Typing > Advanced keyboard settings > Input language hot keys, or pick other jump keys.",
+                    "Alt+Shift also switches Windows' input language; disable it in keyboard settings or choose another chord.",
                 ),
             );
         }
@@ -109,20 +121,30 @@ impl App {
 
     fn shake_option(&mut self, ui: &mut egui::Ui) {
         let key = "hotkeys.shake";
-        let mut value = self.value(key, "");
-        theme::setting_row(
+        let mut value = self.value(key, "6").parse().unwrap_or(6);
+        if theme::stepped_slider(
             ui,
             &t!("Shake to return"),
-            &t!(
-                "Shake the mouse left and right this many times to return to this machine. Enter zero to turn it off.",
-            ),
-            Some(key),
-            |ui| {
-                if theme::text_input(ui, &t!("Number of reversals"), &mut value, "", true).changed()
-                {
-                    self.edit(key, &value, "");
-                }
-            },
+            &mut value,
+            &[
+                (0, "0"),
+                (3, "3"),
+                (4, "4"),
+                (5, "5"),
+                (6, "6"),
+                (7, "7"),
+                (8, "8"),
+                (9, "9"),
+                (10, "10"),
+            ],
+        )
+        .changed()
+        {
+            self.edit(key, &value.to_string(), "6");
+        }
+        theme::small(
+            ui,
+            &t!("Shake left and right to return; zero turns it off."),
         );
     }
 
@@ -132,7 +154,7 @@ impl App {
         theme::setting_row(
             ui,
             &t!("Trigger mode"),
-            &t!("How the trigger returns input home."),
+            &t!("Tap twice, hold, or both."),
             Some(key),
             |ui| {
                 egui::ComboBox::from_id_salt(key)

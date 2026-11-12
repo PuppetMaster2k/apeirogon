@@ -25,10 +25,7 @@ pub(super) fn firewall_warnings(ui: &mut egui::Ui, problems: &[FirewallProblem],
                 return;
             };
             ui.add_space(theme::size::ROW_GAP / 2.0);
-            theme::small(
-                ui,
-                &t!("How to fix it. Commands need an administrator Command Prompt."),
-            );
+            theme::small(ui, &t!("Run in an administrator Command Prompt."));
             ui.add(
                 egui::Label::new(
                     egui::RichText::new(address_text(&fix, hidden))

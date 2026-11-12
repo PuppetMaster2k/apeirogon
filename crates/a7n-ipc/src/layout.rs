@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Pure layout draft initialization shared by graphical and terminal editors.
-use crate::{LayoutInfo, LayoutPlacement, Placement};
+use crate::{LayoutInfo, LayoutPlacement, Monitor, Placement};
 
 /// Canvas units per millimeter of physical desktop size.
 pub const UNITS_PER_MM: u32 = 10;
@@ -22,6 +22,7 @@ pub struct LayoutDraft {
     pub placements: Vec<Placement>,
     pub names: Vec<String>,
     pub screen_mm: Vec<Option<(u32, u32)>>,
+    pub monitors: Vec<Vec<Monitor>>,
     pub lost_edit: bool,
 }
 
@@ -56,6 +57,11 @@ impl TryFrom<LayoutInfo> for LayoutDraft {
             .iter()
             .map(|machine| machine.screen_mm)
             .collect();
+        let mut monitors: Vec<_> = info
+            .placed
+            .iter()
+            .map(|machine| machine.monitors.clone())
+            .collect();
         let mut names: Vec<_> = info
             .placed
             .into_iter()
@@ -67,6 +73,7 @@ impl TryFrom<LayoutInfo> for LayoutDraft {
                 .screen_mm
                 .map_or(DEFAULT_MACHINE_SIZE, screen_size_units);
             screen_mm.push(machine.screen_mm);
+            monitors.push(machine.monitors);
             placements.push(Placement {
                 id: machine.machine,
                 x,
@@ -82,6 +89,7 @@ impl TryFrom<LayoutInfo> for LayoutDraft {
             placements,
             names,
             screen_mm,
+            monitors,
             lost_edit: info.lost_edit,
         })
     }
@@ -111,6 +119,7 @@ mod tests {
 
     fn machine(id: u8, x: i32, y: i32) -> PlacedMachine {
         PlacedMachine {
+            monitors: vec![],
             screen_mm: None,
             machine: MachineId::try_from([id; MachineId::LEN].as_slice()).unwrap(),
             name: format!("machine-{id}"),
@@ -129,6 +138,7 @@ mod tests {
             unplaced: [3, 4]
                 .into_iter()
                 .map(|id| UnplacedMachine {
+                    monitors: vec![],
                     screen_mm: None,
                     machine: MachineId::try_from([id; MachineId::LEN].as_slice()).unwrap(),
                     name: format!("machine-{id}"),

@@ -29,13 +29,12 @@ impl App {
         const KEY: &str = "gui.appearance";
         let current = self.value(KEY, "system");
         let mut value = current.as_str();
+        theme::overline(ui, &t!("Appearance"));
         theme::card(ui, |ui| {
             theme::setting_row(
                 ui,
                 &t!("Appearance"),
-                &t!(
-                    "Choose the window theme. System follows this machine's light or dark setting."
-                ),
+                &t!("System follows your light or dark theme."),
                 Some(KEY),
                 |ui| {
                     if theme::segmented(
@@ -55,56 +54,114 @@ impl App {
                 },
             );
         });
+    }
+
+    pub(super) fn general_options(&mut self, ui: &mut egui::Ui) {
         self.language_options(ui);
+
         self.toggle_card(
             ui,
             None,
             &[Toggle {
                 key: "gui.hide_addresses",
                 title: &t!("Hide addresses"),
-                help: &t!("Mask IP addresses and ports in this window."),
+                help: &t!("Hide IP addresses and ports here."),
                 default: "false",
                 unavailable: None,
             }],
         );
-        self.update_options(ui);
+        let summary = if self.value("gui.update_check", "false") == "true" {
+            t!("On")
+        } else {
+            t!("Off")
+        };
+        theme::accordion(
+            ui,
+            "updates",
+            &t!("Updates"),
+            Some(&summary),
+            false,
+            false,
+            |ui| {
+                self.update_options(ui);
+            },
+        );
     }
 
     fn language_options(&mut self, ui: &mut egui::Ui) {
         const KEY: &str = "gui.language";
         let current = self.value(KEY, "system");
         let mut value = current.as_str();
-        theme::card(ui, |ui| {
-            theme::setting_row(
-                ui,
-                &t!("Language"),
-                &t!("System follows this machine's language."),
-                Some(KEY),
-                |ui| {
-                    if theme::segmented(
-                        ui,
-                        &mut value,
-                        &[
-                            ("system", &t!("System")),
-                            ("english", &t!("English")),
-                            ("german", &t!("German")),
-                        ],
-                    )
-                    .changed()
-                    {
-                        self.edit(KEY, value, "system");
-                        crate::set_language(match value {
-                            "english" => a7n_ipc::config::Language::English,
-                            "german" => a7n_ipc::config::Language::German,
-                            _ => a7n_ipc::config::Language::System,
-                        });
-                    }
-                },
-            );
-        });
+        let summary = match value {
+            "english" => t!("English"),
+            "german" => t!("German"),
+            _ => t!("System"),
+        };
+        theme::accordion(
+            ui,
+            KEY,
+            &t!("Language"),
+            Some(&summary),
+            false,
+            false,
+            |ui| {
+                theme::setting_row(
+                    ui,
+                    &t!("Language"),
+                    &t!("System follows this machine's language."),
+                    Some(KEY),
+                    |ui| {
+                        if theme::segmented(
+                            ui,
+                            &mut value,
+                            &[
+                                ("system", &t!("System")),
+                                ("english", &t!("English")),
+                                ("german", &t!("German")),
+                            ],
+                        )
+                        .changed()
+                        {
+                            self.edit(KEY, value, "system");
+                            crate::set_language(match value {
+                                "english" => a7n_ipc::config::Language::English,
+                                "german" => a7n_ipc::config::Language::German,
+                                _ => a7n_ipc::config::Language::System,
+                            });
+                        }
+                    },
+                );
+            },
+        );
     }
 
     pub(super) fn input_options(&mut self, ui: &mut egui::Ui) {
+        let speed = self.value("input.speed", "1.0");
+        theme::accordion(
+            ui,
+            "input.speed",
+            &t!("Pointer speed"),
+            Some(&format!("{speed}×")),
+            false,
+            false,
+            |ui| {
+                let key = "input.speed";
+                let mut speed = self.value(key, "1.0").parse::<f64>().unwrap_or(1.0);
+                if theme::slider(
+                    ui,
+                    &t!("Pointer speed"),
+                    &mut speed,
+                    a7n_ipc::config::MIN_SPEED..=a7n_ipc::config::MAX_SPEED,
+                    None,
+                    |value| format!("{value:.2}×"),
+                )
+                .changed()
+                {
+                    self.edit(key, &speed.to_string(), "1.0");
+                }
+            },
+        );
+
         self.toggle_card(
             ui,
             None,
@@ -118,18 +175,19 @@ impl App {
                 },
                 Toggle {
                     key: "input.hide_idle_cursor",
-                    title: &t!("Hide the cursor on the machine without input"),
-                    help: &t!("Hide while driving another machine or after remote input leaves. Show it when input returns."),
+                    title: &t!("Hide idle cursor"),
+                    help: &t!("Hide while idle; show when input returns."),
                     default: "true",
                     unavailable: (!a7n_platform::input::idle_cursor_supported())
                         .then_some(&t!(NOT_ON_WAYLAND)),
                 },
                 Toggle {
                     key: "input.fullscreen_hold",
-                    title: &t!("Keep the pointer in full-screen apps"),
-                    help: &t!("Edges don't switch machines while a full-screen app or game has focus. Shortcuts still work."),
+                    title: &t!("Full-screen hold"),
+                    help: &t!("Block edge switching in full-screen apps; hotkeys still work."),
                     default: "false",
-                    unavailable: (!a7n_platform::fullscreen::supported()).then_some(&t!(NOT_ON_WAYLAND)),
+                    unavailable: (!a7n_platform::fullscreen::supported())
+                        .then_some(&t!(NOT_ON_WAYLAND)),
                 },
             ],
         );
@@ -139,100 +197,104 @@ impl App {
                 None,
                 &[Toggle {
                     key: "input.notch_crossing",
-                    title: &t!("Top edge: only through the notch"),
-                    help: &t!(
-                        "On the notched display, push through the notch to reach the machine above."
-                    ),
+                    title: &t!("Notch crossing"),
+                    help: &t!("Cross the top edge only through the display notch."),
                     default: "false",
                     unavailable: None,
                 }],
             );
         }
+
         self.local_keys(ui);
     }
 
     fn local_keys(&mut self, ui: &mut egui::Ui) {
         const KEY: &str = "input.local_keys";
-        theme::card(ui, |ui| {
-            ui.heading(t!("Local keys and buttons"));
-            theme::small(
-                ui,
-                &t!(
-                    "Keep these inputs on this machine while driving another. Hotkeys still take priority.",
-                ),
-            );
-            if !a7n_platform::input::LOCAL_INPUTS_SUPPORTED {
-                theme::small(
-                    ui,
-                    &t!("Local pass-through is unavailable on X11 and Wayland."),
-                );
-            }
-            let mut names: Vec<String> = self
-                .value(KEY, "")
-                .split(',')
-                .filter(|name| !name.is_empty())
-                .map(str::to_owned)
-                .collect();
-            let mut removed = None;
-            for (index, name) in names.iter().enumerate() {
-                ui.push_id(index, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(name);
-                        if theme::button(
-                            ui,
-                            theme::ButtonKind::Ghost,
-                            theme::ButtonSize::Sm,
-                            None,
-                            &t!("Remove"),
-                        )
-                        .clicked()
-                        {
-                            removed = Some(index);
-                        }
+        let summary = super::chord_editor::chord_summary(&self.value(KEY, ""));
+        theme::accordion(
+            ui,
+            KEY,
+            &t!("Local inputs"),
+            Some(&summary),
+            false,
+            false,
+            |ui| {
+                theme::small(ui, &t!("Keep these inputs local; hotkeys take priority."));
+                if !a7n_platform::input::LOCAL_INPUTS_SUPPORTED {
+                    theme::small(ui, &t!("Unavailable on X11 and Wayland."));
+                }
+                let mut names: Vec<String> = self
+                    .value(KEY, "")
+                    .split(',')
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned)
+                    .collect();
+                let mut removed = None;
+                for (index, name) in names.iter().enumerate() {
+                    ui.push_id(index, |ui| {
+                        ui.horizontal(|ui| {
+                            theme::keycap(ui, name);
+                            if theme::button(
+                                ui,
+                                theme::ButtonKind::Ghost,
+                                theme::ButtonSize::Sm,
+                                None,
+                                &t!("Remove"),
+                            )
+                            .clicked()
+                            {
+                                removed = Some(index);
+                            }
+                        });
                     });
-                });
-            }
-            if let Some(index) = removed {
-                names.remove(index);
-                self.edit(KEY, &names.join(","), "");
-            }
-            self.record_hotkey(ui, KEY, a7n_ipc::HotkeyKind::Single);
-        });
+                }
+                if let Some(index) = removed {
+                    names.remove(index);
+                    self.edit(KEY, &names.join(","), "");
+                }
+                self.record_hotkey(ui, KEY, a7n_ipc::HotkeyKind::Single);
+            },
+        );
     }
 
     pub(super) fn feedback_options(&mut self, ui: &mut egui::Ui) {
+        theme::overline(ui, &t!("Feedback"));
         let feedback_supported = a7n_platform::feedback::supported();
         let unavailable_text = t!(NOT_ON_WAYLAND);
         let unavailable = (!feedback_supported).then_some(unavailable_text.as_ref());
-        theme::card(ui, |ui| {
-            ui.heading(t!("Feedback"));
-            self.toggle_rows(ui, &[
+        theme::accordion_group(ui, |ui| {
+            for toggle in [
                 Toggle {
                     key: "feedback.edge",
                     title: &t!("Edge glow"),
-                    help: &t!("Show a glow along the screen edge as you push toward another machine."),
+                    help: &t!("Glow as you push toward another machine."),
                     default: "true",
                     unavailable,
                 },
                 Toggle {
                     key: "feedback.landing",
                     title: &t!("Landing indicator"),
-                    help: &t!("Briefly mark where the pointer arrives when another machine takes over."),
+                    help: &t!("Briefly mark the pointer's arrival."),
                     default: "true",
                     unavailable,
                 },
                 Toggle {
                     key: "feedback.haptics",
                     title: &t!("Trackpad haptics"),
-                    help: &t!("Tick on the trackpad as the edge push builds up."),
+                    help: &t!("Tick as you push against an edge."),
                     default: "false",
                     unavailable: (!a7n_platform::feedback::haptics_supported())
                         .then_some(&t!("Only available on macOS")),
                 },
-            ]);
-            let edge = self.value("feedback.edge", "true") == "true";
-            let landing = self.value("feedback.landing", "true") == "true";
-            if edge || landing {
+            ] {
+                self.toggle_card(ui, None, &[toggle]);
+            }
+        });
+        let edge = self.value("feedback.edge", "true") == "true";
+        let landing = self.value("feedback.landing", "true") == "true";
+        if edge || landing {
+            ui.add_space(theme::size::ROW_GAP);
+            theme::card(ui, |ui| {
                 ui.add_enabled_ui(feedback_supported, |ui| {
                     for (key, title, default, choices) in [
                         (
@@ -287,17 +349,35 @@ impl App {
                         });
                     }
                 });
-            }
-        });
+            });
+        }
     }
 
     fn toggle_card(&mut self, ui: &mut egui::Ui, heading: Option<&str>, toggles: &[Toggle<'_>]) {
-        theme::card(ui, |ui| {
-            if let Some(heading) = heading {
-                ui.heading(heading);
-            }
-            self.toggle_rows(ui, toggles);
-        });
+        let enabled = toggles
+            .iter()
+            .filter(|toggle| self.value(toggle.key, toggle.default) == "true")
+            .count();
+        let summary = if toggles.len() > 1 {
+            t!(
+                "%{count} of %{total} on",
+                count = enabled,
+                total = toggles.len()
+            )
+        } else if enabled == 1 {
+            t!("On")
+        } else {
+            t!("Off")
+        };
+        theme::accordion(
+            ui,
+            toggles[0].key,
+            heading.unwrap_or(toggles[0].title),
+            Some(&summary),
+            false,
+            false,
+            |ui| self.toggle_rows(ui, toggles),
+        );
     }
 
     fn toggle_rows(&mut self, ui: &mut egui::Ui, toggles: &[Toggle<'_>]) {

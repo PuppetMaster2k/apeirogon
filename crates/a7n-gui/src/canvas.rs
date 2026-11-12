@@ -8,6 +8,7 @@ use rust_i18n::t;
 use crate::theme;
 
 mod drag;
+mod monitors;
 mod segments;
 mod snap;
 
@@ -81,7 +82,7 @@ impl Canvas {
             theme::badge(
                 ui,
                 theme::BadgeKind::Warning,
-                &t!("Another machine replaced your last layout edit."),
+                &t!("Layout changed on another machine."),
             );
         }
         let (area, _) = ui.allocate_exact_size(
@@ -152,10 +153,10 @@ impl Canvas {
         theme::small(
             ui,
             &t!(
-                "Drag machines to place them; they snap to each other's edges. Tab selects a machine; arrow keys move it (Shift for fine movement). Edges connect where rectangles touch.",
+                "Drag to arrange; touching edges connect. Tab selects, arrows move; Shift moves finely.",
             ),
         );
-        theme::small(ui, &t!("Click an edge third to switch it off or on"));
+        theme::small(ui, &t!("Click an edge third to toggle it."));
         let validation = validate(&self.draft.placements);
         if let Err(error) = validation {
             theme::error(ui, &t!(error.to_string()));
@@ -186,6 +187,7 @@ impl Canvas {
                 transform.rect(placement),
                 &self.draft.names[index],
                 placement,
+                &self.draft.monitors[index],
                 self.selected == index,
                 overlapping,
             );
@@ -231,6 +233,7 @@ fn paint_machine(
     rect: egui::Rect,
     name: &str,
     placement: &Placement,
+    monitors: &[a7n_ipc::Monitor],
     selected: bool,
     overlapping: bool,
 ) {
@@ -255,6 +258,7 @@ fn paint_machine(
         ),
         egui::StrokeKind::Inside,
     );
+    monitors::paint(ui, rect, monitors);
     let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
     let name = egui::WidgetText::from(name).into_galley(
         ui,
@@ -389,6 +393,7 @@ mod tests {
             machine: a7n_ipc::MachineId::try_from([id; 16].as_slice()).unwrap(),
             name: format!("machine-{id}"),
             screen_mm,
+            monitors: vec![],
             x,
             y: 100,
             width: 1920,

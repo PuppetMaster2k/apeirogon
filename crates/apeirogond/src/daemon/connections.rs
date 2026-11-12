@@ -228,6 +228,14 @@ impl Daemon {
             }
             self.input_link_lost(peer);
         }
+        self.peer_monitors.insert(
+            peer,
+            link.peer_info
+                .monitors
+                .iter()
+                .map(a7n_ipc::Monitor::from)
+                .collect(),
+        );
         self.link_problems.remove(&peer);
         self.send_link_state(&link, &sender);
         self.clipboard_link_up(peer);

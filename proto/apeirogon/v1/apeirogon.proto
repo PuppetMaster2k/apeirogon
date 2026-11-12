@@ -94,6 +94,14 @@ message ScreenSize {
   uint32 height = 2;
 }
 
+// Pixels relative to the virtual desktop bounding box's top-left (0, 0).
+message MonitorRect {
+  sint32 x = 1;
+  sint32 y = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+}
+
 message PeerInfo {
   string name = 1;                         // 1..48 Unicode code points
   Platform platform = 2;
@@ -102,6 +110,7 @@ message PeerInfo {
   uint32 listen_port = 5;                  // UDP port; 0 = does not accept links
   bytes hw_addr = 6;                       // 6 bytes (wake-on-LAN), empty if unknown
   ScreenSize screen_mm = 7;                // virtual desktop physical size, absent if unknown
+  repeated MonitorRect monitors = 8;       // optional monitor geometry, relative pixels
 }
 
 message Hello {                            // initiator -> responder

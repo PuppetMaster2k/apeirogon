@@ -10,24 +10,19 @@ use theme::{BadgeKind, ButtonKind, ButtonSize};
 const PERMISSIONS: [(Permission, &str); 2] = [
     (
         Permission::Accessibility,
-        "Lets Apeirogon move the pointer and type on this Mac when another machine drives it.",
+        "Let paired machines control this Mac's keyboard and mouse.",
     ),
     (
         Permission::InputMonitoring,
-        "Lets Apeirogon see your keyboard and mouse so it can send them to another machine when the pointer crosses an edge.",
+        "Read keyboard and mouse input to share with paired machines.",
     ),
 ];
 
 impl App {
     /// First-run onboarding; the daemon continues by itself once both are granted.
     pub(crate) fn permissions(&mut self, ui: &mut egui::Ui, missing: &[Permission]) {
-        theme::page_header(
-            ui,
-            &t!("Allow Apeirogon to share your keyboard and mouse"),
-            &t!("macOS asks you to approve each permission once."),
-            |_| {},
-        );
         self.page_message(ui);
+        theme::overline(ui, &t!("Permissions"));
         for (permission, reason) in PERMISSIONS {
             theme::card(ui, |ui| {
                 let title = match permission {
@@ -39,10 +34,14 @@ impl App {
                         theme::badge(ui, BadgeKind::Online, &t!("Granted"));
                     } else if theme::button(
                         ui,
-                        ButtonKind::Primary,
+                        if missing.first() == Some(&permission) {
+                            ButtonKind::Primary
+                        } else {
+                            ButtonKind::Secondary
+                        },
                         ButtonSize::Md,
                         None,
-                        &t!("Open System Settings"),
+                        &t!("Open settings"),
                     )
                     .clicked()
                     {
@@ -54,9 +53,7 @@ impl App {
         }
         theme::small(
             ui,
-            &t!(
-                "After you switch it on, Apeirogon continues automatically. If apeirogond is not in the list, add it with the + button.",
-            ),
+            &t!("Add apeirogond with + if missing; setup resumes automatically.",),
         );
     }
 }

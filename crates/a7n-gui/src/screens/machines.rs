@@ -12,14 +12,14 @@ use crate::{App, Command, theme};
 use theme::{BadgeKind, ButtonKind, ButtonSize, IconButtonKind, icon};
 
 impl App {
-    pub(crate) fn machines(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn machines_header(&mut self, ui: &mut egui::Ui) {
         let Some(status) = self.status.clone() else {
             return;
         };
         theme::page_header(
             ui,
             &t!("Machines"),
-            &t!("Computers sharing this keyboard and mouse."),
+            &t!("Share input between these machines."),
             |ui| {
                 if theme::button(
                     ui,
@@ -31,9 +31,9 @@ impl App {
                         icon::PAUSE
                     }),
                     &if status.paused {
-                        t!("Resume input sharing")
+                        t!("Resume")
                     } else {
-                        t!("Pause input sharing")
+                        t!("Pause")
                     },
                 )
                 .clicked()
@@ -44,6 +44,12 @@ impl App {
                 }
             },
         );
+    }
+
+    pub(crate) fn machines(&mut self, ui: &mut egui::Ui) {
+        let Some(status) = self.status.clone() else {
+            return;
+        };
         self.page_message(ui);
         firewall_warnings(ui, &status.firewall, self.hide_addresses());
         self.held_files(ui, &status);
@@ -86,8 +92,8 @@ impl App {
             theme::empty_card(
                 ui,
                 icon::MONITOR,
-                &t!("No paired machines yet."),
-                &t!("Use Host or Join below to pair a machine."),
+                &t!("No paired machines."),
+                &t!("Choose Host or Join below."),
             );
         }
         for peer in peers {
@@ -154,9 +160,7 @@ impl App {
                             None,
                             &t!("Connect"),
                         )
-                        .on_hover_text(t!(
-                            "Connect using the discovered address, or enter an address below.",
-                        ))
+                        .on_hover_text(t!("Connect",))
                         .clicked()
                             && let Some(nearby) = nearby
                         {
@@ -181,8 +185,8 @@ impl App {
             theme::empty_card(
                 ui,
                 icon::BROADCAST,
-                &t!("No machines found on your network yet."),
-                &t!("Apeirogon listens for other machines running the daemon on the same subnet."),
+                &t!("No nearby machines found."),
+                &t!("Start Apeirogon on the same subnet."),
             );
         }
         for nearby in nearby {
@@ -204,14 +208,8 @@ impl App {
                         );
                     });
                 });
-                if theme::button(
-                    ui,
-                    ButtonKind::Secondary,
-                    ButtonSize::Md,
-                    None,
-                    &t!("Pair with this machine"),
-                )
-                .clicked()
+                if theme::button(ui, ButtonKind::Secondary, ButtonSize::Md, None, &t!("Pair"))
+                    .clicked()
                 {
                     self.address = nearby.addr.to_string();
                 }
@@ -228,10 +226,8 @@ impl App {
         };
         ui.columns(count, |columns| {
             theme::card(&mut columns[0], |ui| {
-                ui.heading(t!("Host pairing"));
-                ui.label(t!(
-                    "Show a one-time code on this machine and enter it on the other one.",
-                ));
+                ui.heading(t!("Host"));
+                ui.label(t!("Enter this one-time code on the other machine.",));
                 if let Some((code, expiry)) = &self.pairing {
                     let remaining = expiry.saturating_duration_since(Instant::now()).as_secs();
                     if remaining == 0 {
@@ -246,7 +242,7 @@ impl App {
                     ButtonKind::Primary,
                     ButtonSize::Md,
                     Some(icon::BROADCAST),
-                    &t!("Show pairing code"),
+                    &t!("Host"),
                 )
                 .clicked()
                 {
@@ -258,8 +254,8 @@ impl App {
     }
 
     fn join_pairing(&mut self, ui: &mut egui::Ui) {
-        ui.heading(t!("Join pairing"));
-        ui.label(t!("Enter the host's address and the code it shows."));
+        ui.heading(t!("Join"));
+        ui.label(t!("Enter the host's address and code."));
         let hidden = self.hide_addresses();
         theme::masked_text_input(
             ui,
@@ -285,14 +281,7 @@ impl App {
             theme::error(ui, &t!("Code must be six ASCII digits"));
         }
         ui.add_enabled_ui(address.is_ok() && code.is_ok(), |ui| {
-            if theme::button(
-                ui,
-                ButtonKind::Secondary,
-                ButtonSize::Md,
-                None,
-                &t!("Join pairing"),
-            )
-            .clicked()
+            if theme::button(ui, ButtonKind::Secondary, ButtonSize::Md, None, &t!("Join")).clicked()
                 && let (Ok(addr), Ok(code)) = (address, code)
             {
                 self.send(Command::Request(Request::PairJoin { addr, code }));
@@ -300,14 +289,7 @@ impl App {
             }
         });
         ui.add_enabled_ui(address.is_ok(), |ui| {
-            if theme::button(
-                ui,
-                ButtonKind::Ghost,
-                ButtonSize::Sm,
-                None,
-                &t!("Connect to paired address"),
-            )
-            .clicked()
+            if theme::button(ui, ButtonKind::Ghost, ButtonSize::Sm, None, &t!("Connect")).clicked()
                 && let Ok(addr) = address
             {
                 self.send(Command::Request(Request::Connect { addr }));
@@ -366,15 +348,7 @@ fn id_label(ui: &mut egui::Ui, id: MachineId) {
 }
 
 fn copy_id(ui: &mut egui::Ui, id: MachineId) {
-    if theme::icon_button(
-        ui,
-        IconButtonKind::Ghost,
-        icon::COPY,
-        &t!("Copy machine ID"),
-        false,
-    )
-    .clicked()
-    {
+    if theme::icon_button(ui, IconButtonKind::Ghost, icon::COPY, &t!("Copy ID"), false).clicked() {
         ui.ctx().copy_text(id.to_string());
     }
 }

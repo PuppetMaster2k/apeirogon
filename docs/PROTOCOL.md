@@ -75,6 +75,16 @@ After authenticating a paired link, receivers persist the last valid size beside
 its pin for offline layout editing; missing or invalid values retain it. This
 additive metadata needs no capability; older peers ignore it.
 
+`PeerInfo.monitors` (field 8) is optional repeated `MonitorRect` metadata:
+`sint32 x = 1`, `sint32 y = 2`, `uint32 width = 3`, `uint32 height = 4`.
+Coordinates are pixels relative to the virtual desktop bounding box's top-left
+(0, 0). Receivers validate once when decoding the handshake and ignore the
+entire field if it contains more than `MONITORS_MAX` rectangles, a negative
+coordinate, a zero width/height, or a right/bottom edge exceeding signed 32-bit
+coordinates. Invalid metadata never fails the link. Geometry is remembered
+for the daemon session; older peers ignore this additive field. Machine
+placement, edge routing and layout saving still use whole-machine rectangles.
+
 Limits: handshake timeout 5 s, 4 concurrent unauthenticated connections per listener, first `Hello` max 4096 bytes. If both machines dial each other simultaneously, the link initiated by the larger machine id is kept.
 
 ## 5. Pairing
@@ -180,6 +190,9 @@ The clipboard is *live*: every copy is announced; data moves when someone pastes
 - Local IPC version 7 exposes `offer_id` on held files and `generation` on held clipboard copies. Accept requests carry these identities (peer and offer id for files, origin machine and generation for clipboard) and are refused if the held item changed. Update the daemon and local clients together.
 - Local IPC version 8 adds optional `screen_mm` dimensions to placed and unplaced machines. Update the daemon and local clients together.
 - Local IPC version 11 adds status field `firewall`, a list of Windows Firewall problems (`missing_allow { program, ports, profiles }`, `blocked { rule, ports }`) found with normal user rights; it is always empty off Windows. The daemon never changes the firewall or asks for elevation. Update the daemon and local clients together; the peer wire protocol is unchanged.
+- Local IPC version 15 adds `monitors: [{ x, y, width, height }]` (relative
+  pixels) to placed and unplaced machines in layout replies. Empty means unknown.
+  Update daemon and local clients together.
 - Local IPC version 14 adds per-peer `problem` to status: `null` or a
   snake_case `LinkProblem` (`unreachable`, `refused`, `auth_failed`, `silent`,
   or `{"version_mismatch":{"older": name_or_null}}`). The daemon remembers
@@ -242,6 +255,7 @@ With `ask`, sending behaves like `both`, while incoming copies are validated and
 | Physical desktop side (`SCREEN_MM_MAX`) | at most 10,000 mm; 0 or >10,000 means unknown |
 | Layout version, settings `set_at`, clipboard generation | at most 2^53 |
 | Machines per layout | 64 |
+| Monitor rectangles per peer (`MONITORS_MAX`) | 16; invalid field ignored |
 | File manifest entries max | 10000 |
 | File manifest path max | 4096 UTF-8 bytes |
 | File manifest segment max | 255 UTF-8 bytes |
