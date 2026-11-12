@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.39.0...v0.39.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* play the landing animation on every arrival ([#251](https://github.com/PuppetMaster2k/apeirogon/issues/251)) ([642bf81](https://github.com/PuppetMaster2k/apeirogon/commit/642bf81c67df01201c85d94a32958639912a4637))
+
 ## [0.39.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.38.0...v0.39.0) (2026-11-12)
 
 
