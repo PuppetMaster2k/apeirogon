@@ -10,6 +10,7 @@ use a7n_proto::v1::Edge;
 
 /// Smallest progress change worth another edge command, in per-mille.
 const FEEDBACK_STEP_PERMILLE: u16 = 50;
+const FEEDBACK_FULL_PERMILLE: u16 = 1000;
 
 #[derive(Debug, Default)]
 pub(in crate::daemon) struct FeedbackSink {
@@ -76,6 +77,14 @@ impl FeedbackSink {
             self.push(display, progress);
         } else {
             self.clear();
+        }
+    }
+
+    pub(super) fn crossed(&mut self, display: Bounds, edge: Edge) {
+        // A single large motion may cross before the first pressure frame.
+        self.push(display, Some((edge, FEEDBACK_FULL_PERMILLE)));
+        if self.last.take().is_some() && self.config.edge {
+            self.send(Command::Crossed);
         }
     }
 

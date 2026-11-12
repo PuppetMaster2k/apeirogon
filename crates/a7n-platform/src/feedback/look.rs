@@ -18,12 +18,13 @@ pub enum Style {
     Beam,
     Aperture,
     Sparks,
-    Ripple,
+    #[serde(alias = "ripple")]
+    Membrane,
 }
 
 impl Style {
     pub(super) const fn animated(self) -> bool {
-        matches!(self, Self::Aperture | Self::Sparks | Self::Ripple)
+        matches!(self, Self::Aperture | Self::Sparks | Self::Membrane)
     }
 }
 
@@ -215,6 +216,26 @@ pub(super) fn beam_rect(
         },
         Edge::Unspecified => return None,
     })
+}
+
+/// Keep expanding arrivals on the landing monitor, including points at its edge.
+pub(super) fn landing_rect(area: Rect, point: (f64, f64), diameter: f64, style: Style) -> Rect {
+    if !style.animated() {
+        return Rect {
+            x: point.0 - diameter / 2.0,
+            y: point.1 - diameter / 2.0,
+            width: diameter,
+            height: diameter,
+        };
+    }
+    let width = diameter.min(area.width);
+    let height = diameter.min(area.height);
+    Rect {
+        x: (point.0 - width / 2.0).clamp(area.x, area.x + area.width - width),
+        y: (point.1 - height / 2.0).clamp(area.y, area.y + area.height - height),
+        width,
+        height,
+    }
 }
 
 #[cfg(test)]

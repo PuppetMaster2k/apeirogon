@@ -37,7 +37,7 @@ impl Daemon {
             self.input.sink.push(display, progress);
             return;
         }
-        self.input.sink.clear();
+        self.input.sink.crossed(display, edge);
         self.dispatch_crossing(target, landing, driven).await;
     }
 

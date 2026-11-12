@@ -24,7 +24,8 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
 use super::look::{self, BEAM_THICKNESS, Rect};
-use super::raster::{self, Along, EdgeEffect, Frame};
+use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
+use super::timeline::{End, Timeline};
 use super::{Color, Command, Feedback, Landing, Look, Style, channel};
 use crate::input::Bounds;
 use blit::Argb;
@@ -80,7 +81,7 @@ struct Overlay {
     landing: Window,
     argb: Option<Argb>,
     edge_frame: Frame,
-    edge_effect: Option<EdgeEffect>,
+    timeline: Timeline,
     edge_started: Instant,
     animate: bool,
     landing_frame: Frame,
@@ -103,7 +104,7 @@ impl Overlay {
             landing,
             argb,
             edge_frame: Frame::default(),
-            edge_effect: None,
+            timeline: Timeline::default(),
             edge_started: Instant::now(),
             animate: blit::animations_enabled(),
             landing_frame: Frame::default(),
@@ -112,30 +113,18 @@ impl Overlay {
 
     /// Handles commands until the daemon drops its handle or X fails.
     fn run(mut self, commands: &mpsc::Receiver<Command>) {
-        let mut landing_deadline: Option<Instant> = None;
-        let mut next_frame = Instant::now();
         loop {
-            let deadline = if self.animating_edge() {
-                Some(landing_deadline.map_or(next_frame, |landing| landing.min(next_frame)))
+            let edge_playing = self.animating_edge();
+            let playing = edge_playing || self.timeline.landing_visible();
+            let received = if playing {
+                commands.recv_timeout(EDGE_FRAME)
             } else {
-                landing_deadline
-            };
-            let received = match deadline {
-                Some(deadline) => {
-                    commands.recv_timeout(deadline.saturating_duration_since(Instant::now()))
-                }
-                None => commands
+                commands
                     .recv()
-                    .map_err(|_| mpsc::RecvTimeoutError::Disconnected),
+                    .map_err(|_| mpsc::RecvTimeoutError::Disconnected)
             };
             match received {
                 Ok(command) => {
-                    if matches!(
-                        command,
-                        Command::Landing { .. } | Command::LandingAtCursor { .. }
-                    ) {
-                        landing_deadline = Some(Instant::now() + LANDING_DURATION);
-                    }
                     if self.handle(command).is_none() {
                         break;
                     }
@@ -143,36 +132,45 @@ impl Overlay {
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
-            let now = Instant::now();
-            if landing_deadline.is_some_and(|deadline| now >= deadline) {
-                landing_deadline = None;
-                if self.unmap(self.landing).is_none() {
-                    break;
-                }
+            if (edge_playing || self.animating_edge()) && self.animate_edge().is_none() {
+                break;
             }
-            if self.animating_edge() && now >= next_frame {
-                if self.animate_edge().is_none() {
-                    break;
-                }
-                next_frame = now + EDGE_FRAME;
+            if self.timeline.landing_visible() && self.animate_landing().is_none() {
+                break;
             }
         }
     }
 
     fn animating_edge(&self) -> bool {
-        self.animate
-            && self.argb.is_some()
+        self.argb.is_some()
             && self
-                .edge_effect
-                .is_some_and(|effect| effect.look.style.animated())
+                .timeline
+                .edge_playing(self.animate, self.edge_started.elapsed())
     }
 
     fn animate_edge(&mut self) -> Option<()> {
-        let effect = self.edge_effect?;
-        effect.render(&mut self.edge_frame, self.edge_started.elapsed());
+        if !self
+            .timeline
+            .render_edge(&mut self.edge_frame, self.edge_started.elapsed())
+        {
+            return self.unmap(self.glow);
+        }
         self.argb
             .as_mut()?
             .blit(&self.connection, self.glow, &self.edge_frame)
+    }
+
+    fn animate_landing(&mut self) -> Option<()> {
+        if !self
+            .timeline
+            .render_landing(&mut self.landing_frame, self.edge_started.elapsed())
+        {
+            return self.unmap(self.landing);
+        }
+        if let Some(argb) = &mut self.argb {
+            argb.blit(&self.connection, self.landing, &self.landing_frame)?;
+        }
+        Some(())
     }
 
     fn handle(&mut self, command: Command) -> Option<()> {
@@ -183,9 +181,19 @@ impl Overlay {
                 progress,
                 look,
             } => self.show_glow(display, edge, progress, look),
-            Command::Clear => {
-                self.edge_effect = None;
-                self.unmap(self.glow)
+            Command::Clear | Command::Crossed => {
+                self.timeline.end(
+                    if command == Command::Crossed {
+                        End::Crossed
+                    } else {
+                        End::Abandoned
+                    },
+                    self.edge_started.elapsed(),
+                );
+                if self.argb.is_none() {
+                    self.unmap(self.glow)?;
+                }
+                Some(())
             }
             Command::Landing { x, y, look } => self.show_landing(x, y, look),
             Command::LandingAtCursor { look } => {
@@ -202,25 +210,40 @@ impl Overlay {
     }
 
     fn show_landing(&mut self, x: i32, y: i32, look: Look) -> Option<()> {
+        self.timeline.land(look, self.edge_started.elapsed());
+        let base = if look.style.animated() && self.argb.is_some() {
+            raster::ARRIVAL_SIZE
+        } else {
+            LANDING_SIZE
+        };
+        let diameter = look.size.pixels(base);
+        let monitors = crate::input::x11::monitors(&self.connection, self.root).unwrap_or_default();
+        let screen = self
+            .connection
+            .setup()
+            .roots
+            .iter()
+            .find(|screen| screen.root == self.root)?;
+        let fallback = Bounds::from((
+            0,
+            0,
+            u32::from(screen.width_in_pixels),
+            u32::from(screen.height_in_pixels),
+        ));
+        let monitor = pick_monitor(&monitors, fallback, x, y);
+        let area = Rect::from_bounds(monitor);
+        let point = (f64::from(x), f64::from(y));
+        let geometry = look::landing_rect(area, point, f64::from(diameter), look.style);
+        let rect = geometry.bounds();
+        self.landing_frame.resize(rect.width, rect.height);
+        self.landing_frame.arrival = Some(Arrival::at(area, geometry, point, 1.0));
+        self.landing_frame.animate = self.animate && self.argb.is_some();
         if self.argb.is_some() {
-            let diameter = look.size.pixels(LANDING_SIZE);
-            self.landing_frame.resize(diameter, diameter);
             self.landing_frame.dark = true;
             self.landing_frame.opacity = 1.0;
             self.landing_frame.stroke = 2.0 * look.size.multiplier();
-            raster::render_landing(
-                &mut self.landing_frame,
-                look,
-                Duration::ZERO,
-                LANDING_DURATION,
-            );
-            let half = i32::try_from(diameter / 2).ok()?;
-            let rect = Bounds {
-                x: x - half,
-                y: y - half,
-                width: diameter,
-                height: diameter,
-            };
+            self.timeline
+                .render_landing(&mut self.landing_frame, self.edge_started.elapsed());
             self.show(self.landing, rect)?;
             return self
                 .argb
@@ -329,7 +352,8 @@ impl Overlay {
             glow_rect(monitor, edge, along, progress, look.size)
         };
         let Some(rect) = rect else {
-            self.edge_effect = None;
+            self.timeline
+                .end(End::Abandoned, self.edge_started.elapsed());
             return self.unmap(self.glow);
         };
         self.show(self.glow, rect)?;
@@ -358,8 +382,9 @@ impl Overlay {
                 progress,
                 along,
             };
-            effect.render(&mut self.edge_frame, self.edge_started.elapsed());
-            self.edge_effect = Some(effect);
+            self.timeline.push(effect, self.edge_started.elapsed());
+            self.timeline
+                .render_edge(&mut self.edge_frame, self.edge_started.elapsed());
             argb.blit(&self.connection, self.glow, &self.edge_frame)?;
         }
         Some(())

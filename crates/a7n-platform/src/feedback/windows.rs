@@ -36,9 +36,10 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 use windows_sys::core::{BOOL, PCWSTR, w};
 
-use self::geometry::{LANDING_DURATION, Rect, glow_alpha, glow_rect, landing_alpha};
+use self::geometry::{Rect, glow_alpha, glow_rect};
 use super::look::{self, BEAM_THICKNESS};
-use super::raster::{self, Along, EdgeEffect, Frame};
+use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
+use super::timeline::{End, Timeline};
 use super::{Command, Feedback, Look, Style};
 use blit::Bitmap;
 
@@ -108,7 +109,7 @@ fn run_ui_thread(ready: &sync::Sender<Option<u32>>) {
 struct Ui {
     glow: HWND,
     glow_frame: Frame,
-    edge_effect: Option<EdgeEffect>,
+    timeline: Timeline,
     glow_rect: Option<Rect>,
     edge_started: Instant,
     edge_timer: bool,
@@ -116,7 +117,6 @@ struct Ui {
     landing_frame: Frame,
     landing_bitmap: Bitmap,
     landing: HWND,
-    landing_started: Instant,
     animate: bool,
     landing_look: Look,
     landing_point: (i32, i32),
@@ -131,7 +131,7 @@ impl Ui {
         Some(Self {
             glow: create_overlay(module)?,
             glow_frame: Frame::default(),
-            edge_effect: None,
+            timeline: Timeline::default(),
             glow_rect: None,
             edge_started: Instant::now(),
             edge_timer: false,
@@ -139,7 +139,6 @@ impl Ui {
             landing_frame: Frame::default(),
             landing_bitmap: Bitmap::default(),
             landing: create_overlay(module)?,
-            landing_started: Instant::now(),
             animate: true,
             landing_look: Look::default(),
             landing_point: (0, 0),
@@ -159,6 +158,7 @@ impl Ui {
             } else if message.hwnd == self.landing
                 && message.message == WM_TIMER
                 && message.wParam == FADE_TIMER_ID
+                && self.timeline.landing_visible()
             {
                 self.fade_landing();
             } else if message.hwnd == self.glow
@@ -181,10 +181,19 @@ impl Ui {
                 progress,
                 look,
             } => self.show_glow(Rect::from_bounds(display), edge, progress, look),
-            Command::Clear => {
-                self.edge_effect = None;
-                self.edge_timer(false);
-                hide(self.glow);
+            Command::Clear | Command::Crossed => {
+                self.timeline.end(
+                    if command == Command::Crossed {
+                        End::Crossed
+                    } else {
+                        End::Abandoned
+                    },
+                    self.edge_started.elapsed(),
+                );
+                self.edge_timer(
+                    self.timeline
+                        .edge_playing(self.glow_frame.animate, self.edge_started.elapsed()),
+                );
             }
             Command::Landing { x, y, look } => self.show_landing((x, y), look),
             Command::LandingAtCursor { look } => {
@@ -206,12 +215,7 @@ impl Ui {
         let thickness = i32::try_from(look.size.pixels(u32::try_from(thickness).unwrap_or(1)))
             .unwrap_or(thickness);
         let rect = if look.style == Style::Beam {
-            let area = look::Rect {
-                x: f64::from(area.left),
-                y: f64::from(area.top),
-                width: f64::from(area.width()),
-                height: f64::from(area.height()),
-            };
+            let area = area.as_rect();
             let dpi = monitor.map_or(BASE_DPI, |m| m.dpi);
             look::beam_rect(
                 area,
@@ -240,7 +244,8 @@ impl Ui {
         };
         let Some(rect) = rect else {
             self.edge_timer(false);
-            self.edge_effect = None;
+            self.timeline
+                .end(End::Abandoned, self.edge_started.elapsed());
             hide(self.glow);
             return;
         };
@@ -273,14 +278,20 @@ impl Ui {
             }),
         };
         self.glow_frame.animate = animations_enabled();
-        self.edge_effect = Some(EdgeEffect {
-            look,
-            edge,
-            progress,
-            along,
-        });
+        self.timeline.push(
+            EdgeEffect {
+                look,
+                edge,
+                progress,
+                along,
+            },
+            self.edge_started.elapsed(),
+        );
         self.animate_edge_at(rect);
-        self.edge_timer(look.style.animated() && self.glow_frame.animate);
+        self.edge_timer(
+            self.timeline
+                .edge_playing(self.glow_frame.animate, self.edge_started.elapsed()),
+        );
     }
 
     fn edge_timer(&mut self, running: bool) {
@@ -306,10 +317,18 @@ impl Ui {
 
     fn animate_edge_at(&mut self, rect: Rect) {
         self.glow_rect = Some(rect);
-        if let Some(effect) = self.edge_effect {
-            effect.render(&mut self.glow_frame, self.edge_started.elapsed());
+        if self
+            .timeline
+            .render_edge(&mut self.glow_frame, self.edge_started.elapsed())
+        {
             self.glow_bitmap.show(self.glow, rect, &self.glow_frame);
+        } else {
+            hide(self.glow);
         }
+        self.edge_timer(
+            self.timeline
+                .edge_playing(self.glow_frame.animate, self.edge_started.elapsed()),
+        );
     }
 
     fn show_landing(&mut self, point: (i32, i32), look: Look) {
@@ -317,7 +336,7 @@ impl Ui {
         self.landing_point = point;
         self.landing_look = look;
         self.animate = animations_enabled();
-        self.landing_started = Instant::now();
+        self.timeline.land(look, self.edge_started.elapsed());
         self.fade_landing();
         // SAFETY: The window belongs to this thread; the timer is killed in
         // `fade_landing` and replaced if a new landing arrives first.
@@ -325,36 +344,50 @@ impl Ui {
     }
 
     fn fade_landing(&mut self) {
-        let alpha = landing_alpha(self.landing_started.elapsed(), self.animate);
-        if alpha == 0 {
-            // SAFETY: Stops the timer set on this thread's landing window.
-            unsafe { KillTimer(self.landing, FADE_TIMER_ID) };
-            hide(self.landing);
-            return;
-        }
         let look = self.landing_look;
+        let base = if look.style.animated() {
+            i32::try_from(raster::ARRIVAL_SIZE).unwrap_or(LANDING_DIAMETER_DIP)
+        } else {
+            LANDING_DIAMETER_DIP
+        };
         let diameter = look
             .size
-            .pixels(u32::try_from(scale_dip(LANDING_DIAMETER_DIP, self.landing_dpi)).unwrap_or(1));
-        let half = i32::try_from(diameter / 2).unwrap_or(0);
-        let rect = Rect::from_bounds(crate::input::Bounds {
-            x: self.landing_point.0 - half,
-            y: self.landing_point.1 - half,
-            width: diameter,
-            height: diameter,
-        });
-        self.landing_frame.resize(diameter, diameter);
+            .pixels(u32::try_from(scale_dip(base, self.landing_dpi)).unwrap_or(1));
+        let area = monitor_at(self.landing_point).map_or_else(
+            || {
+                let half = i32::try_from(diameter / 2).unwrap_or(0);
+                look::Rect {
+                    x: f64::from(self.landing_point.0 - half),
+                    y: f64::from(self.landing_point.1 - half),
+                    width: f64::from(diameter),
+                    height: f64::from(diameter),
+                }
+            },
+            |monitor| monitor.rect.as_rect(),
+        );
+        let point = (
+            f64::from(self.landing_point.0),
+            f64::from(self.landing_point.1),
+        );
+        let geometry = look::landing_rect(area, point, f64::from(diameter), look.style);
+        let bounds = geometry.bounds();
+        let rect = Rect::from_bounds(bounds);
+        self.landing_frame.resize(bounds.width, bounds.height);
+        self.landing_frame.arrival = Some(Arrival::at(area, geometry, point, 1.0));
         self.landing_frame.dark = true;
         self.landing_frame.animate = self.animate;
         self.landing_frame.opacity = 220.0 / 255.0;
         self.landing_frame.stroke =
             f64::from(scale_dip(LANDING_RING_DIP, self.landing_dpi)) * look.size.multiplier();
-        raster::render_landing(
-            &mut self.landing_frame,
-            look,
-            self.landing_started.elapsed(),
-            LANDING_DURATION,
-        );
+        if !self
+            .timeline
+            .render_landing(&mut self.landing_frame, self.edge_started.elapsed())
+        {
+            // SAFETY: Stops the timer set on this thread's landing window.
+            unsafe { KillTimer(self.landing, FADE_TIMER_ID) };
+            hide(self.landing);
+            return;
+        }
         self.landing_bitmap
             .show(self.landing, rect, &self.landing_frame);
     }

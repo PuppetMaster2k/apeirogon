@@ -15,7 +15,7 @@ mod blit;
 use std::ffi::c_void;
 use std::sync::mpsc as sync;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use objc2::MainThreadMarker;
 use objc2::rc::{Retained, autoreleasepool};
@@ -34,16 +34,13 @@ use tokio::sync::mpsc;
 
 use super::look::{self, BEAM_THICKNESS};
 use super::macos_geometry::{self as geometry, LANDING_DIAMETER, Rect};
-use super::raster::{self, Along, EdgeEffect, Frame};
+use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
+use super::timeline::{End, Timeline};
 use super::{Command, Feedback, Look, Style};
 use crate::main_thread::{self, Waker};
 use blit::Bitmap;
 
 const LANDING_RING_WIDTH: f64 = 4.0;
-/// Long enough to notice, short enough not to linger over the new window.
-const LANDING_FADE: Duration = Duration::from_millis(700);
-/// With Reduce Motion on the ring stays put instead of fading.
-const LANDING_STATIC_HOLD: Duration = Duration::from_millis(500);
 /// Never fires on its own; every landing re-arms it.
 const TIMER_DISARMED_SECONDS: f64 = 1.0e12;
 const LANDING_FRAME_SECONDS: f64 = 0.016;
@@ -60,16 +57,14 @@ struct Panels {
     glow: Retained<NSPanel>,
     glow_fill: Retained<NSImageView>,
     glow_frame: Frame,
-    edge_effect: Option<EdgeEffect>,
+    timeline: Timeline,
     edge_started: Instant,
-    landing_visible: bool,
     timer_running: bool,
     glow_bitmap: Bitmap,
     landing_frame: Frame,
     landing_bitmap: Bitmap,
     landing: Retained<NSPanel>,
     landing_fill: Retained<NSImageView>,
-    landing_started: Instant,
     landing_center: (f64, f64),
     landing_look: Look,
     animate: bool,
@@ -148,7 +143,19 @@ impl Ui {
     fn apply(&mut self, command: Command) {
         match command {
             Command::Tick => tick_haptics(),
-            Command::Clear => self.hide_glow(),
+            Command::Clear | Command::Crossed => {
+                if let Some(panels) = &mut self.panels {
+                    panels.timeline.end(
+                        if command == Command::Crossed {
+                            End::Crossed
+                        } else {
+                            End::Abandoned
+                        },
+                        panels.edge_started.elapsed(),
+                    );
+                    panels.arm_timer();
+                }
+            }
             Command::Edge {
                 display,
                 edge,
@@ -175,7 +182,7 @@ impl Ui {
 
     fn hide_glow(&mut self) {
         if let Some(panels) = &mut self.panels {
-            panels.edge_effect = None;
+            panels.timeline = Timeline::default();
             panels.glow.orderOut(None);
             panels.arm_timer();
         }
@@ -232,16 +239,14 @@ impl Panels {
             glow,
             glow_fill,
             glow_frame: Frame::default(),
-            edge_effect: None,
+            timeline: Timeline::default(),
             edge_started: Instant::now(),
-            landing_visible: false,
             timer_running: false,
             glow_bitmap: Bitmap::default(),
             landing_frame: Frame::default(),
             landing_bitmap: Bitmap::default(),
             landing,
             landing_fill,
-            landing_started: Instant::now(),
             landing_center: (0.0, 0.0),
             landing_look: Look::default(),
             animate: true,
@@ -314,11 +319,23 @@ impl Panels {
             rect
         };
         let Some(rect) = rect else {
-            self.edge_effect = None;
+            self.timeline
+                .end(End::Abandoned, self.edge_started.elapsed());
             self.glow.orderOut(None);
             self.arm_timer();
             return;
         };
+        self.paint_glow(rect, screen, edge, progress, look);
+    }
+
+    fn paint_glow(
+        &mut self,
+        rect: Rect,
+        screen: Rect,
+        edge: a7n_proto::v1::Edge,
+        progress: u16,
+        look: Look,
+    ) {
         self.glow.setFrame_display(ns_rect(rect), false);
         let scale = self.glow.backingScaleFactor();
         self.glow_frame.resize(
@@ -347,12 +364,15 @@ impl Panels {
             },
         };
         self.glow_frame.animate = !reduce_motion();
-        self.edge_effect = Some(EdgeEffect {
-            look,
-            edge,
-            progress,
-            along,
-        });
+        self.timeline.push(
+            EdgeEffect {
+                look,
+                edge,
+                progress,
+                along,
+            },
+            self.edge_started.elapsed(),
+        );
         self.render_edge();
         self.arm_timer();
         self.glow.orderFrontRegardless();
@@ -371,52 +391,44 @@ impl Panels {
 
     fn show_landing_at(&mut self, center: (f64, f64), look: Look) {
         self.landing_center = center;
-        self.landing_started = Instant::now();
+        self.timeline.land(look, self.edge_started.elapsed());
         self.landing_look = look;
         self.animate = !reduce_motion();
-        self.landing_visible = true;
         self.fade_landing();
         self.landing.orderFrontRegardless();
         self.arm_timer();
     }
 
     fn render_edge(&mut self) {
-        if let Some(effect) = self.edge_effect {
-            effect.render(&mut self.glow_frame, self.edge_started.elapsed());
+        if self
+            .timeline
+            .render_edge(&mut self.glow_frame, self.edge_started.elapsed())
+        {
             self.glow_bitmap.show(&self.glow_fill, &self.glow_frame);
+        } else {
+            self.glow.orderOut(None);
         }
     }
 
     fn animate_frame(&mut self) {
-        if self
-            .edge_effect
-            .is_some_and(|effect| effect.look.style.animated())
-            && self.glow_frame.animate
-        {
-            self.render_edge();
-        }
-        if self.landing_visible {
+        self.render_edge();
+        if self.timeline.landing_visible() {
             self.fade_landing();
         }
         self.arm_timer();
     }
 
     fn arm_timer(&mut self) {
-        let edge = self
-            .edge_effect
-            .is_some_and(|effect| effect.look.style.animated())
-            && self.glow_frame.animate;
-        let running = edge || (self.landing_visible && self.animate);
+        let running = self
+            .timeline
+            .edge_playing(self.glow_frame.animate, self.edge_started.elapsed())
+            || self.timeline.landing_visible();
         if running && self.timer_running {
             return;
         }
         self.timer_running = running;
         let delay = if running {
             LANDING_FRAME_SECONDS
-        } else if self.landing_visible {
-            LANDING_STATIC_HOLD
-                .saturating_sub(self.landing_started.elapsed())
-                .as_secs_f64()
         } else {
             TIMER_DISARMED_SECONDS
         };
@@ -426,44 +438,48 @@ impl Panels {
 
     fn fade_landing(&mut self) {
         let look = self.landing_look;
-        let duration = if self.animate {
-            LANDING_FADE
+        let base = if look.style.animated() {
+            f64::from(raster::ARRIVAL_SIZE)
         } else {
-            LANDING_STATIC_HOLD
+            LANDING_DIAMETER
         };
-        let (_, alpha) = look
-            .landing
-            .frame(self.landing_started.elapsed(), duration, self.animate);
-        if alpha == 0.0 {
-            self.landing.orderOut(None);
-            self.landing_visible = false;
+        let diameter = base * look.size.multiplier();
+        let point = (self.landing_center.0, -self.landing_center.1);
+        let screens = screen_frames(self.mtm);
+        let Some(screen) =
+            geometry::screen_containing(&screens, self.landing_center.0, self.landing_center.1)
+        else {
             return;
-        }
-        let radius = LANDING_DIAMETER / 2.0 * look.size.multiplier();
+        };
+        let area = Rect {
+            y: -screen.y - screen.height,
+            ..screen
+        };
+        let rect = look::landing_rect(area, point, diameter, look.style);
         self.landing.setFrame_display(
             ns_rect(Rect {
-                x: self.landing_center.0 - radius,
-                y: self.landing_center.1 - radius,
-                width: radius * 2.0,
-                height: radius * 2.0,
+                y: -rect.y - rect.height,
+                ..rect
             }),
             false,
         );
         let scale = self.landing.backingScaleFactor();
         self.landing_frame.resize(
-            pixel_size(radius * 2.0 * scale),
-            pixel_size(radius * 2.0 * scale),
+            pixel_size(rect.width * scale),
+            pixel_size(rect.height * scale),
         );
+        self.landing_frame.arrival = Some(Arrival::at(area, rect, point, scale));
         self.landing_frame.animate = self.animate;
         self.landing_frame.dark = true;
         self.landing_frame.opacity = 1.0;
         self.landing_frame.stroke = LANDING_RING_WIDTH * look.size.multiplier() * scale;
-        raster::render_landing(
-            &mut self.landing_frame,
-            look,
-            self.landing_started.elapsed(),
-            duration,
-        );
+        if !self
+            .timeline
+            .render_landing(&mut self.landing_frame, self.edge_started.elapsed())
+        {
+            self.landing.orderOut(None);
+            return;
+        }
         self.landing_bitmap
             .show(&self.landing_fill, &self.landing_frame);
     }

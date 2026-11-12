@@ -12,6 +12,7 @@ homepage.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+tiny-skia.workspace = true
 serde.workspace = true
 netdev.workspace = true
 a7n-core.workspace = true

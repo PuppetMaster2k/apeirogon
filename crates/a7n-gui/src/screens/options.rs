@@ -306,7 +306,7 @@ impl App {
                                 ("beam", t!("Beam").as_ref()),
                                 ("aperture", t!("Aperture").as_ref()),
                                 ("sparks", t!("Sparks").as_ref()),
-                                ("ripple", t!("Ripple").as_ref()),
+                                ("membrane", t!("Membrane").as_ref()),
                             ][..],
                         ),
                         (

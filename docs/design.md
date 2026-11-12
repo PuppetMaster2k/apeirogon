@@ -269,7 +269,13 @@ crates/
   Setting `feedback.edge`
   (default true) draws a glow along the pushed edge that grows with the built-up
   resistance; `feedback.style` chooses `glow` (default), a growing solid
-  `beam`, an opening `aperture`, flying `sparks`, or travelling `ripple` waves.
+  `beam`, an opening `aperture`, gathering `sparks`, or a bending `membrane`
+  (`ripple` remains a read alias). Animated styles pair a pressure-driven
+  departure with a matching arrival lasting about 650 ms. Quarter crossings
+  shudder or brighten the departure; breakthrough plays its finish instead of
+  removing it, while abandoned pushes drain back. Membrane parts at the pointer
+  and closes behind the landing with damped rings; sparks pull into the crossing
+  and burst out at the landing; aperture flashes closed and opens/closes on arrival.
   `feedback.color` chooses `accent` (default), `green`, `orange`, `pink`, or one
   of the 22 fixed gradients from issue #258 (the shared palette defines their
   names and stops). Gradients run along the pushed edge, around landing rings,
@@ -277,7 +283,8 @@ crates/
   and `feedback.size` chooses `small`, `medium` (default) or `large`; `feedback.landing` (default true) briefly marks where the pointer
   lands after a take, using the same colour and size;
   `feedback.landing_style` chooses `ring` (default), an expanding `pulse`, or a
-  shrinking filled `dot`, with motion disabled under reduce-motion; `feedback.haptics` (default false, macOS only) ticks the
+  shrinking filled `dot` for Glow and Beam. Reduce-motion uses static
+  progress-dependent departures and short arrival fades; `feedback.haptics` (default false, macOS only) ticks the
   trackpad at each quarter of the push. The daemon decides what to send
   (progress changes of at least 5 % and quarter crossings); each OS backend draws
   a click-through overlay that never takes focus and honours the OS reduce-motion
