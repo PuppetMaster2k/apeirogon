@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.35.0...v0.36.0) (2026-11-12)
+
+
+### Features
+
+* show why a paired machine is not connected ([#242](https://github.com/PuppetMaster2k/apeirogon/issues/242)) ([fadd615](https://github.com/PuppetMaster2k/apeirogon/commit/fadd615b4d748dc5ef1baafa790e46ec4cc9ebee))
+
 ## [0.35.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.34.0...v0.35.0) (2026-11-12)
 
 
