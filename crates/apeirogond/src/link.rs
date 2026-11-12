@@ -36,6 +36,8 @@ pub(crate) enum LinkError {
     Write(#[from] quinn::WriteError),
     #[error("dial superseded before a link to the peer was established")]
     Superseded(MachineId),
+    #[error("link liveness failed: {0:?}")]
+    Liveness(a7n_core::liveness::DropReason),
     #[error("handshake timed out")]
     Timeout,
     #[error("the control stream ended early")]
@@ -54,6 +56,48 @@ pub(crate) enum LinkError {
     NoPeerCertificate,
     #[error(transparent)]
     Identity(#[from] IdentityError),
+}
+
+pub(crate) fn link_problem(error: &LinkError) -> a7n_ipc::LinkProblem {
+    use a7n_ipc::LinkProblem;
+    use quinn::{ReadError, TransportErrorCode, WriteError};
+
+    let connection = match error {
+        LinkError::Connection(error)
+        | LinkError::Read(ReadError::ConnectionLost(error))
+        | LinkError::Write(WriteError::ConnectionLost(error)) => error,
+        LinkError::UpdateRequired { name, .. } => {
+            return LinkProblem::VersionMismatch {
+                older: Some(name.clone()),
+            };
+        }
+        LinkError::Liveness(a7n_core::liveness::DropReason::Silence) => {
+            return LinkProblem::Silent;
+        }
+        LinkError::NoPeerCertificate | LinkError::Identity(_) => return LinkProblem::AuthFailed,
+        _ => return LinkProblem::Unreachable,
+    };
+    let code = match connection {
+        ConnectionError::TransportError(error) => error.code,
+        ConnectionError::ConnectionClosed(close) => close.error_code,
+        ConnectionError::ApplicationClosed(close) if close.error_code == CLOSE_SILENT => {
+            return LinkProblem::Silent;
+        }
+        ConnectionError::VersionMismatch => return LinkProblem::VersionMismatch { older: None },
+        ConnectionError::Reset => return LinkProblem::Refused,
+        _ => return LinkProblem::Unreachable,
+    };
+    // QUIC encodes TLS alerts in the crypto error range.
+    if (u64::from(TransportErrorCode::crypto(u8::MIN))
+        ..=u64::from(TransportErrorCode::crypto(u8::MAX)))
+        .contains(&u64::from(code))
+    {
+        return LinkProblem::AuthFailed;
+    }
+    if code == TransportErrorCode::CONNECTION_REFUSED {
+        return LinkProblem::Refused;
+    }
+    LinkProblem::Unreachable
 }
 
 /// Who opened the QUIC connection.
@@ -151,6 +195,21 @@ impl Links {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn link_problem_pin_mismatch_returns_auth_failed() {
+        // Arrange
+        let alert = u8::from(rustls::AlertDescription::BadCertificate);
+        let error = LinkError::Connection(ConnectionError::TransportError(
+            quinn::TransportErrorCode::crypto(alert).into(),
+        ));
+
+        // Act
+        let problem = link_problem(&error);
+
+        // Assert
+        assert_eq!(problem, a7n_ipc::LinkProblem::AuthFailed);
+    }
 
     fn id(byte: u8) -> MachineId {
         MachineId::try_from(&[byte; MachineId::LEN][..]).unwrap()

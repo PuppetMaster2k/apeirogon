@@ -9,7 +9,7 @@ use tokio::time::{Instant, timeout_at};
 use super::{Daemon, DaemonError, Event};
 use crate::command::Reply;
 use crate::handshake;
-use crate::link::{CLOSE_SUPERSEDED, Link, LinkError, LinkHandle, peer_certificate};
+use crate::link::{CLOSE_SUPERSEDED, Link, LinkError, LinkHandle, link_problem, peer_certificate};
 use crate::{identity, link_driver};
 
 pub(super) struct PendingConnect {
@@ -50,7 +50,9 @@ impl Daemon {
                     .await
                     .unwrap_or(Err(crate::link::LinkError::Timeout));
                     drop(permit);
-                    let _ = events.send(Event::Link(result.map(Box::new), None)).await;
+                    let _ = events
+                        .send(Event::Link(Some(peer), result.map(Box::new), None))
+                        .await;
                 });
                 Ok(())
             }
@@ -79,13 +81,13 @@ impl Daemon {
             Event::DiscoveryDialEnded(peer) => {
                 self.nearby.discovery_dials.remove(&peer);
             }
-            Event::Link(Err(LinkError::Superseded(peer)), Some(reply)) => {
+            Event::Link(_, Err(LinkError::Superseded(peer)), Some(reply)) => {
                 self.wait_for_connect(peer, reply);
             }
             Event::ExpireConnects => self.finish_connects(),
             Event::FirewallChecked(result) => self.firewall_checked(result),
-            Event::Link(result, reply) => {
-                self.link_received(result, reply);
+            Event::Link(peer, result, reply) => {
+                self.link_received(peer, result, reply);
             }
             Event::PairingEnded => self.pairing.host_busy = false,
             Event::Confirmed {
@@ -102,9 +104,10 @@ impl Daemon {
             } => {
                 self.joined(result, addr, reply);
             }
-            Event::Ended(peer, id) => {
+            Event::Ended(peer, id, problem) => {
                 // An old task can finish after its replacement is registered.
                 if self.is_current(peer, id) {
+                    self.link_problems.insert(peer, problem);
                     self.links.by_peer.remove(&peer);
                     self.input_link_lost(peer);
                 }
@@ -128,7 +131,19 @@ impl Daemon {
         });
     }
 
-    fn link_received(&mut self, result: Result<Box<Link>, LinkError>, reply: Option<Reply<()>>) {
+    fn link_received(
+        &mut self,
+        peer: Option<MachineId>,
+        result: Result<Box<Link>, LinkError>,
+        reply: Option<Reply<()>>,
+    ) {
+        if let (Some(peer), Err(error)) = (peer, &result)
+            && self.pins.get(&peer).is_some()
+            && !self.is_linked(peer)
+            && !matches!(error, LinkError::Superseded(_))
+        {
+            self.link_problems.insert(peer, link_problem(error));
+        }
         let result = result
             .map_err(DaemonError::from)
             .and_then(|link| self.register(*link));
@@ -213,6 +228,7 @@ impl Daemon {
             }
             self.input_link_lost(peer);
         }
+        self.link_problems.remove(&peer);
         self.send_link_state(&link, &sender);
         self.clipboard_link_up(peer);
         self.files_link_up(peer);
@@ -251,9 +267,13 @@ impl Daemon {
         let events = self.mailboxes.events.clone();
         self.tasks.spawn(async move {
             let connection = link.connection.clone();
-            let _ = link_driver::drive(link, inbound, outbound, transfers).await;
+            let error = link_driver::drive(link, inbound, outbound, transfers)
+                .await
+                .map_or_else(|error| error, LinkError::Liveness);
             connection.close(crate::link::CLOSE_NORMAL, b"");
-            let _ = events.send(Event::Ended(peer, id)).await;
+            let _ = events
+                .send(Event::Ended(peer, id, link_problem(&error)))
+                .await;
         });
     }
 }

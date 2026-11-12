@@ -123,6 +123,7 @@ impl Daemon {
                     id,
                     name: entry.name.clone(),
                     connected: self.is_linked(id),
+                    problem: self.link_problems.get(&id).cloned(),
                     rtt_ms: None,
                     can_wake: entry.hw_addr.is_some(),
                     waking: self.wol.pending.as_ref().is_some_and(|pending| {

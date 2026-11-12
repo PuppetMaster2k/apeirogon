@@ -397,6 +397,12 @@ do not.
     them. Only a missing allow offers an elevated `netsh advfirewall` command
     to add our own rule. The daemon never creates rules or asks for elevation.
     Other platforms report nothing.
+  - Local IPC version 14 adds per-peer `problem` to status, reporting the last
+    unreachable, refused, TLS/pin failure, protocol version mismatch (with the
+    older machine when known), or liveness silence drop. It is session state,
+    cleared when the link comes up. The GUI and `a7n status` show the reason
+    and a short next step for disconnected peers. Update daemon and local
+    clients together; the peer wire protocol is unchanged.
   - Local IPC version 12 replaces `RecordTriggerKey` with `RecordHotkey { kind }`
     (`trigger`, `chord`, or `modifiers`) and replies with `Recorded { value }`.
     Recording collects key-downs until all recorded keys are released or 10 s

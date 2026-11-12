@@ -158,8 +158,9 @@ async fn finish_wake_link_up_takes_once_with_original_landing() {
                 .await
                 .unwrap()
         };
+        let mut peer_id = None;
         let (link, mut remote_link) = tokio::join!(
-            crate::endpoint::dial(&daemon.endpoint, addr, &daemon.info),
+            crate::endpoint::dial(&daemon.endpoint, addr, &daemon.info, &mut peer_id),
             accept
         );
         daemon.register(link.unwrap()).unwrap();

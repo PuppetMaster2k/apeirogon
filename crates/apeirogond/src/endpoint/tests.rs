@@ -30,7 +30,7 @@ async fn dial_unknown_pin_outside_pairing_window_receives_bad_certificate() {
     endpoint.set_default_client_config(tls::client_config(&identity, trust).unwrap());
 
     // Act
-    let result = dial(&endpoint, host.addr, &PeerInfo::default()).await;
+    let result = dial(&endpoint, host.addr, &PeerInfo::default(), &mut None).await;
 
     // Assert
     let Err(LinkError::Connection(lost) | LinkError::Read(quinn::ReadError::ConnectionLost(lost))) =

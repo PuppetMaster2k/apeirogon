@@ -38,8 +38,9 @@ async fn drive_motion_and_batches_uses_datagram_and_numbers_reliable_input() {
         let connection = server.accept().await.unwrap().await.unwrap();
         handshake::respond(connection, &info, true).await.unwrap()
     };
+    let mut peer_id = None;
     let (link, mut remote) = tokio::join!(
-        endpoint::dial(&client, server.local_addr().unwrap(), &info),
+        endpoint::dial(&client, server.local_addr().unwrap(), &info, &mut peer_id),
         accept,
     );
     let (outbound, mailbox) = mpsc::channel(4);

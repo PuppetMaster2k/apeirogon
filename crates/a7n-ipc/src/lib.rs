@@ -3,7 +3,7 @@
 
 //! Versioned JSON-lines API shared by the daemon, CLI and GUI.
 //!
-//! Each connection starts with `{"ipc_version":12}` in both directions, then
+//! Each connection starts with `{"ipc_version":14}` in both directions, then
 //! exchanges one request and one response at a time. Messages use a `type` tag
 //! and `snake_case` variant names, with fields alongside the tag. Status fields
 //! are flattened into the status response. Machine ids are 32 hex characters.
@@ -30,12 +30,12 @@ pub use firewall::{FirewallProblem, NetworkProfile};
 pub use format::format_size;
 pub use types::{
     ClipboardCopy, ClipboardInfo, ClipboardKind, ErrorKind, FileTransfer, FinishedSend,
-    HeldClipboard, HeldFiles, HotkeyKind, LayoutInfo, LayoutPlacement, NearbyMachine,
+    HeldClipboard, HeldFiles, HotkeyKind, LayoutInfo, LayoutPlacement, LinkProblem, NearbyMachine,
     PeerClipboard, PeerInfo, Permission, PlacedMachine, Request, Response, SendOutcome, StatusInfo,
     TransferDirection, UnplacedMachine,
 };
 
 /// Local API major version, independent of the peer protobuf protocol.
-pub const IPC_VERSION: u32 = 13;
+pub const IPC_VERSION: u32 = 14;
 /// Maximum JSON payload bytes per line, excluding the terminating newline.
 pub const MAX_LINE_LENGTH: usize = 64 * 1024;

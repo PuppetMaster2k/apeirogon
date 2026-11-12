@@ -383,6 +383,17 @@ pub struct NearbyMachine {
     pub addr: SocketAddr,
 }
 
+/// The last known reason a peer could not establish or keep its link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkProblem {
+    Unreachable,
+    Refused,
+    AuthFailed,
+    VersionMismatch { older: Option<String> },
+    Silent,
+}
+
 /// One known peer, whether connected or offline.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -391,6 +402,7 @@ pub struct PeerInfo {
     pub id: MachineId,
     pub name: String,
     pub connected: bool,
+    pub problem: Option<LinkProblem>,
     pub rtt_ms: Option<u64>,
     /// A validated hardware address has been remembered; never expose the address.
     pub can_wake: bool,
