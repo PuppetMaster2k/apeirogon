@@ -20,7 +20,7 @@ const GLOW_MIN_PERMILLE: i32 = 250;
 const GLOW_ALPHA_MIN: u8 = 90;
 const GLOW_ALPHA_MAX: u8 = 230;
 
-const LANDING_DURATION: Duration = Duration::from_millis(400);
+pub(super) const LANDING_DURATION: Duration = Duration::from_millis(400);
 const LANDING_ALPHA: u8 = 220;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,18 +123,11 @@ pub(super) fn glow_alpha(progress: u16) -> u8 {
 /// Opacity of the landing marker `elapsed` after it appeared. Without
 /// animation it stays solid for the whole duration instead of fading.
 pub(super) fn landing_alpha(elapsed: Duration, animate: bool) -> u8 {
-    let Some(left) = LANDING_DURATION
-        .checked_sub(elapsed)
-        .filter(|left| !left.is_zero())
-    else {
-        return 0;
-    };
-    if !animate {
-        return LANDING_ALPHA;
-    }
-    let remaining = u32::try_from(left.as_millis()).unwrap_or(0);
-    let total = u32::try_from(LANDING_DURATION.as_millis()).unwrap_or(1);
-    u8::try_from(u32::from(LANDING_ALPHA) * remaining / total).unwrap_or(LANDING_ALPHA)
+    let (_, alpha) = crate::feedback::Landing::Ring.frame(elapsed, LANDING_DURATION, animate);
+    // The shared opacity is bounded to 0..=1 before converting to a byte.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let alpha = (f64::from(LANDING_ALPHA) * alpha) as u8;
+    alpha
 }
 
 fn scale(value: i32, permille: i32) -> i32 {

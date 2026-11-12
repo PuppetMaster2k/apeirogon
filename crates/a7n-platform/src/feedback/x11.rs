@@ -8,7 +8,7 @@
 //! is needed. The EWMH hints are set anyway for compositors that look at them.
 //!
 //! X11 has no reliable reduce-motion setting, so the landing mark is a short
-//! static square that never animates; that satisfies reduce-motion everywhere.
+//! static marker that never animates; that satisfies reduce-motion everywhere.
 
 mod geometry;
 
@@ -21,13 +21,13 @@ use x11rb::connection::Connection;
 use x11rb::protocol::shape::{ConnectionExt as _, SK, SO};
 use x11rb::protocol::xproto::{
     AtomEnum, ChangeWindowAttributesAux, ClipOrdering, ConfigureWindowAux, ConnectionExt as _,
-    CreateWindowAux, PropMode, StackMode, Window, WindowClass,
+    CreateWindowAux, PropMode, Rectangle, StackMode, Window, WindowClass,
 };
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
 use super::look::{self, BEAM_THICKNESS, Rect};
-use super::{Color, Command, Feedback, Look, Style, channel};
+use super::{Color, Command, Feedback, Landing, Look, Style, channel};
 use crate::input::Bounds;
 use geometry::{glow_rect, pick_monitor};
 
@@ -140,18 +140,48 @@ impl Overlay {
                 look,
             } => self.show_glow(display, edge, progress, look),
             Command::Clear => self.unmap(self.glow),
-            Command::Landing { x, y } => {
-                let half = i32::try_from(LANDING_SIZE / 2).unwrap_or(0);
-                let mark = Bounds {
-                    x: x.saturating_sub(half),
-                    y: y.saturating_sub(half),
-                    width: LANDING_SIZE,
-                    height: LANDING_SIZE,
-                };
-                self.show(self.landing, mark)
-            }
+            Command::Landing { x, y, look } => self.show_landing(x, y, look),
             Command::Tick => Some(()),
         }
+    }
+
+    fn show_landing(&self, x: i32, y: i32, look: Look) -> Option<()> {
+        let (radius, _) = look.landing.frame(Duration::ZERO, LANDING_DURATION, false);
+        let diameter = f64::from(LANDING_SIZE) * look.size.multiplier() * radius;
+        let mark = Rect {
+            x: f64::from(x) - diameter / 2.0,
+            y: f64::from(y) - diameter / 2.0,
+            width: diameter,
+            height: diameter,
+        }
+        .bounds();
+        let diameter = u16::try_from(mark.width).ok()?;
+        let shape = landing_shape(
+            diameter,
+            look.landing == Landing::Dot,
+            look.size.multiplier(),
+        );
+        self.connection
+            .shape_rectangles(
+                SO::SET,
+                SK::BOUNDING,
+                ClipOrdering::UNSORTED,
+                self.landing,
+                0,
+                0,
+                &shape,
+            )
+            .ok()?;
+        self.connection
+            .change_window_attributes(
+                self.landing,
+                &ChangeWindowAttributesAux::new().background_pixel(rgb_pixel(look.color.rgb(true))),
+            )
+            .ok()?;
+        self.connection
+            .clear_area(false, self.landing, 0, 0, 0, 0)
+            .ok()?;
+        self.show(self.landing, mark)
     }
 
     fn show_glow(&self, display: Bounds, edge: Edge, progress: u16, look: Look) -> Option<()> {
@@ -215,6 +245,38 @@ impl Overlay {
         self.connection.unmap_window(window).ok()?;
         self.connection.flush().ok()
     }
+}
+
+/// Rasterize a circle into scanlines for SHAPE, without requiring a compositor.
+fn landing_shape(diameter: u16, dot: bool, scale: f64) -> Vec<Rectangle> {
+    const RING_WIDTH: f64 = 2.0;
+    let radius = f64::from(diameter) / 2.0;
+    let inner = if dot {
+        0.0
+    } else {
+        (radius - RING_WIDTH * scale).max(0.0)
+    };
+    let mut shape = Vec::new();
+    for y in 0..diameter {
+        let dy = f64::from(y) + 0.5 - radius;
+        let mut start = None;
+        for x in 0..=diameter {
+            let dx = f64::from(x) + 0.5 - radius;
+            let distance = dx * dx + dy * dy;
+            let filled = x < diameter && distance <= radius * radius && distance >= inner * inner;
+            if filled {
+                start.get_or_insert(x);
+            } else if let Some(from) = start.take() {
+                shape.push(Rectangle {
+                    x: i16::try_from(from).unwrap_or(0),
+                    y: i16::try_from(y).unwrap_or(0),
+                    width: x - from,
+                    height: 1,
+                });
+            }
+        }
+    }
+    shape
 }
 
 /// An unmapped, click-through, override-redirect window in the accent colour.

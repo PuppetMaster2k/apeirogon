@@ -176,7 +176,9 @@ impl App {
                         .then_some("Only available on macOS"),
                 },
             ]);
-            if self.value("feedback.edge", "true") == "true" {
+            let edge = self.value("feedback.edge", "true") == "true";
+            let landing = self.value("feedback.landing", "true") == "true";
+            if edge || landing {
                 ui.add_enabled_ui(feedback_supported, |ui| {
                     for (key, title, default, choices) in [
                         (
@@ -184,6 +186,12 @@ impl App {
                             "Style",
                             "glow",
                             &[("glow", "Glow"), ("beam", "Beam")][..],
+                        ),
+                        (
+                            "feedback.landing_style",
+                            "Landing animation",
+                            "ring",
+                            &[("ring", "Ring"), ("pulse", "Pulse"), ("dot", "Dot")][..],
                         ),
                         (
                             "feedback.color",
@@ -203,6 +211,11 @@ impl App {
                             &[("small", "Small"), ("medium", "Medium"), ("large", "Large")][..],
                         ),
                     ] {
+                        if (key == "feedback.style" && !edge)
+                            || (key == "feedback.landing_style" && !landing)
+                        {
+                            continue;
+                        }
                         let current = self.value(key, default);
                         let mut value = current.as_str();
                         theme::setting_row(ui, title, "", Some(key), |ui| {

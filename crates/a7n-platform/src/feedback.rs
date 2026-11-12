@@ -40,7 +40,7 @@ use tokio::sync::mpsc;
 use crate::input::Bounds;
 
 mod look;
-pub use look::{Color, Look, Size, Style};
+pub use look::{Color, Landing, Look, Size, Style};
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -69,6 +69,7 @@ pub enum Command {
     Landing {
         x: i32,
         y: i32,
+        look: Look,
     },
     Tick,
 }

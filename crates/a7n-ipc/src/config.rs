@@ -407,7 +407,9 @@ impl Config {
                 ]
                 | ["hotkeys", "double_tap" | "trigger_mode" | "lock" | "jump"]
                 | ["gui", "appearance"]
-                | ["feedback", "style" | "color" | "size"] => toml::Value::String(value.into()),
+                | ["feedback", "style" | "landing_style" | "color" | "size"] => {
+                    toml::Value::String(value.into())
+                }
                 ["hotkeys", "home"] | ["input", "local_keys"] => toml::Value::Array(
                     value
                         .split(',')

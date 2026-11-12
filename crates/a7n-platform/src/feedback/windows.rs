@@ -12,7 +12,7 @@ mod geometry;
 use std::ptr::{null, null_mut};
 use std::sync::mpsc as sync;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use a7n_proto::v1::Edge;
 use tokio::sync::mpsc;
@@ -41,9 +41,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 use windows_sys::core::{BOOL, PCWSTR, w};
 
-use self::geometry::{Rect, glow_alpha, glow_rect, landing_alpha};
+use self::geometry::{LANDING_DURATION, Rect, glow_alpha, glow_rect, landing_alpha};
 use super::look::{self, BEAM_THICKNESS};
-use super::{Color, Command, Feedback, Look, Style};
+use super::{Color, Command, Feedback, Landing, Look, Style};
 
 /// Carries a boxed [`Command`] in `lParam` from the relay to the UI thread.
 const WM_FEEDBACK: u32 = WM_APP;
@@ -117,6 +117,9 @@ struct Ui {
     landing: HWND,
     landing_started: Instant,
     animate: bool,
+    landing_look: Look,
+    landing_point: (i32, i32),
+    landing_dpi: u32,
 }
 
 impl Ui {
@@ -129,6 +132,9 @@ impl Ui {
             landing: create_overlay(module)?,
             landing_started: Instant::now(),
             animate: true,
+            landing_look: Look::default(),
+            landing_point: (0, 0),
+            landing_dpi: BASE_DPI,
         })
     }
 
@@ -162,7 +168,7 @@ impl Ui {
                 look,
             } => self.show_glow(Rect::from_bounds(display), edge, progress, look),
             Command::Clear => hide(self.glow),
-            Command::Landing { x, y } => self.show_landing((x, y)),
+            Command::Landing { x, y, look } => self.show_landing((x, y), look),
             Command::Tick => {}
         }
     }
@@ -217,23 +223,21 @@ impl Ui {
         }
     }
 
-    fn show_landing(&mut self, point: (i32, i32)) {
-        let dpi = monitor_at(point).map_or(BASE_DPI, |monitor| monitor.dpi);
-        let diameter = scale_dip(LANDING_DIAMETER_DIP, dpi);
-        let rect = Rect {
-            left: point.0 - diameter / 2,
-            top: point.1 - diameter / 2,
-            right: point.0 - diameter / 2 + diameter,
-            bottom: point.1 - diameter / 2 + diameter,
-        };
-        set_ring_shape(self.landing, diameter, scale_dip(LANDING_RING_DIP, dpi));
+    fn show_landing(&mut self, point: (i32, i32), look: Look) {
+        self.landing_dpi = monitor_at(point).map_or(BASE_DPI, |monitor| monitor.dpi);
+        self.landing_point = point;
+        self.landing_look = look;
         self.animate = animations_enabled();
         self.landing_started = Instant::now();
-        show(
-            self.landing,
-            rect,
-            landing_alpha(Duration::ZERO, self.animate),
-        );
+        // SAFETY: This thread owns the window; user data stores a plain RGB value.
+        unsafe {
+            SetWindowLongPtrW(
+                self.landing,
+                GWLP_USERDATA,
+                isize::try_from(colorref(look.color.rgb(true))).unwrap_or(0),
+            );
+        }
+        self.fade_landing();
         // SAFETY: The window belongs to this thread; the timer is killed in
         // `fade_landing` and replaced if a new landing arrives first.
         unsafe { SetTimer(self.landing, FADE_TIMER_ID, FADE_FRAME_MS, None) };
@@ -247,7 +251,34 @@ impl Ui {
             hide(self.landing);
             return;
         }
-        set_alpha(self.landing, alpha);
+        let look = self.landing_look;
+        let (radius, _) = look.landing.frame(
+            self.landing_started.elapsed(),
+            LANDING_DURATION,
+            self.animate,
+        );
+        let diameter = f64::from(scale_dip(LANDING_DIAMETER_DIP, self.landing_dpi))
+            * look.size.multiplier()
+            * radius;
+        let half = diameter / 2.0;
+        let rect = Rect::from_bounds(
+            look::Rect {
+                x: f64::from(self.landing_point.0) - half,
+                y: f64::from(self.landing_point.1) - half,
+                width: diameter,
+                height: diameter,
+            }
+            .bounds(),
+        );
+        let ring = if look.landing == Landing::Dot {
+            rect.width()
+        } else {
+            scale_dip(LANDING_RING_DIP, self.landing_dpi)
+                * i32::try_from(look.size.pixels(2)).unwrap_or(2)
+                / 2
+        };
+        set_ring_shape(self.landing, rect.width(), ring);
+        show(self.landing, rect, alpha);
     }
 }
 
@@ -338,9 +369,11 @@ fn set_ring_shape(hwnd: HWND, diameter: i32, ring: i32) {
     // window takes ownership of `ring_region`, otherwise it is deleted.
     unsafe {
         let ring_region = CreateEllipticRgn(0, 0, diameter, diameter);
-        let hole = CreateEllipticRgn(ring, ring, diameter - ring, diameter - ring);
-        CombineRgn(ring_region, ring_region, hole, RGN_DIFF);
-        DeleteObject(hole);
+        if ring < diameter / 2 {
+            let hole = CreateEllipticRgn(ring, ring, diameter - ring, diameter - ring);
+            CombineRgn(ring_region, ring_region, hole, RGN_DIFF);
+            DeleteObject(hole);
+        }
         if SetWindowRgn(hwnd, ring_region, 0) == 0 {
             DeleteObject(ring_region);
         }

@@ -87,7 +87,11 @@ impl FeedbackSink {
 
     pub(super) fn landing(&self, x: i32, y: i32) {
         if self.config.landing {
-            self.send(Command::Landing { x, y });
+            self.send(Command::Landing {
+                x,
+                y,
+                look: self.config.look,
+            });
         }
     }
 
