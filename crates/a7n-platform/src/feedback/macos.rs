@@ -35,7 +35,7 @@ use tokio::sync::mpsc;
 use super::look::{self, BEAM_THICKNESS};
 use super::macos_geometry::{self as geometry, LANDING_DIAMETER, Rect};
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
-use super::timeline::{End, Timeline};
+use super::timeline::{End, Timeline, frame_interval};
 use super::{Command, Feedback, Look, Style};
 use crate::main_thread::{self, Waker};
 use blit::Bitmap;
@@ -43,7 +43,6 @@ use blit::Bitmap;
 const LANDING_RING_WIDTH: f64 = 4.0;
 /// Never fires on its own; every landing re-arms it.
 const TIMER_DISARMED_SECONDS: f64 = 1.0e12;
-const LANDING_FRAME_SECONDS: f64 = 0.016;
 
 /// State of the main-thread callbacks. Leaked on purpose: it lives as long as
 /// the process and is only touched from main run-loop callbacks.
@@ -69,6 +68,7 @@ struct Panels {
     landing_look: Look,
     animate: bool,
     hide_landing: CFRetained<CFRunLoopTimer>,
+    timer_info: *mut c_void,
 }
 
 pub(super) fn start() -> Option<Feedback> {
@@ -212,28 +212,7 @@ impl Panels {
         let glow = make_panel(mtm, &glow_fill);
         let landing_fill = image_view(mtm);
         let landing = make_panel(mtm, &landing_fill);
-        let mut timer_context = CFRunLoopTimerContext {
-            version: 0,
-            info: timer_info,
-            retain: None,
-            release: None,
-            copyDescription: None,
-        };
-        // SAFETY: The default allocator accepts None; `timer_info` is the
-        // leaked Ui that `hide_landing` expects and the context is copied.
-        let hide_landing = unsafe {
-            CFRunLoopTimer::new(
-                None,
-                CFAbsoluteTimeGetCurrent() + TIMER_DISARMED_SECONDS,
-                LANDING_FRAME_SECONDS,
-                0,
-                0,
-                Some(hide_landing),
-                &raw mut timer_context,
-            )
-        }?;
-        // SAFETY: Core Foundation's default run-loop mode is an immutable global.
-        CFRunLoop::current()?.add_timer(Some(&hide_landing), unsafe { kCFRunLoopDefaultMode });
+        let hide_landing = frame_timer(timer_info, frame_interval(None).as_secs_f64())?;
         Some(Self {
             mtm,
             glow,
@@ -251,6 +230,7 @@ impl Panels {
             landing_look: Look::default(),
             animate: true,
             hide_landing,
+            timer_info,
         })
     }
 
@@ -428,12 +408,37 @@ impl Panels {
         }
         self.timer_running = running;
         let delay = if running {
-            LANDING_FRAME_SECONDS
+            self.pace_timer();
+            self.hide_landing.interval()
         } else {
             TIMER_DISARMED_SECONDS
         };
         self.hide_landing
             .set_next_fire_date(CFAbsoluteTimeGetCurrent() + delay);
+    }
+
+    /// A repeating timer cannot change its interval, so a display with another
+    /// refresh rate gets a new timer. `arm_timer` calls it once per effect, when it starts.
+    fn pace_timer(&mut self) {
+        let seconds = frame_interval(self.refresh_hz()).as_secs_f64();
+        if (self.hide_landing.interval() - seconds).abs() < f64::EPSILON {
+            return;
+        }
+        if let Some(timer) = frame_timer(self.timer_info, seconds) {
+            self.hide_landing.invalidate();
+            self.hide_landing = timer;
+        }
+    }
+
+    /// The refresh rate of the screen the playing effect is on.
+    fn refresh_hz(&self) -> Option<f64> {
+        let panel = if self.timeline.landing_visible() {
+            &self.landing
+        } else {
+            &self.glow
+        };
+        let frames = panel.screen()?.maximumFramesPerSecond();
+        i32::try_from(frames).ok().map(f64::from)
     }
 
     fn fade_landing(&mut self) {
@@ -483,6 +488,33 @@ impl Panels {
         self.landing_bitmap
             .show(&self.landing_fill, &self.landing_frame);
     }
+}
+
+/// The repeating frame timer on the main run loop; `info` is the leaked [`Ui`].
+fn frame_timer(info: *mut c_void, seconds: f64) -> Option<CFRetained<CFRunLoopTimer>> {
+    let mut context = CFRunLoopTimerContext {
+        version: 0,
+        info,
+        retain: None,
+        release: None,
+        copyDescription: None,
+    };
+    // SAFETY: The default allocator accepts None; `info` is the leaked Ui
+    // that `hide_landing` expects and the context is copied.
+    let timer = unsafe {
+        CFRunLoopTimer::new(
+            None,
+            CFAbsoluteTimeGetCurrent() + TIMER_DISARMED_SECONDS,
+            seconds,
+            0,
+            0,
+            Some(hide_landing),
+            &raw mut context,
+        )
+    }?;
+    // SAFETY: Core Foundation's default run-loop mode is an immutable global.
+    CFRunLoop::current()?.add_timer(Some(&timer), unsafe { kCFRunLoopDefaultMode });
+    Some(timer)
 }
 
 /// A borderless panel that cannot become key, ignores the mouse, floats over

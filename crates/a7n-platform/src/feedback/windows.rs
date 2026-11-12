@@ -19,7 +19,8 @@ use a7n_proto::v1::Edge;
 use tokio::sync::mpsc;
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
+    DEVMODEW, ENUM_CURRENT_SETTINGS, EnumDisplaySettingsW, GetMonitorInfoW,
+    MONITOR_DEFAULTTONEAREST, MONITORINFO, MONITORINFOEXW, MonitorFromPoint,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
@@ -39,7 +40,7 @@ use windows_sys::core::{BOOL, PCWSTR, w};
 use self::geometry::{Rect, glow_alpha, glow_rect};
 use super::look::{self, BEAM_THICKNESS};
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
-use super::timeline::{End, Timeline};
+use super::timeline::{End, Timeline, frame_interval};
 use super::{Command, Feedback, Look, Style};
 use blit::Bitmap;
 
@@ -52,7 +53,8 @@ const LANDING_DIAMETER_DIP: i32 = 56;
 const LANDING_RING_DIP: i32 = 5;
 const FADE_TIMER_ID: usize = 1;
 const EDGE_TIMER_ID: usize = 2;
-const FADE_FRAME_MS: u32 = 16;
+const CCHDEVICENAME: usize = 32;
+const DEFAULT_FREQUENCY_MAX: u32 = 1;
 
 pub(super) fn start() -> Option<Feedback> {
     let (feedback, commands) = super::channel();
@@ -121,6 +123,7 @@ struct Ui {
     landing_look: Look,
     landing_point: (i32, i32),
     landing_dpi: u32,
+    frame_ms: u32,
 }
 
 impl Ui {
@@ -143,6 +146,7 @@ impl Ui {
             landing_look: Look::default(),
             landing_point: (0, 0),
             landing_dpi: BASE_DPI,
+            frame_ms: frame_ms(None),
         })
     }
 
@@ -208,6 +212,9 @@ impl Ui {
     fn show_glow(&mut self, display: Rect, edge: Edge, progress: u16, look: Look) {
         let pointer = cursor_position().unwrap_or_else(|| center(display));
         let monitor = monitor_at(pointer);
+        if !self.edge_timer {
+            self.frame_ms = frame_ms(monitor.as_ref().and_then(MonitorGeometry::refresh_hz));
+        }
         let area = monitor
             .and_then(|monitor| monitor.rect.intersect(display))
             .unwrap_or(display);
@@ -302,7 +309,7 @@ impl Ui {
         // SAFETY: This thread owns the glow window and its timer.
         unsafe {
             if running {
-                SetTimer(self.glow, EDGE_TIMER_ID, FADE_FRAME_MS, None);
+                SetTimer(self.glow, EDGE_TIMER_ID, self.frame_ms, None);
             } else {
                 KillTimer(self.glow, EDGE_TIMER_ID);
             }
@@ -332,7 +339,9 @@ impl Ui {
     }
 
     fn show_landing(&mut self, point: (i32, i32), look: Look) {
-        self.landing_dpi = monitor_at(point).map_or(BASE_DPI, |monitor| monitor.dpi);
+        let monitor = monitor_at(point);
+        self.landing_dpi = monitor.map_or(BASE_DPI, |monitor| monitor.dpi);
+        self.frame_ms = frame_ms(monitor.as_ref().and_then(MonitorGeometry::refresh_hz));
         self.landing_point = point;
         self.landing_look = look;
         self.animate = animations_enabled();
@@ -340,7 +349,7 @@ impl Ui {
         self.fade_landing();
         // SAFETY: The window belongs to this thread; the timer is killed in
         // `fade_landing` and replaced if a new landing arrives first.
-        unsafe { SetTimer(self.landing, FADE_TIMER_ID, FADE_FRAME_MS, None) };
+        unsafe { SetTimer(self.landing, FADE_TIMER_ID, self.frame_ms, None) };
     }
 
     fn fade_landing(&mut self) {
@@ -447,6 +456,31 @@ fn hide(hwnd: HWND) {
 struct MonitorGeometry {
     rect: Rect,
     dpi: u32,
+    device: [u16; CCHDEVICENAME],
+}
+
+impl MonitorGeometry {
+    /// The monitor's current refresh rate; `None` when Windows reports its default.
+    fn refresh_hz(&self) -> Option<f64> {
+        let mut mode = DEVMODEW {
+            dmSize: u16::try_from(size_of::<DEVMODEW>()).ok()?,
+            ..DEVMODEW::default()
+        };
+        // SAFETY: `device` is NUL-terminated by GetMonitorInfoW and `mode` is
+        // writable with its size field set.
+        let read = unsafe {
+            EnumDisplaySettingsW(self.device.as_ptr(), ENUM_CURRENT_SETTINGS, &raw mut mode)
+        };
+        // 0 and 1 mean "hardware default", not a real rate.
+        (read != 0 && mode.dmDisplayFrequency > DEFAULT_FREQUENCY_MAX)
+            .then_some(f64::from(mode.dmDisplayFrequency))
+    }
+}
+
+/// `SetTimer` cannot go below `USER_TIMER_MINIMUM` (10 ms), so very high
+/// refresh rates are capped there by the system.
+fn frame_ms(refresh_hz: Option<f64>) -> u32 {
+    u32::try_from(frame_interval(refresh_hz).as_millis()).unwrap_or(u32::MAX)
 }
 
 fn monitor_at(point: (i32, i32)) -> Option<MonitorGeometry> {
@@ -460,12 +494,15 @@ fn monitor_at(point: (i32, i32)) -> Option<MonitorGeometry> {
             MONITOR_DEFAULTTONEAREST,
         )
     };
-    let mut info = MONITORINFO {
-        cbSize: u32::try_from(size_of::<MONITORINFO>()).ok()?,
-        ..MONITORINFO::default()
+    let mut info = MONITORINFOEXW {
+        monitorInfo: MONITORINFO {
+            cbSize: u32::try_from(size_of::<MONITORINFOEXW>()).ok()?,
+            ..MONITORINFO::default()
+        },
+        ..MONITORINFOEXW::default()
     };
     // SAFETY: info is writable and its size field is set.
-    if unsafe { GetMonitorInfoW(monitor, &raw mut info) } == 0 {
+    if unsafe { GetMonitorInfoW(monitor, (&raw mut info).cast()) } == 0 {
         return None;
     }
     let (mut dpi_x, mut dpi_y) = (BASE_DPI, BASE_DPI);
@@ -473,12 +510,13 @@ fn monitor_at(point: (i32, i32)) -> Option<MonitorGeometry> {
     unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &raw mut dpi_x, &raw mut dpi_y) };
     Some(MonitorGeometry {
         rect: Rect {
-            left: info.rcMonitor.left,
-            top: info.rcMonitor.top,
-            right: info.rcMonitor.right,
-            bottom: info.rcMonitor.bottom,
+            left: info.monitorInfo.rcMonitor.left,
+            top: info.monitorInfo.rcMonitor.top,
+            right: info.monitorInfo.rcMonitor.right,
+            bottom: info.monitorInfo.rcMonitor.bottom,
         },
         dpi: dpi_x,
+        device: info.szDevice,
     })
 }
 

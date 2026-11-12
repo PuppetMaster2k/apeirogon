@@ -25,7 +25,7 @@ use x11rb::wrapper::ConnectionExt as _;
 
 use super::look::{self, BEAM_THICKNESS, Rect};
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
-use super::timeline::{End, Timeline};
+use super::timeline::{End, Timeline, frame_interval};
 use super::{Color, Command, Feedback, Landing, Look, Style, channel};
 use crate::input::Bounds;
 use blit::Argb;
@@ -49,7 +49,6 @@ const fn rgb_pixel([r, g, b]: [u8; 3]) -> u32 {
 const LANDING_SIZE: u32 = 24;
 /// How long the landing mark stays.
 const LANDING_DURATION: Duration = Duration::from_millis(600);
-const EDGE_FRAME: Duration = Duration::from_millis(16);
 
 pub(super) fn start() -> Option<Feedback> {
     let overlay = Overlay::new()?;
@@ -85,6 +84,7 @@ struct Overlay {
     edge_started: Instant,
     animate: bool,
     landing_frame: Frame,
+    frame_interval: Duration,
 }
 
 impl Overlay {
@@ -108,6 +108,7 @@ impl Overlay {
             edge_started: Instant::now(),
             animate: blit::animations_enabled(),
             landing_frame: Frame::default(),
+            frame_interval: frame_interval(None),
         })
     }
 
@@ -117,7 +118,7 @@ impl Overlay {
             let edge_playing = self.animating_edge();
             let playing = edge_playing || self.timeline.landing_visible();
             let received = if playing {
-                commands.recv_timeout(EDGE_FRAME)
+                commands.recv_timeout(self.frame_interval)
             } else {
                 commands
                     .recv()
@@ -139,6 +140,21 @@ impl Overlay {
                 break;
             }
         }
+    }
+
+    /// Reads the refresh rate once per effect, not on every pointer update.
+    fn pace_edge(&mut self, monitor: Bounds) {
+        if !self.animating_edge() {
+            self.frame_interval = self.display_frame_interval(monitor);
+        }
+    }
+
+    fn display_frame_interval(&self, monitor: Bounds) -> Duration {
+        frame_interval(crate::input::x11::refresh_hz(
+            &self.connection,
+            self.root,
+            monitor,
+        ))
     }
 
     fn animating_edge(&self) -> bool {
@@ -231,6 +247,7 @@ impl Overlay {
             u32::from(screen.height_in_pixels),
         ));
         let monitor = pick_monitor(&monitors, fallback, x, y);
+        self.frame_interval = self.display_frame_interval(monitor);
         let area = Rect::from_bounds(monitor);
         let point = (f64::from(x), f64::from(y));
         let geometry = look::landing_rect(area, point, f64::from(diameter), look.style);
@@ -300,6 +317,7 @@ impl Overlay {
             .unwrap_or_else(|| vec![display]);
         let (x, y) = (i32::from(pointer.root_x), i32::from(pointer.root_y));
         let monitor = pick_monitor(&monitors, display, x, y);
+        self.pace_edge(monitor);
         let along = if matches!(edge, Edge::Top | Edge::Bottom) {
             x
         } else {
