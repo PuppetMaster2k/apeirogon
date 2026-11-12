@@ -64,6 +64,7 @@ async fn cross_edge_no_neighbour_sends_no_edge_feedback() {
         edge: true,
         landing: false,
         haptics: true,
+        ..FeedbackConfig::default()
     });
 
     // Act
@@ -86,12 +87,14 @@ async fn cross_edge_inward_travel_reports_reduced_pressure() {
         edge: true,
         landing: true,
         haptics: true,
+        ..FeedbackConfig::default()
     };
     let (mut daemon, _dir, mut commands) = daemon_with_feedback(config);
     let edge = |progress| Command::Edge {
         display: DISPLAY,
         edge: Edge::Right,
         progress,
+        look: feedback::Look::default(),
     };
 
     // Act
@@ -125,6 +128,7 @@ async fn input_actions_driven_landing_sends_landing_and_edge_off_sends_no_edge()
         edge: false,
         landing: true,
         haptics: false,
+        ..FeedbackConfig::default()
     };
     let (mut daemon, _dir, mut commands) = daemon_with_feedback(config);
     let landing = Landing {
@@ -156,6 +160,7 @@ async fn captured_and_pointer_feedback_inset_edge_glows_on_pushed_monitor() {
             edge: true,
             landing: true,
             haptics: false,
+            ..FeedbackConfig::default()
         });
         let laptop = Bounds::from((0, 0, 1920, 1200));
         let monitors = vec![laptop, (1920, 0, 2560, 1440).into()];
@@ -200,7 +205,8 @@ async fn captured_and_pointer_feedback_inset_edge_glows_on_pushed_monitor() {
             [Command::Edge {
                 display: laptop,
                 edge: Edge::Bottom,
-                progress: 300
+                progress: 300,
+                look: feedback::Look::default()
             }]
         );
     }
@@ -217,6 +223,7 @@ async fn input_actions_bbox_landing_projects_warp_and_mark_onto_monitor() {
         edge: false,
         landing: true,
         haptics: false,
+        ..FeedbackConfig::default()
     });
     let injector = daemon.input.injector.as_mut().unwrap();
     injector.bounds = (0, 0, 4480, 1440).into();
@@ -252,6 +259,7 @@ async fn poll_edge_pressure_resting_pointer_fades_and_clears_without_haptics() {
         edge: true,
         landing: false,
         haptics: true,
+        ..FeedbackConfig::default()
     };
     let (mut daemon, _dir, mut commands) = daemon_with_feedback(config);
     daemon
@@ -273,7 +281,8 @@ async fn poll_edge_pressure_resting_pointer_fades_and_clears_without_haptics() {
         [Command::Edge {
             display: DISPLAY,
             edge: Edge::Right,
-            progress: 540
+            progress: 540,
+            look: feedback::Look::default()
         }]
     );
     assert_eq!(drain(&mut commands), [Command::Clear]);
@@ -287,6 +296,7 @@ async fn poll_edge_pressure_inset_monitor_fades_on_pushed_display() {
         edge: true,
         landing: false,
         haptics: false,
+        ..FeedbackConfig::default()
     });
     let laptop = Bounds::from((0, 0, 1920, 1200));
     let monitors = vec![laptop, (1920, 0, 2560, 1440).into()];
@@ -314,7 +324,8 @@ async fn poll_edge_pressure_inset_monitor_fades_on_pushed_display() {
         [Command::Edge {
             display: laptop,
             edge: Edge::Bottom,
-            progress: 540
+            progress: 540,
+            look: feedback::Look::default()
         }]
     );
 }

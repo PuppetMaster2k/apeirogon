@@ -120,6 +120,8 @@ pub struct FeedbackConfig {
     pub edge: bool,
     pub landing: bool,
     pub haptics: bool,
+    #[serde(flatten)]
+    pub look: a7n_platform::feedback::Look,
 }
 
 impl Default for FeedbackConfig {
@@ -128,6 +130,7 @@ impl Default for FeedbackConfig {
             edge: true,
             landing: true,
             haptics: false,
+            look: a7n_platform::feedback::Look::default(),
         }
     }
 }
@@ -403,7 +406,8 @@ impl Config {
                     "swipe_up" | "swipe_down" | "swipe_left" | "swipe_right",
                 ]
                 | ["hotkeys", "double_tap" | "trigger_mode" | "lock" | "jump"]
-                | ["gui", "appearance"] => toml::Value::String(value.into()),
+                | ["gui", "appearance"]
+                | ["feedback", "style" | "color" | "size"] => toml::Value::String(value.into()),
                 ["hotkeys", "home"] | ["input", "local_keys"] => toml::Value::Array(
                     value
                         .split(',')

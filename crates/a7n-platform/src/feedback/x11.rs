@@ -20,13 +20,14 @@ use a7n_proto::v1::Edge;
 use x11rb::connection::Connection;
 use x11rb::protocol::shape::{ConnectionExt as _, SK, SO};
 use x11rb::protocol::xproto::{
-    AtomEnum, ClipOrdering, ConfigureWindowAux, ConnectionExt as _, CreateWindowAux, PropMode,
-    StackMode, Window, WindowClass,
+    AtomEnum, ChangeWindowAttributesAux, ClipOrdering, ConfigureWindowAux, ConnectionExt as _,
+    CreateWindowAux, PropMode, StackMode, Window, WindowClass,
 };
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
-use super::{Command, Feedback, channel};
+use super::look::{self, BEAM_THICKNESS, Rect};
+use super::{Color, Command, Feedback, Look, Style, channel};
 use crate::input::Bounds;
 use geometry::{glow_rect, pick_monitor};
 
@@ -42,7 +43,11 @@ x11rb::atom_manager! {
 }
 
 /// Accent colour (RGB) of the glow and the landing mark.
-const ACCENT_RGB: u32 = 0x004c_8dff;
+const ACCENT_RGB: u32 = rgb_pixel(Color::Accent.rgb(true));
+
+const fn rgb_pixel([r, g, b]: [u8; 3]) -> u32 {
+    ((r as u32) << 16) | ((g as u32) << 8) | b as u32
+}
 /// Side of the landing mark in pixels.
 const LANDING_SIZE: u32 = 24;
 /// How long the landing mark stays.
@@ -132,7 +137,8 @@ impl Overlay {
                 display,
                 edge,
                 progress,
-            } => self.show_glow(display, edge, progress),
+                look,
+            } => self.show_glow(display, edge, progress, look),
             Command::Clear => self.unmap(self.glow),
             Command::Landing { x, y } => {
                 let half = i32::try_from(LANDING_SIZE / 2).unwrap_or(0);
@@ -148,7 +154,7 @@ impl Overlay {
         }
     }
 
-    fn show_glow(&self, display: Bounds, edge: Edge, progress: u16) -> Option<()> {
+    fn show_glow(&self, display: Bounds, edge: Edge, progress: u16, look: Look) -> Option<()> {
         let pointer = self
             .connection
             .query_pointer(self.root)
@@ -164,7 +170,29 @@ impl Overlay {
         } else {
             y
         };
-        match glow_rect(monitor, edge, along, progress) {
+        let color = rgb_pixel(look.color.rgb(true));
+        self.connection
+            .change_window_attributes(
+                self.glow,
+                &ChangeWindowAttributesAux::new().background_pixel(color),
+            )
+            .ok()?;
+        self.connection
+            .clear_area(false, self.glow, 0, 0, 0, 0)
+            .ok()?;
+        let rect = if look.style == Style::Beam {
+            look::beam_rect(
+                Rect::from_bounds(monitor),
+                edge,
+                (f64::from(x), f64::from(y)),
+                progress,
+                BEAM_THICKNESS * look.size.multiplier(),
+            )
+            .map(Rect::bounds)
+        } else {
+            glow_rect(monitor, edge, along, progress, look.size)
+        };
+        match rect {
             Some(rect) => self.show(self.glow, rect),
             None => self.unmap(self.glow),
         }

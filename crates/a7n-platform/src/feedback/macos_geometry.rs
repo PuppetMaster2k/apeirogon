@@ -7,6 +7,8 @@
 //! unless a name says `desktop`. It compiles on every platform so the
 //! decisions can be tested without a Mac.
 
+use super::Size;
+pub(super) use super::look::Rect;
 use a7n_proto::v1::Edge;
 
 /// `Command::Edge::progress` at full resistance, per-mille.
@@ -17,14 +19,6 @@ const GLOW_MIN_THICKNESS: f64 = 3.0;
 const GLOW_MAX_THICKNESS: f64 = 28.0;
 /// Outer diameter of the landing ring in points.
 pub(super) const LANDING_DIAMETER: f64 = 64.0;
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct Rect {
-    pub(super) x: f64,
-    pub(super) y: f64,
-    pub(super) width: f64,
-    pub(super) height: f64,
-}
 
 impl Rect {
     fn contains(&self, x: f64, y: f64) -> bool {
@@ -43,9 +37,10 @@ pub(super) fn screen_containing(screens: &[Rect], x: f64, y: f64) -> Option<Rect
 
 /// The strip along `edge` of `screen`, thicker the more of the resistance is
 /// built up. `None` for an unspecified edge.
-pub(super) fn glow_rect(screen: Rect, edge: Edge, progress: u16) -> Option<Rect> {
+pub(super) fn glow_rect(screen: Rect, edge: Edge, progress: u16, size: Size) -> Option<Rect> {
     let fraction = f64::from(progress.min(PROGRESS_FULL)) / f64::from(PROGRESS_FULL);
-    let thickness = GLOW_MIN_THICKNESS + (GLOW_MAX_THICKNESS - GLOW_MIN_THICKNESS) * fraction;
+    let thickness = (GLOW_MIN_THICKNESS + (GLOW_MAX_THICKNESS - GLOW_MIN_THICKNESS) * fraction)
+        * size.multiplier();
     let Rect {
         x,
         y,
@@ -152,7 +147,7 @@ mod tests {
 
         for (edge, progress, expected) in cases {
             // Act
-            let rect = glow_rect(SCREEN, edge, progress);
+            let rect = glow_rect(SCREEN, edge, progress, Size::Medium);
 
             // Assert
             assert_eq!(rect, Some(expected), "{edge:?} at {progress}");
