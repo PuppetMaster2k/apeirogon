@@ -16,6 +16,10 @@ pub const SYNCED_KEYS: &[&str] = &[
     "hotkeys.home",
     "hotkeys.lock",
     "hotkeys.jump",
+    "feedback.style",
+    "feedback.color",
+    "feedback.size",
+    "feedback.landing_style",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
