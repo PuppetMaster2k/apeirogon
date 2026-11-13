@@ -409,28 +409,30 @@ impl eframe::App for App {
                 ui.set_max_width(ui.available_width().min(theme::size::CONTENT_MAX_W));
                 ui.add_enabled_ui(self.worker.commands.capacity() > 0, |ui| {
                     self.page_header(ui);
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            self.update_notice(ui);
-                            if self.status.is_none() {
-                                self.daemon_unavailable(ui);
-                                return;
+                    let mut page = egui::ScrollArea::vertical().auto_shrink([false, false]);
+                    if self.take_scroll_to_update_result() {
+                        page = page.vertical_scroll_offset(0.0);
+                    }
+                    page.show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        self.update_notice(ui);
+                        if self.status.is_none() {
+                            self.daemon_unavailable(ui);
+                            return;
+                        }
+                        let missing = self.missing_permissions();
+                        if let Some(missing) = &missing {
+                            self.permissions(ui, missing);
+                            return;
+                        }
+                        match self.screen {
+                            Screen::Machines => self.machines(ui),
+                            Screen::Layout => self.layout_screen(ui),
+                            Screen::Hotkeys | Screen::Feedback | Screen::Policies => {
+                                self.settings(ui);
                             }
-                            let missing = self.missing_permissions();
-                            if let Some(missing) = &missing {
-                                self.permissions(ui, missing);
-                                return;
-                            }
-                            match self.screen {
-                                Screen::Machines => self.machines(ui),
-                                Screen::Layout => self.layout_screen(ui),
-                                Screen::Hotkeys | Screen::Feedback | Screen::Policies => {
-                                    self.settings(ui);
-                                }
-                            }
-                        });
+                        }
+                    });
                 });
             });
     }

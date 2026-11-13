@@ -19,6 +19,8 @@ pub(super) struct State {
     manual: Option<bool>,
     release: Option<Release>,
     message: String,
+    // The result card sits at the top of the page, out of view of the Check button.
+    scroll_to_result: bool,
 }
 
 #[derive(Deserialize)]
@@ -82,12 +84,14 @@ impl App {
             self.update_check.message.clear();
         } else if manual {
             self.update_check.message = t!("Update check busy; try again.").into();
+            self.update_check.scroll_to_result = true;
         }
     }
 
     pub(super) fn update_checked(&mut self, result: Result<Option<Release>, String>) {
         self.update_check.last_attempt = Some(Instant::now());
         let manual = self.update_check.manual.take() == Some(true);
+        self.update_check.scroll_to_result = manual;
         match result {
             Ok(release) => {
                 if manual && release.is_none() {
@@ -98,6 +102,11 @@ impl App {
             Err(error) if manual => self.update_check.message = error,
             Err(_) => {}
         }
+    }
+
+    /// True once after a manual check finished, so the page jumps to its result.
+    pub(super) fn take_scroll_to_update_result(&mut self) -> bool {
+        std::mem::take(&mut self.update_check.scroll_to_result)
     }
 
     pub(super) fn update_notice(&self, ui: &mut egui::Ui) {
