@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.42.0...v0.43.0) (2026-11-13)
+
+
+### Features
+
+* gradient colours and aperture, sparks and ripple animations ([#261](https://github.com/PuppetMaster2k/apeirogon/issues/261)) ([c2f2624](https://github.com/PuppetMaster2k/apeirogon/commit/c2f26241f115b56be1421043251719acb2fc8fd9))
+
 ## [0.42.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.41.0...v0.42.0) (2026-11-12)
 
 
