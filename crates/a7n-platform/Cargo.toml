@@ -12,6 +12,8 @@ homepage.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+png = { workspace = true, optional = true }
+tiny-skia.workspace = true
 serde.workspace = true
 netdev.workspace = true
 a7n-core.workspace = true
@@ -55,7 +57,12 @@ tempfile.workspace = true
 workspace = true
 
 [features]
+fx-preview = ["dep:png"]
 tray = ["dep:tray-icon"]
+
+[[example]]
+name = "fx_preview"
+required-features = ["fx-preview"]
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies.tray-icon]
 workspace = true

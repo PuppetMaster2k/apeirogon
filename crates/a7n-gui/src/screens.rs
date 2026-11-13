@@ -7,6 +7,7 @@ use super::{App, Command, Screen, theme};
 use theme::{BadgeKind, ButtonKind, ButtonSize, IconButtonKind, icon};
 
 mod chord_editor;
+mod feedback;
 mod files;
 mod firewall;
 mod gestures;

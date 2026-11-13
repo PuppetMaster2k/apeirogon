@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use std::error::Error;
+use std::path::Path;
+
+use a7n_platform::feedback::{Color, Landing, Size, Style, preview};
+use serde::de::{DeserializeOwned, value::StrDeserializer};
+
+fn parse<T: DeserializeOwned>(value: &str) -> Result<T, serde::de::value::Error> {
+    T::deserialize(StrDeserializer::new(value))
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.is_empty() || args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!(
+            "Usage: fx_preview <style> [color] [size] [landing] [out_dir]\nStyles: membrane, sparks, waves, clouds, sunrise, aurora, arcs, ferrofluid\nSizes: small, medium, large\nLanding: ring, pulse, dot\nDefaults: lunada medium ring target/fx-preview\nColors: {}",
+            Color::choices()
+                .map(|(_, key, _)| key)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        return Ok(());
+    }
+    if args.len() > 5 {
+        return Err("expected <style> [color] [size] [landing] [out_dir]; see --help".into());
+    }
+    let style = parse::<Style>(&args[0])?;
+    let color = parse::<Color>(args.get(1).map_or("lunada", String::as_str))?;
+    let size = parse::<Size>(args.get(2).map_or("medium", String::as_str))?;
+    let landing = parse::<Landing>(args.get(3).map_or("ring", String::as_str))?;
+    let out_dir = Path::new(args.get(4).map_or("target/fx-preview", String::as_str));
+    preview::sheet(style, color, size, landing, out_dir)?;
+    println!(
+        "Wrote {}-{{departure,arrival,strip}}.png in {}",
+        format!("{style:?}").to_ascii_lowercase(),
+        out_dir.display()
+    );
+    Ok(())
+}

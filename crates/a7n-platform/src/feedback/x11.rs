@@ -2,15 +2,13 @@
 
 //! X11 edge glow and landing mark; the contract is in [`super`].
 //!
-//! Both are override-redirect windows (no decoration, no focus, no window
-//! manager involvement) with an empty SHAPE input region, so clicks pass
-//! through. They use the root visual and a solid background, so no compositor
-//! is needed. The EWMH hints are set anyway for compositors that look at them.
-//!
-//! X11 has no reliable reduce-motion setting, so the landing mark is a short
-//! static marker that never animates; that satisfies reduce-motion everywhere.
+//! Override-redirect windows have empty input regions. Composited desktops
+//! use an ARGB visual; others retain the solid background and SHAPE fallback.
+//! Animation follows the desktop preference; unknown desktops stay static.
 
+mod blit;
 mod geometry;
+mod window;
 
 use std::sync::mpsc;
 use std::thread;
@@ -20,16 +18,19 @@ use a7n_proto::v1::Edge;
 use x11rb::connection::Connection;
 use x11rb::protocol::shape::{ConnectionExt as _, SK, SO};
 use x11rb::protocol::xproto::{
-    AtomEnum, ChangeWindowAttributesAux, ClipOrdering, ConfigureWindowAux, ConnectionExt as _,
-    CreateWindowAux, PropMode, Rectangle, StackMode, Window, WindowClass,
+    ChangeWindowAttributesAux, ClipOrdering, ConfigureWindowAux, ConnectionExt as _, StackMode,
+    Window,
 };
 use x11rb::rust_connection::RustConnection;
-use x11rb::wrapper::ConnectionExt as _;
 
-use super::look::{self, BEAM_THICKNESS, Rect};
-use super::{Color, Command, Feedback, Landing, Look, Style, channel};
+use super::look::{self, Rect};
+use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
+use super::timeline::{End, Timeline, frame_interval};
+use super::{Command, Feedback, Landing, Look, channel};
 use crate::input::Bounds;
+use blit::Argb;
 use geometry::{glow_rect, pick_monitor};
+use window::{create_overlay_window, landing_shape};
 
 x11rb::atom_manager! {
     Atoms: AtomsCookie {
@@ -41,9 +42,6 @@ x11rb::atom_manager! {
         skip_pager: b"_NET_WM_STATE_SKIP_PAGER".as_slice(),
     }
 }
-
-/// Accent colour (RGB) of the glow and the landing mark.
-const ACCENT_RGB: u32 = rgb_pixel(Color::Accent.rgb(true));
 
 const fn rgb_pixel([r, g, b]: [u8; 3]) -> u32 {
     ((r as u32) << 16) | ((g as u32) << 8) | b as u32
@@ -81,6 +79,13 @@ struct Overlay {
     root: Window,
     glow: Window,
     landing: Window,
+    argb: Option<Argb>,
+    edge_frame: Frame,
+    timeline: Timeline,
+    edge_started: Instant,
+    animate: bool,
+    landing_frame: Frame,
+    frame_interval: Duration,
 }
 
 impl Overlay {
@@ -89,52 +94,103 @@ impl Overlay {
         let root = connection.setup().roots.get(screen)?.root;
         connection.shape_query_version().ok()?.reply().ok()?;
         let atoms = Atoms::new(&connection).ok()?.reply().ok()?;
-        let glow = create_overlay_window(&connection, screen, &atoms)?;
-        let landing = create_overlay_window(&connection, screen, &atoms)?;
+        let argb = Argb::new(&connection, screen);
+        let glow = create_overlay_window(&connection, screen, &atoms, argb.as_ref())?;
+        let landing = create_overlay_window(&connection, screen, &atoms, argb.as_ref())?;
         connection.flush().ok()?;
         Some(Self {
             connection,
             root,
             glow,
             landing,
+            argb,
+            edge_frame: Frame::default(),
+            timeline: Timeline::default(),
+            edge_started: Instant::now(),
+            animate: blit::animations_enabled(),
+            landing_frame: Frame::default(),
+            frame_interval: frame_interval(None),
         })
     }
 
     /// Handles commands until the daemon drops its handle or X fails.
-    fn run(&self, commands: &mpsc::Receiver<Command>) {
-        let mut landing_deadline: Option<Instant> = None;
+    fn run(mut self, commands: &mpsc::Receiver<Command>) {
         loop {
-            let received = match landing_deadline {
-                Some(deadline) => {
-                    commands.recv_timeout(deadline.saturating_duration_since(Instant::now()))
-                }
-                None => commands
+            let edge_playing = self.animating_edge();
+            let playing = edge_playing || self.timeline.landing_visible();
+            let received = if playing {
+                commands.recv_timeout(self.frame_interval)
+            } else {
+                commands
                     .recv()
-                    .map_err(|_| mpsc::RecvTimeoutError::Disconnected),
+                    .map_err(|_| mpsc::RecvTimeoutError::Disconnected)
             };
-            let handled = match received {
+            match received {
                 Ok(command) => {
-                    if matches!(
-                        command,
-                        Command::Landing { .. } | Command::LandingAtCursor { .. }
-                    ) {
-                        landing_deadline = Some(Instant::now() + LANDING_DURATION);
+                    if self.handle(command).is_none() {
+                        break;
                     }
-                    self.handle(command)
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    landing_deadline = None;
-                    self.unmap(self.landing)
-                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
-            };
-            if handled.is_none() {
+            }
+            if (edge_playing || self.animating_edge()) && self.animate_edge().is_none() {
+                break;
+            }
+            if self.timeline.landing_visible() && self.animate_landing().is_none() {
                 break;
             }
         }
     }
 
-    fn handle(&self, command: Command) -> Option<()> {
+    /// Reads the refresh rate once per effect, not on every pointer update.
+    fn pace_edge(&mut self, monitor: Bounds) {
+        if !self.animating_edge() {
+            self.frame_interval = self.display_frame_interval(monitor);
+        }
+    }
+
+    fn display_frame_interval(&self, monitor: Bounds) -> Duration {
+        frame_interval(crate::input::x11::refresh_hz(
+            &self.connection,
+            self.root,
+            monitor,
+        ))
+    }
+
+    fn animating_edge(&self) -> bool {
+        self.argb.is_some()
+            && self
+                .timeline
+                .edge_playing(self.animate, self.edge_started.elapsed())
+    }
+
+    fn animate_edge(&mut self) -> Option<()> {
+        if !self
+            .timeline
+            .render_edge(&mut self.edge_frame, self.edge_started.elapsed())
+        {
+            return self.unmap(self.glow);
+        }
+        self.argb
+            .as_mut()?
+            .blit(&self.connection, self.glow, &self.edge_frame)
+    }
+
+    fn animate_landing(&mut self) -> Option<()> {
+        if !self
+            .timeline
+            .render_landing(&mut self.landing_frame, self.edge_started.elapsed())
+        {
+            return self.unmap(self.landing);
+        }
+        if let Some(argb) = &mut self.argb {
+            argb.blit(&self.connection, self.landing, &self.landing_frame)?;
+        }
+        Some(())
+    }
+
+    fn handle(&mut self, command: Command) -> Option<()> {
         match command {
             Command::Edge {
                 display,
@@ -142,7 +198,20 @@ impl Overlay {
                 progress,
                 look,
             } => self.show_glow(display, edge, progress, look),
-            Command::Clear => self.unmap(self.glow),
+            Command::Clear | Command::Crossed => {
+                self.timeline.end(
+                    if command == Command::Crossed {
+                        End::Crossed
+                    } else {
+                        End::Abandoned
+                    },
+                    self.edge_started.elapsed(),
+                );
+                if self.argb.is_none() {
+                    self.unmap(self.glow)?;
+                }
+                Some(())
+            }
             Command::Landing { x, y, look } => self.show_landing(x, y, look),
             Command::LandingAtCursor { look } => {
                 let pointer = self
@@ -157,7 +226,53 @@ impl Overlay {
         }
     }
 
-    fn show_landing(&self, x: i32, y: i32, look: Look) -> Option<()> {
+    fn show_landing(&mut self, x: i32, y: i32, mut look: Look) -> Option<()> {
+        if self.argb.is_none() {
+            if !look.show_marker {
+                return Some(());
+            }
+            look.show_edge = false;
+        }
+        self.timeline.land(look, self.edge_started.elapsed());
+        let diameter = if self.argb.is_some() {
+            look.arrival_diameter()
+        } else {
+            f64::from(look.size.pixels(LANDING_SIZE))
+        };
+        let monitors = crate::input::x11::monitors(&self.connection, self.root).unwrap_or_default();
+        let screen = self
+            .connection
+            .setup()
+            .roots
+            .iter()
+            .find(|screen| screen.root == self.root)?;
+        let fallback = Bounds::from((
+            0,
+            0,
+            u32::from(screen.width_in_pixels),
+            u32::from(screen.height_in_pixels),
+        ));
+        let monitor = pick_monitor(&monitors, fallback, x, y);
+        self.frame_interval = self.display_frame_interval(monitor);
+        let area = Rect::from_bounds(monitor);
+        let point = (f64::from(x), f64::from(y));
+        let geometry = look::landing_rect(area, point, diameter);
+        let rect = geometry.bounds();
+        self.landing_frame.resize(rect.width, rect.height);
+        self.landing_frame.arrival = Some(Arrival::at(geometry, point, 1.0));
+        self.landing_frame.animate = self.animate && self.argb.is_some();
+        if self.argb.is_some() {
+            self.landing_frame.dark = true;
+            self.landing_frame.opacity = 1.0;
+            self.landing_frame.scale = 1.0;
+            self.timeline
+                .render_landing(&mut self.landing_frame, self.edge_started.elapsed());
+            self.show(self.landing, rect)?;
+            return self
+                .argb
+                .as_mut()?
+                .blit(&self.connection, self.landing, &self.landing_frame);
+        }
         let (radius, _) = look.landing.frame(Duration::ZERO, LANDING_DURATION, false);
         let diameter = f64::from(LANDING_SIZE) * look.size.multiplier() * radius;
         let mark = Rect {
@@ -187,7 +302,8 @@ impl Overlay {
         self.connection
             .change_window_attributes(
                 self.landing,
-                &ChangeWindowAttributesAux::new().background_pixel(rgb_pixel(look.color.rgb(true))),
+                &ChangeWindowAttributesAux::new()
+                    .background_pixel(rgb_pixel(look.color.sample(0.0, true))),
             )
             .ok()?;
         self.connection
@@ -196,7 +312,7 @@ impl Overlay {
         self.show(self.landing, mark)
     }
 
-    fn show_glow(&self, display: Bounds, edge: Edge, progress: u16, look: Look) -> Option<()> {
+    fn show_glow(&mut self, display: Bounds, edge: Edge, progress: u16, look: Look) -> Option<()> {
         let pointer = self
             .connection
             .query_pointer(self.root)
@@ -207,37 +323,84 @@ impl Overlay {
             .unwrap_or_else(|| vec![display]);
         let (x, y) = (i32::from(pointer.root_x), i32::from(pointer.root_y));
         let monitor = pick_monitor(&monitors, display, x, y);
+        self.pace_edge(monitor);
         let along = if matches!(edge, Edge::Top | Edge::Bottom) {
             x
         } else {
             y
         };
-        let color = rgb_pixel(look.color.rgb(true));
-        self.connection
-            .change_window_attributes(
-                self.glow,
-                &ChangeWindowAttributesAux::new().background_pixel(color),
-            )
-            .ok()?;
-        self.connection
-            .clear_area(false, self.glow, 0, 0, 0, 0)
-            .ok()?;
-        let rect = if look.style == Style::Beam {
-            look::beam_rect(
-                Rect::from_bounds(monitor),
-                edge,
-                (f64::from(x), f64::from(y)),
-                progress,
-                BEAM_THICKNESS * look.size.multiplier(),
-            )
-            .map(Rect::bounds)
+        if self.argb.is_none() {
+            let color = rgb_pixel(look.color.sample(0.0, true));
+            self.connection
+                .change_window_attributes(
+                    self.glow,
+                    &ChangeWindowAttributesAux::new().background_pixel(color),
+                )
+                .ok()?;
+            self.connection
+                .clear_area(false, self.glow, 0, 0, 0, 0)
+                .ok()?;
+        }
+        let rect = if self.argb.is_some() {
+            glow_rect(monitor, edge, along, 1000, look.size).map(|mut rect| {
+                let depth = raster::OVERLAY_DEPTH.min(monitor.width).min(monitor.height);
+                match edge {
+                    Edge::Top => rect.height = depth,
+                    Edge::Bottom => {
+                        rect.height = depth;
+                        rect.y = monitor.y.saturating_add_unsigned(monitor.height - depth);
+                    }
+                    Edge::Left => rect.width = depth,
+                    Edge::Right => {
+                        rect.width = depth;
+                        rect.x = monitor.x.saturating_add_unsigned(monitor.width - depth);
+                    }
+                    Edge::Unspecified => {}
+                }
+                rect
+            })
         } else {
             glow_rect(monitor, edge, along, progress, look.size)
         };
-        match rect {
-            Some(rect) => self.show(self.glow, rect),
-            None => self.unmap(self.glow),
+        let Some(rect) = rect else {
+            self.timeline
+                .end(End::Abandoned, self.edge_started.elapsed());
+            return self.unmap(self.glow);
+        };
+        self.show(self.glow, rect)?;
+        if let Some(argb) = &mut self.argb {
+            self.edge_frame.resize(rect.width, rect.height);
+            self.edge_frame.dark = true;
+            self.edge_frame.animate = self.animate;
+            self.edge_frame.opacity = 1.0;
+            self.edge_frame.scale = 1.0;
+            let horizontal = matches!(edge, Edge::Top | Edge::Bottom);
+            let along = Along {
+                origin: (f64::from(monitor.x), f64::from(monitor.y)),
+                start: f64::from(if horizontal {
+                    rect.x - monitor.x
+                } else {
+                    rect.y - monitor.y
+                }),
+                span: f64::from(if horizontal {
+                    monitor.width
+                } else {
+                    monitor.height
+                }),
+                push: f64::from(if horizontal { x - rect.x } else { y - rect.y }),
+            };
+            let effect = EdgeEffect {
+                look,
+                edge,
+                progress,
+                along,
+            };
+            self.timeline.push(effect, self.edge_started.elapsed());
+            self.timeline
+                .render_edge(&mut self.edge_frame, self.edge_started.elapsed());
+            argb.blit(&self.connection, self.glow, &self.edge_frame)?;
         }
+        Some(())
     }
 
     /// Places the window and raises it above the others.
@@ -250,102 +413,14 @@ impl Overlay {
             .stack_mode(StackMode::ABOVE);
         self.connection.configure_window(window, &aux).ok()?;
         self.connection.map_window(window).ok()?;
-        self.connection.flush().ok()
+        if self.argb.is_none() {
+            self.connection.flush().ok()?;
+        }
+        Some(())
     }
 
     fn unmap(&self, window: Window) -> Option<()> {
         self.connection.unmap_window(window).ok()?;
         self.connection.flush().ok()
     }
-}
-
-/// Rasterize a circle into scanlines for SHAPE, without requiring a compositor.
-fn landing_shape(diameter: u16, dot: bool, scale: f64) -> Vec<Rectangle> {
-    const RING_WIDTH: f64 = 2.0;
-    let radius = f64::from(diameter) / 2.0;
-    let inner = if dot {
-        0.0
-    } else {
-        (radius - RING_WIDTH * scale).max(0.0)
-    };
-    let mut shape = Vec::new();
-    for y in 0..diameter {
-        let dy = f64::from(y) + 0.5 - radius;
-        let mut start = None;
-        for x in 0..=diameter {
-            let dx = f64::from(x) + 0.5 - radius;
-            let distance = dx * dx + dy * dy;
-            let filled = x < diameter && distance <= radius * radius && distance >= inner * inner;
-            if filled {
-                start.get_or_insert(x);
-            } else if let Some(from) = start.take() {
-                shape.push(Rectangle {
-                    x: i16::try_from(from).unwrap_or(0),
-                    y: i16::try_from(y).unwrap_or(0),
-                    width: x - from,
-                    height: 1,
-                });
-            }
-        }
-    }
-    shape
-}
-
-/// An unmapped, click-through, override-redirect window in the accent colour.
-fn create_overlay_window(
-    connection: &RustConnection,
-    screen_number: usize,
-    atoms: &Atoms,
-) -> Option<Window> {
-    let screen = connection.setup().roots.get(screen_number)?;
-    let window = connection.generate_id().ok()?;
-    let aux = CreateWindowAux::new()
-        .override_redirect(1)
-        .background_pixel(ACCENT_RGB);
-    connection
-        .create_window(
-            screen.root_depth,
-            window,
-            screen.root,
-            0,
-            0,
-            1,
-            1,
-            0,
-            WindowClass::INPUT_OUTPUT,
-            screen.root_visual,
-            &aux,
-        )
-        .ok()?;
-    // An empty input region lets every click fall through to the windows below.
-    connection
-        .shape_rectangles(
-            SO::SET,
-            SK::INPUT,
-            ClipOrdering::UNSORTED,
-            window,
-            0,
-            0,
-            &[],
-        )
-        .ok()?;
-    connection
-        .change_property32(
-            PropMode::REPLACE,
-            window,
-            atoms.window_type,
-            AtomEnum::ATOM,
-            &[atoms.type_notification],
-        )
-        .ok()?;
-    connection
-        .change_property32(
-            PropMode::REPLACE,
-            window,
-            atoms.state,
-            AtomEnum::ATOM,
-            &[atoms.state_above, atoms.skip_taskbar, atoms.skip_pager],
-        )
-        .ok()?;
-    Some(window)
 }

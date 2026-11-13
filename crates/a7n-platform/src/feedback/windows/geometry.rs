@@ -8,6 +8,7 @@
     allow(dead_code, reason = "off Windows only the tests compile this module")
 )]
 
+#[cfg(test)]
 use std::time::Duration;
 
 use a7n_proto::v1::Edge;
@@ -17,10 +18,10 @@ use crate::input::Bounds;
 const PROGRESS_FULL: i32 = 1000;
 /// Share of the edge the glow covers before any resistance has built up.
 const GLOW_MIN_PERMILLE: i32 = 250;
-const GLOW_ALPHA_MIN: u8 = 90;
-const GLOW_ALPHA_MAX: u8 = 230;
 
+#[cfg(test)]
 pub(super) const LANDING_DURATION: Duration = Duration::from_millis(400);
+#[cfg(test)]
 const LANDING_ALPHA: u8 = 220;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +40,16 @@ impl Rect {
             top: bounds.y,
             right: bounds.x.saturating_add(extent(bounds.width)),
             bottom: bounds.y.saturating_add(extent(bounds.height)),
+        }
+    }
+
+    #[cfg(windows)]
+    pub(super) fn as_rect(self) -> crate::feedback::look::Rect {
+        crate::feedback::look::Rect {
+            x: f64::from(self.left),
+            y: f64::from(self.top),
+            width: f64::from(self.width()),
+            height: f64::from(self.height()),
         }
     }
 
@@ -112,16 +123,9 @@ pub(super) fn glow_rect(
     })
 }
 
-/// The glow gets more opaque as the resistance builds up.
-pub(super) fn glow_alpha(progress: u16) -> u8 {
-    let progress = i32::from(progress).min(PROGRESS_FULL);
-    let range = i32::from(GLOW_ALPHA_MAX - GLOW_ALPHA_MIN);
-    let alpha = i32::from(GLOW_ALPHA_MIN) + range * progress / PROGRESS_FULL;
-    u8::try_from(alpha).unwrap_or(GLOW_ALPHA_MAX)
-}
-
 /// Opacity of the landing marker `elapsed` after it appeared. Without
 /// animation it stays solid for the whole duration instead of fading.
+#[cfg(test)]
 pub(super) fn landing_alpha(elapsed: Duration, animate: bool) -> u8 {
     let (_, alpha) = crate::feedback::Landing::Ring.frame(elapsed, LANDING_DURATION, animate);
     // The shared opacity is bounded to 0..=1 before converting to a byte.

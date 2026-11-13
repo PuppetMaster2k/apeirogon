@@ -11,6 +11,7 @@ homepage = "https://github.com/PuppetMaster2k/apeirogon"
 rust-version = "1.85"
 
 [workspace.dependencies]
+tiny-skia = { version = "=0.12.0", default-features = false, features = ["std", "simd"] }
 rust-i18n = "=3.1.5"
 sys-locale = "=0.3.2"
 ureq = { version = "=3.5.1", default-features = false, features = ["rustls"] }
@@ -43,7 +44,7 @@ serde               = { version = "1", features = ["derive"] }
 directories         = "6"
 interprocess        = { version = "2.4", features = ["tokio"] }
 rustix              = { version = "1", features = ["fs", "pipe", "process", "event", "system", "time"] }
-x11rb               = { version = "0.14", default-features = false, features = ["xinput", "xtest", "xfixes", "shape", "randr"] }
+x11rb               = { version = "0.14", default-features = false, features = ["xinput", "xtest", "xfixes", "shape", "randr", "render"] }
 serde_json          = "1"
 ashpd               = { version = "0.13", default-features = false, features = ["tokio", "clipboard", "input_capture", "remote_desktop", "screencast"] }
 reis                = { version = "0.7", features = ["tokio"] }
@@ -66,7 +67,7 @@ tokio               = { version = "1", features = ["rt-multi-thread", "macros", 
 
 objc2                 = "0.6.4"
 objc2-foundation      = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSData", "NSObject", "NSString", "NSURL", "NSValue", "NSDictionary", "NSGeometry", "NSEnumerator"] }
-objc2-app-kit         = { version = "0.3.2", default-features = false, features = ["std", "NSEvent", "NSTouch", "NSResponder", "NSView", "NSGraphicsContext", "NSBitmapImageRep", "NSImageRep", "NSImage", "NSPasteboard", "NSPasteboardItem", "NSRunningApplication", "NSWorkspace", "NSWindow", "NSPanel", "NSBox", "NSColor", "NSScreen", "NSApplication", "NSAnimation", "NSAnimationContext", "NSHapticFeedback", "NSGraphics", "NSAccessibility", "objc2-core-graphics", "objc2-core-foundation"] }
+objc2-app-kit         = { version = "0.3.2", default-features = false, features = ["std", "NSEvent", "NSTouch", "NSResponder", "NSView", "NSGraphicsContext", "NSBitmapImageRep", "NSImageRep", "NSImage", "NSImageView", "NSControl", "NSPasteboard", "NSPasteboardItem", "NSRunningApplication", "NSWorkspace", "NSWindow", "NSPanel", "NSBox", "NSColor", "NSScreen", "NSApplication", "NSAnimation", "NSAnimationContext", "NSHapticFeedback", "NSGraphics", "NSAccessibility", "objc2-core-graphics", "objc2-core-foundation"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFDate", "CFDictionary", "CFMachPort", "CFNumber", "CFRunLoop", "CFString"] }
 objc2-core-graphics   = { version = "0.3.2", default-features = false, features = ["std", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation", "CGDirectDisplay", "CGDisplayConfiguration", "CGGeometry", "CGError", "CGWindow", "libc"] }
 

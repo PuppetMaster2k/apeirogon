@@ -12,11 +12,13 @@ use a7n_proto::{MachineId, limits};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
+mod feedback;
 mod files;
 mod gestures;
 mod gui;
 mod hotkeys;
 mod local_keys;
+pub use feedback::FeedbackConfig;
 pub use files::FilesConfig;
 pub use gestures::GestureConfig;
 pub use gui::{Appearance, GuiConfig, Language};
@@ -109,28 +111,6 @@ impl Default for InputConfig {
             notch_crossing: false,
             local_keys: Vec::new(),
             hide_idle_cursor: true,
-        }
-    }
-}
-
-/// Cues for edge pushes and landings; appearance syncs, enable toggles stay local.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct FeedbackConfig {
-    pub edge: bool,
-    pub landing: bool,
-    pub haptics: bool,
-    #[serde(flatten)]
-    pub look: a7n_platform::feedback::Look,
-}
-
-impl Default for FeedbackConfig {
-    fn default() -> Self {
-        Self {
-            edge: true,
-            landing: true,
-            haptics: false,
-            look: a7n_platform::feedback::Look::default(),
         }
     }
 }
@@ -324,6 +304,7 @@ impl Config {
                 "input.speed must be between 0.1 and 10.0".into(),
             ));
         }
+        self.feedback.validate()?;
         self.local_inputs()?;
         self.parse_bindings()?;
         self.gestures.bindings()?;
@@ -423,7 +404,11 @@ impl Config {
                 ["port"] => toml::Value::Integer(value.parse().map_err(|_| {
                     ConfigError::Invalid("port must be between 1 and 65535".into())
                 })?),
-                ["peers", _, "pointer_speed" | "scroll_speed"] => {
+                [
+                    "feedback",
+                    "depth" | "radius" | "speed" | "frequency" | "intensity",
+                ]
+                | ["peers", _, "pointer_speed" | "scroll_speed"] => {
                     toml::Value::Float(value.parse().map_err(|_| invalid())?)
                 }
                 ["input", "speed"] => toml::Value::Float(value.parse().map_err(|_| {

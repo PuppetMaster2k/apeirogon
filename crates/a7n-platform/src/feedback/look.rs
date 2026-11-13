@@ -4,8 +4,9 @@
 
 use std::time::Duration;
 
-use a7n_proto::v1::Edge;
 use serde::{Deserialize, Serialize};
+
+use super::parameters;
 
 #[cfg(not(target_os = "macos"))]
 use crate::input::Bounds;
@@ -13,9 +14,16 @@ use crate::input::Bounds;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Style {
+    Sparks,
+    Waves,
+    Clouds,
+    Sunrise,
+    Aurora,
+    Arcs,
+    Ferrofluid,
     #[default]
-    Glow,
-    Beam,
+    #[serde(other)]
+    Membrane,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,17 +36,32 @@ pub enum Landing {
 }
 
 impl Landing {
-    /// Radius relative to the backend's full ring, and opacity, at this instant.
+    pub(super) const fn radius(self) -> f64 {
+        match self {
+            Self::Ring => 80.0,
+            Self::Pulse => 110.0,
+            Self::Dot => 70.0,
+        }
+    }
+
+    pub(super) const fn band(self) -> f64 {
+        match self {
+            Self::Ring => 28.0,
+            Self::Pulse => 24.0,
+            Self::Dot => 0.0,
+        }
+    }
+
+    /// Radius relative to this shape's maximum, and opacity, at this instant.
     pub(super) fn frame(self, elapsed: Duration, duration: Duration, animate: bool) -> (f64, f64) {
-        const PULSE_START: f64 = 0.2;
-        const DOT_RADIUS: f64 = 0.35;
+        const PULSE_START: f64 = 30.0 / Landing::Pulse.radius();
         let progress = (elapsed.as_secs_f64() / duration.as_secs_f64()).clamp(0.0, 1.0);
         let motion = if animate { progress } else { 0.0 };
         let radius = match self {
             Self::Ring => 1.0,
             Self::Pulse if !animate => 1.0,
             Self::Pulse => PULSE_START + (1.0 - PULSE_START) * motion,
-            Self::Dot => DOT_RADIUS * (1.0 - motion),
+            Self::Dot => 1.0 - motion,
         };
         let alpha = if progress >= 1.0 {
             0.0
@@ -53,25 +76,36 @@ impl Landing {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[repr(u8)]
 pub enum Color {
     #[default]
     Accent,
     Green,
     Orange,
     Pink,
-}
-
-impl Color {
-    #[must_use]
-    pub(super) const fn rgb(self, dark: bool) -> [u8; 3] {
-        match self {
-            Self::Accent if !dark => [0x2f, 0x5b, 0xea],
-            Self::Accent => [0x70, 0x88, 0xff],
-            Self::Green => [0x43, 0xc7, 0x7f],
-            Self::Orange => [0xe9, 0xa2, 0x3b],
-            Self::Pink => [0xed, 0x78, 0xb5],
-        }
-    }
+    Ibtesam,
+    Lunada,
+    Stripe,
+    Ali,
+    Alihossein,
+    Transfile,
+    ElectricViolet,
+    Martini,
+    Superman,
+    EdsSunsetGradient,
+    SublimeLight,
+    Argon,
+    #[serde(alias = "jshine")]
+    JShine,
+    Flare,
+    UltraVoilet,
+    KyooPal,
+    KyeMeh,
+    Wiretap,
+    Rastafari,
+    SinCityRed,
+    AzurLane,
+    WitchingHour,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,7 +118,7 @@ pub enum Size {
 }
 
 impl Size {
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(all(unix, not(target_os = "macos")))]
     // Physical pixel dimensions are rounded after applying the local scale.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub(super) fn pixels(self, base: u32) -> u32 {
@@ -101,7 +135,7 @@ impl Size {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Look {
     pub style: Style,
@@ -109,10 +143,42 @@ pub struct Look {
     pub landing: Landing,
     pub color: Color,
     pub size: Size,
+    pub depth: f32,
+    pub radius: f32,
+    pub speed: f32,
+    pub frequency: f32,
+    pub intensity: f32,
+    #[serde(skip)]
+    pub show_edge: bool,
+    #[serde(skip)]
+    pub show_marker: bool,
 }
 
-pub(super) const BEAM_THICKNESS: f64 = 3.0;
-const PROGRESS_FULL: f64 = 1000.0;
+pub(super) const LANDING_SOFT_EDGE: f64 = 4.0;
+
+impl Look {
+    pub(super) fn arrival_diameter(self) -> f64 {
+        (self.landing.radius() + LANDING_SOFT_EDGE) * 2.0 * self.size.multiplier()
+    }
+}
+
+impl Default for Look {
+    fn default() -> Self {
+        Self {
+            style: Style::default(),
+            landing: Landing::default(),
+            color: Color::default(),
+            size: Size::default(),
+            depth: parameters::DEPTH.default,
+            radius: parameters::RADIUS.default,
+            speed: parameters::SPEED.default,
+            frequency: parameters::FREQUENCY.default,
+            intensity: parameters::INTENSITY.default,
+            show_edge: true,
+            show_marker: true,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Rect {
@@ -146,56 +212,16 @@ impl Rect {
     }
 }
 
-pub(super) fn beam_rect(
-    area: Rect,
-    edge: Edge,
-    pointer: (f64, f64),
-    progress: u16,
-    thickness: f64,
-) -> Option<Rect> {
-    let horizontal = match edge {
-        Edge::Top | Edge::Bottom => true,
-        Edge::Left | Edge::Right => false,
-        Edge::Unspecified => return None,
-    };
-    let (start, span, along) = if horizontal {
-        (area.x, area.width, pointer.0)
-    } else {
-        (area.y, area.height, pointer.1)
-    };
-    if span <= 0.0 || thickness <= 0.0 {
-        return None;
+/// Keep expanding arrivals on the landing monitor, including points at its edge.
+pub(super) fn landing_rect(area: Rect, point: (f64, f64), diameter: f64) -> Rect {
+    let width = diameter.min(area.width);
+    let height = diameter.min(area.height);
+    Rect {
+        x: (point.0 - width / 2.0).clamp(area.x, area.x + area.width - width),
+        y: (point.1 - height / 2.0).clamp(area.y, area.y + area.height - height),
+        width,
+        height,
     }
-    let length = (span * f64::from(progress) / PROGRESS_FULL).clamp(1.0_f64.min(span), span);
-    let from = (along - length / 2.0).clamp(start, start + span - length);
-    let thickness = thickness.min(if horizontal { area.height } else { area.width });
-    Some(match edge {
-        Edge::Top => Rect {
-            x: from,
-            y: area.y,
-            width: length,
-            height: thickness,
-        },
-        Edge::Bottom => Rect {
-            x: from,
-            y: area.y + area.height - thickness,
-            width: length,
-            height: thickness,
-        },
-        Edge::Left => Rect {
-            x: area.x,
-            y: from,
-            width: thickness,
-            height: length,
-        },
-        Edge::Right => Rect {
-            x: area.x + area.width - thickness,
-            y: from,
-            width: thickness,
-            height: length,
-        },
-        Edge::Unspecified => return None,
-    })
 }
 
 #[cfg(test)]
@@ -221,41 +247,6 @@ mod tests {
             assert!(later.1 < start.1);
             assert_eq!(reduced, style.frame(Duration::ZERO, duration, false));
             assert_eq!(style.frame(duration, duration, true).1, 0.0);
-        }
-    }
-
-    #[test]
-    fn beam_rect_progress_grows_along_pushed_edge() {
-        // Arrange
-        let area = Rect {
-            x: -100.0,
-            y: 20.0,
-            width: 1000.0,
-            height: 800.0,
-        };
-        for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
-            // Act
-            let small = beam_rect(area, edge, (400.0, 420.0), 250, BEAM_THICKNESS).unwrap();
-            let large = beam_rect(area, edge, (400.0, 420.0), 750, BEAM_THICKNESS).unwrap();
-
-            // Assert
-            for rect in [small, large] {
-                assert!(rect.x >= area.x && rect.y >= area.y);
-                assert!(rect.x + rect.width <= area.x + area.width);
-                assert!(rect.y + rect.height <= area.y + area.height);
-                match edge {
-                    Edge::Top => assert_eq!(rect.y, area.y),
-                    Edge::Bottom => assert_eq!(rect.y + rect.height, area.y + area.height),
-                    Edge::Left => assert_eq!(rect.x, area.x),
-                    Edge::Right => assert_eq!(rect.x + rect.width, area.x + area.width),
-                    Edge::Unspecified => unreachable!(),
-                }
-            }
-            if matches!(edge, Edge::Top | Edge::Bottom) {
-                assert_eq!((small.width, large.width), (250.0, 750.0));
-            } else {
-                assert_eq!((small.height, large.height), (200.0, 600.0));
-            }
         }
     }
 }

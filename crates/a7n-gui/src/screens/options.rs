@@ -296,13 +296,8 @@ impl App {
             ui.add_space(theme::size::ROW_GAP);
             theme::card(ui, |ui| {
                 ui.add_enabled_ui(feedback_supported, |ui| {
+                    self.feedback_effect(ui);
                     for (key, title, default, choices) in [
-                        (
-                            "feedback.style",
-                            &t!("Style"),
-                            "glow",
-                            &[("glow", t!("Glow").as_ref()), ("beam", t!("Beam").as_ref())][..],
-                        ),
                         (
                             "feedback.landing_style",
                             &t!("Landing animation"),
@@ -311,17 +306,6 @@ impl App {
                                 ("ring", t!("Ring").as_ref()),
                                 ("pulse", t!("Pulse").as_ref()),
                                 ("dot", t!("Dot").as_ref()),
-                            ][..],
-                        ),
-                        (
-                            "feedback.color",
-                            &t!("Colour"),
-                            "accent",
-                            &[
-                                ("accent", t!("Accent").as_ref()),
-                                ("green", t!("Green").as_ref()),
-                                ("orange", t!("Orange").as_ref()),
-                                ("pink", t!("Pink").as_ref()),
                             ][..],
                         ),
                         (
@@ -335,19 +319,23 @@ impl App {
                             ][..],
                         ),
                     ] {
-                        if (key == "feedback.style" && !edge)
-                            || (key == "feedback.landing_style" && !landing)
-                        {
+                        if !landing {
                             continue;
                         }
                         let current = self.value(key, default);
                         let mut value = current.as_str();
-                        theme::setting_row(ui, title, "", Some(key), |ui| {
+                        let help = if key == "feedback.landing_style" {
+                            t!("Shape the arrival of the chosen effect.")
+                        } else {
+                            "".into()
+                        };
+                        theme::setting_row(ui, title, &help, Some(key), |ui| {
                             if theme::segmented(ui, &mut value, choices).changed() {
                                 self.edit(key, value, default);
                             }
                         });
                     }
+                    self.feedback_color(ui);
                 });
             });
         }

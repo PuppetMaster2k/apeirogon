@@ -116,3 +116,31 @@ pub(crate) fn monitors(connection: &RustConnection, root: Window) -> Option<Vec<
         .collect();
     (!monitors.is_empty()).then_some(monitors)
 }
+
+/// The refresh rate of the `RandR` output showing exactly `monitor`, or `None`
+/// when no active mode matches or any request fails.
+pub(crate) fn refresh_hz(
+    connection: &RustConnection,
+    root: Window,
+    monitor: Bounds,
+) -> Option<f64> {
+    use x11rb::protocol::randr::ConnectionExt as _;
+    let resources = connection
+        .randr_get_screen_resources_current(root)
+        .ok()?
+        .reply()
+        .ok()?;
+    let mode = resources.crtcs.iter().find_map(|crtc| {
+        let info = connection
+            .randr_get_crtc_info(*crtc, resources.config_timestamp)
+            .ok()?
+            .reply()
+            .ok()?;
+        let same_area = (i32::from(info.x), i32::from(info.y)) == (monitor.x, monitor.y)
+            && (u32::from(info.width), u32::from(info.height)) == (monitor.width, monitor.height);
+        (same_area && info.mode != 0).then_some(info.mode)
+    })?;
+    let mode = resources.modes.iter().find(|m| m.id == mode)?;
+    let total = u32::from(mode.htotal) * u32::from(mode.vtotal);
+    (total > 0).then(|| f64::from(mode.dot_clock) / f64::from(total))
+}

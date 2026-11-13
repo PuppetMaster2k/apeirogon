@@ -27,8 +27,8 @@
 //!     per-monitor bounds clamps the glow to the monitor containing the
 //!     pointer). `progress` runs 0..=1000 per-mille of the resistance that
 //!     is built up; the glow grows with it. Repeated commands update it.
-//!   - [`Command::Clear`]: remove the glow at once (push ended, crossing,
-//!     pause, focus moved or the setting turned off).
+//!   - [`Command::Clear`]: drain an abandoned push.
+//!   - [`Command::Crossed`]: play the departure finish after breakthrough.
 //!   - [`Command::Landing`]: briefly mark the desktop point `(x, y)` where the
 //!     pointer landed, then fade out on its own.
 //!   - [`Command::LandingAtCursor`]: mark the current OS cursor position.
@@ -40,7 +40,14 @@ use tokio::sync::mpsc;
 
 use crate::input::Bounds;
 
+mod effects;
 mod look;
+mod palette;
+pub mod parameters;
+#[cfg(feature = "fx-preview")]
+pub mod preview;
+mod raster;
+mod timeline;
 pub use look::{Color, Landing, Look, Size, Style};
 
 #[cfg(target_os = "macos")]
@@ -58,7 +65,7 @@ mod x11;
 /// Commands the daemon may queue before the backend catches up.
 const COMMAND_CAPACITY: usize = 16;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Command {
     Edge {
         display: Bounds,
@@ -67,6 +74,7 @@ pub enum Command {
         look: Look,
     },
     Clear,
+    Crossed,
     Landing {
         x: i32,
         y: i32,
