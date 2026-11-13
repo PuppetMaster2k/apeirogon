@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.43.0...v0.43.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **gui:** time out daemon requests and reconnect ([#263](https://github.com/PuppetMaster2k/apeirogon/issues/263)) ([0b04c27](https://github.com/PuppetMaster2k/apeirogon/commit/0b04c276604d780936a83a11827b2a9e21c1685e))
+
 ## [0.43.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.42.0...v0.43.0) (2026-11-13)
 
 
