@@ -266,3 +266,8 @@ Radius: Radius
 Frequency: Dichte
 Intensity: Intensität
 Speed: Tempo
+"Could not update tray: %{error}": "Tray-Symbol konnte nicht aktualisiert werden: %{error}"
+"Apeirogon: daemon not running": "Apeirogon: Dienst läuft nicht"
+"Apeirogon: input unavailable": "Apeirogon: Eingabe nicht verfügbar"
+"Apeirogon: paused": "Apeirogon: pausiert"
+"Apeirogon: controlling %{name}": "Apeirogon: steuert %{name}"

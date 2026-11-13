@@ -3,6 +3,6 @@ Type=Application
 Name=Apeirogon
 Comment=One keyboard and mouse for every computer
 Exec=apeirogond
-Icon=io.github.PuppetMaster2k.Apeirogon
+Icon=apeirogon
 Categories=Utility;
 NoDisplay=true

@@ -1,28 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
-use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
+use tray_icon::{TrayIcon, TrayIconBuilder};
 
-use super::Action;
+use super::icon::{self, IconError, Variant};
+use super::{Action, State};
 
-const ICON_SIZE: u32 = 32;
-const CHANNELS: u32 = 4;
-const CORNER_CUT: u32 = 10;
-const POLYGON_RADIUS: u32 = 21;
-const ICON_COLOR: [u8; 3] = [65, 145, 220];
+// macOS menu bar icons must be template images (docs/ui.md section 6).
+const TEMPLATE: bool = cfg!(target_os = "macos");
 
 #[derive(Debug, thiserror::Error)]
 pub enum TrayError {
     #[error(transparent)]
     Menu(#[from] tray_icon::menu::Error),
     #[error(transparent)]
-    Icon(#[from] tray_icon::BadIcon),
+    Icon(#[from] IconError),
     #[error(transparent)]
     Native(#[from] tray_icon::Error),
 }
 
 pub struct Tray {
-    _icon: TrayIcon,
+    icon: TrayIcon,
+    shown: std::cell::RefCell<(Variant, String)>,
     status: MenuItem,
     focused: MenuItem,
     pause: MenuItem,
@@ -49,10 +48,12 @@ impl Tray {
         let settings = MenuItem::new("", true, None);
         let quit = MenuItem::new("", true, None);
         menu.append_items(&[&status, &focused, &pause, &settings, &quit])?;
+        let shown = Variant::current(State::Error);
         let icon = TrayIconBuilder::new()
             .with_tooltip("Apeirogon")
             .with_menu(Box::new(menu))
-            .with_icon(Icon::from_rgba(icon_rgba(), ICON_SIZE, ICON_SIZE)?)
+            .with_icon(icon::load(shown)?)
+            .with_icon_as_template(TEMPLATE)
             .build()?;
         // The default event channel is bypassed when a handler is installed.
         let (sender, receiver) = std::sync::mpsc::channel();
@@ -61,7 +62,8 @@ impl Tray {
             wake();
         }));
         Ok(Self {
-            _icon: icon,
+            icon,
+            shown: std::cell::RefCell::new((shown, "Apeirogon".to_owned())),
             status,
             focused,
             pause,
@@ -79,6 +81,24 @@ impl Tray {
         self.quit.set_text(quit);
     }
 
+    /// Show the glyph for `state`; also follows Windows taskbar theme changes.
+    /// # Errors
+    /// Returns native icon errors.
+    pub fn set_state(&self, state: State, tooltip: &str) -> Result<(), TrayError> {
+        let variant = Variant::current(state);
+        let mut shown = self.shown.borrow_mut();
+        if shown.1 != tooltip {
+            self.icon.set_tooltip(Some(tooltip))?;
+            tooltip.clone_into(&mut shown.1);
+        }
+        if shown.0 != variant {
+            self.icon
+                .set_icon_with_as_template(Some(icon::load(variant)?), TEMPLATE)?;
+            shown.0 = variant;
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub fn action(&self) -> Option<Action> {
         let event = self.events.try_recv().ok()?;
@@ -92,18 +112,4 @@ impl Tray {
             None
         }
     }
-}
-
-fn icon_rgba() -> Vec<u8> {
-    let mut rgba = Vec::with_capacity((ICON_SIZE * ICON_SIZE * CHANNELS) as usize);
-    for y in 0..ICON_SIZE {
-        for x in 0..ICON_SIZE {
-            let inside = x + y >= CORNER_CUT
-                && x + y <= 2 * (ICON_SIZE - 1) - CORNER_CUT
-                && x.abs_diff(y) <= POLYGON_RADIUS;
-            rgba.extend_from_slice(&ICON_COLOR);
-            rgba.push(if inside { u8::MAX } else { 0 });
-        }
-    }
-    rgba
 }

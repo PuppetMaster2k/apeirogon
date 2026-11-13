@@ -2,6 +2,8 @@
 
 //! Native tray integration; Linux uses the regular settings window.
 #[cfg(any(target_os = "windows", target_os = "macos"))]
+mod icon;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 mod native;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 pub use native::Tray;
@@ -11,6 +13,19 @@ pub enum Action {
     Pause,
     Settings,
     Quit,
+}
+
+/// What the tray glyph shows (docs/ui.md section 6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum State {
+    /// Pointer and keyboard are on this machine.
+    Idle,
+    /// This machine drives another one.
+    Remote,
+    /// Input sharing is paused.
+    Paused,
+    /// Daemon unreachable or input unavailable.
+    Error,
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -36,6 +51,11 @@ impl Tray {
         _settings: &str,
         _quit: &str,
     ) {
+    }
+    /// # Errors
+    /// Never fails; matches the native signature.
+    pub fn set_state(&self, _state: State, _tooltip: &str) -> std::io::Result<()> {
+        Ok(())
     }
     #[must_use]
     pub fn action(&self) -> Option<Action> {

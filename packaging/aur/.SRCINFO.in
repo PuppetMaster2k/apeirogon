@@ -19,7 +19,9 @@ pkgbase = apeirogon-bin
 	conflicts = apeirogon
 	source = https://github.com/PuppetMaster2k/apeirogon/releases/download/@TAG@/apeirogon-@TAG@-x86_64-unknown-linux-gnu.tar.gz
 	source = https://raw.githubusercontent.com/PuppetMaster2k/apeirogon/@TAG@/packaging/linux/apeirogon.desktop
+	source = https://raw.githubusercontent.com/PuppetMaster2k/apeirogon/@TAG@/crates/a7n-platform/icons/linux/hicolor/scalable/apps/apeirogon.svg
 	sha256sums = @LINUX_SHA256@
 	sha256sums = @DESKTOP_SHA256@
+	sha256sums = @ICON_SHA256@
 
 pkgname = apeirogon-bin
