@@ -41,6 +41,7 @@ use tokio::sync::mpsc;
 use crate::input::Bounds;
 
 mod effects;
+mod flow;
 mod look;
 mod palette;
 #[cfg(feature = "fx-preview")]

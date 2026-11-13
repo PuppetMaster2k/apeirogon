@@ -307,6 +307,7 @@ impl App {
                                 ("aperture", t!("Aperture").as_ref()),
                                 ("sparks", t!("Sparks").as_ref()),
                                 ("membrane", t!("Membrane").as_ref()),
+                                ("flow", t!("Flow").as_ref()),
                             ][..],
                         ),
                         (

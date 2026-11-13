@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() || args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!(
-            "Usage: fx_preview <style> [color] [size] [out_dir]\nStyles: glow, beam, aperture, sparks, membrane\nSizes: small, medium, large\nDefaults: accent medium target/fx-preview\nColors: {}",
+            "Usage: fx_preview <style> [color] [size] [out_dir]\nStyles: glow, beam, aperture, sparks, membrane, flow\nSizes: small, medium, large\nDefaults: accent medium target/fx-preview\nColors: {}",
             Color::choices()
                 .map(|(_, key, _)| key)
                 .collect::<Vec<_>>()

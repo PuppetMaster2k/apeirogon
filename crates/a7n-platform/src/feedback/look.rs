@@ -20,11 +20,15 @@ pub enum Style {
     Sparks,
     #[serde(alias = "ripple")]
     Membrane,
+    Flow,
 }
 
 impl Style {
     pub(super) const fn animated(self) -> bool {
-        matches!(self, Self::Aperture | Self::Sparks | Self::Membrane)
+        matches!(
+            self,
+            Self::Aperture | Self::Sparks | Self::Membrane | Self::Flow
+        )
     }
 }
 
@@ -82,6 +86,7 @@ pub enum Color {
     EdsSunsetGradient,
     SublimeLight,
     Argon,
+    #[serde(alias = "jshine")]
     JShine,
     Flare,
     UltraVoilet,

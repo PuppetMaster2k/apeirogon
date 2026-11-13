@@ -29,6 +29,7 @@ pub(super) struct Frame {
     pub opacity: f64,
     pub stroke: f64,
     pub arrival: Option<Arrival>,
+    pub(super) flow: super::flow::State,
 }
 
 impl Frame {
@@ -65,6 +66,8 @@ pub(super) const MEMBRANE_DEPTH: u32 = 96;
 pub(super) const fn edge_depth(style: Style) -> u32 {
     if matches!(style, Style::Membrane) {
         MEMBRANE_DEPTH
+    } else if matches!(style, Style::Flow) {
+        super::flow::OVERLAY_DEPTH
     } else {
         48
     }
@@ -75,6 +78,8 @@ const ARRIVAL_SIZE: u32 = 160;
 pub(super) const fn arrival_size(style: Style) -> u32 {
     if matches!(style, Style::Membrane) {
         MEMBRANE_ARRIVAL_SIZE
+    } else if matches!(style, Style::Flow) {
+        super::flow::ARRIVAL_DIAMETER
     } else {
         ARRIVAL_SIZE
     }
@@ -126,6 +131,10 @@ pub(super) fn render_departure(frame: &mut Frame, effect: EdgeEffect, mut motion
         motion.tick = 0.0;
         motion.finish = None;
     }
+    if effect.look.style == Style::Flow {
+        super::flow::departure(frame, effect, motion);
+        return;
+    }
     let Some(mut canvas) = Canvas::new(frame, effect.look) else {
         return;
     };
@@ -153,6 +162,10 @@ pub(super) fn render_departure(frame: &mut Frame, effect: EdgeEffect, mut motion
 // The shared frame is bounded by the native overlay size.
 #[allow(clippy::cast_possible_truncation)]
 pub(super) fn render_landing(frame: &mut Frame, look: Look, elapsed: Duration, duration: Duration) {
+    if look.style == Style::Flow {
+        super::flow::arrival(frame, look, elapsed, duration);
+        return;
+    }
     let (radius, alpha) = look.landing.frame(elapsed, duration, frame.animate);
     let stroke = frame.stroke as f32;
     let animate = frame.animate;

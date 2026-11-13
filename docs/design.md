@@ -269,13 +269,16 @@ crates/
   Setting `feedback.edge`
   (default true) draws a glow along the pushed edge that grows with the built-up
   resistance; `feedback.style` chooses `glow` (default), a growing solid
-  `beam`, an opening `aperture`, gathering `sparks`, or a bending `membrane`
+  `beam`, an opening `aperture`, gathering `sparks`, a bending `membrane`, or
+  a flowing plasma glow `flow`
   (`ripple` remains a read alias). Animated styles pair a pressure-driven
   departure with a matching arrival lasting about 650 ms. Quarter crossings
   shudder or brighten the departure; breakthrough plays its finish instead of
   removing it, while abandoned pushes drain back. Membrane parts at the pointer
   and closes behind the landing with damped rings; sparks pull into the crossing
   and burst out at the landing; aperture flashes closed and opens/closes on arrival.
+  Flow grows around the pushed edge, contracts and flashes on crossing (500 ms),
+  then blooms at the landing edge (700 ms); reduced motion freezes its pattern.
   `feedback.color` chooses `accent` (default), `green`, `orange`, `pink`, or one
   of the 22 fixed gradients from issue #258 (the shared palette defines their
   names and stops). Gradients run along the pushed edge, around landing rings,

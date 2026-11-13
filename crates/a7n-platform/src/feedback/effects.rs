@@ -47,7 +47,7 @@ pub(super) fn departure(canvas: &mut Canvas<'_>, push: &Push) {
         Style::Membrane => membrane::departure(canvas, push),
         Style::Sparks => gathering(canvas, push),
         Style::Aperture => aperture(canvas, push),
-        Style::Glow | Style::Beam => {}
+        Style::Glow | Style::Beam | Style::Flow => {}
     }
 }
 
@@ -148,7 +148,7 @@ pub(super) fn arrival(
                 1.0 - phase,
             );
         }
-        Style::Glow | Style::Beam => {}
+        Style::Glow | Style::Beam | Style::Flow => {}
     }
 }
 

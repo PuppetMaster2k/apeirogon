@@ -19,6 +19,28 @@ const DEFAULT_REFRESH_HZ: f64 = 60.0;
 const MIN_REFRESH_HZ: f64 = 30.0;
 const MAX_REFRESH_HZ: f64 = 240.0;
 
+pub(super) fn departure_duration(style: Style, animate: bool) -> Duration {
+    if !animate {
+        REDUCED_DURATION
+    } else if style == Style::Flow {
+        super::flow::FINISH_DURATION
+    } else if style.animated() {
+        PLAY_DURATION
+    } else {
+        FADE_DURATION
+    }
+}
+
+pub(super) fn arrival_duration(style: Style, animate: bool) -> Duration {
+    if !animate {
+        REDUCED_DURATION
+    } else if style == Style::Flow {
+        super::flow::ARRIVAL_DURATION
+    } else {
+        PLAY_DURATION
+    }
+}
+
 /// The pause between frames for a display refreshing at `refresh_hz`. Elapsed
 /// time drives the animation, so the rate only changes how smooth it looks.
 pub(super) fn frame_interval(refresh_hz: Option<f64>) -> Duration {
@@ -102,7 +124,7 @@ impl Timeline {
             d.ended.is_some()
                 || (animate
                     && style.animated()
-                    && (style == Style::Sparks
+                    && (matches!(style, Style::Sparks | Style::Flow)
                         || d.tick
                             .is_some_and(|tick| now.saturating_sub(tick) < SHUDDER_DURATION)))
         })
@@ -130,19 +152,15 @@ impl Timeline {
         };
         let opacity = frame.opacity;
         if let Some((end, started)) = departure.ended {
-            let duration = if !frame.animate {
-                REDUCED_DURATION
-            } else if effect.look.style.animated() {
-                PLAY_DURATION
-            } else {
-                FADE_DURATION
-            };
+            let duration = departure_duration(effect.look.style, frame.animate);
             let phase = now.saturating_sub(started).as_secs_f32() / duration.as_secs_f32();
             if phase >= 1.0 {
                 self.departure = None;
                 return false;
             }
-            motion.seconds = started.saturating_sub(departure.started).as_secs_f32();
+            if effect.look.style != Style::Flow {
+                motion.seconds = started.saturating_sub(departure.started).as_secs_f32();
+            }
             motion.finish = Some((end, phase));
             frame.opacity *= f64::from(1.0 - phase);
             if matches!(end, End::Abandoned) {
@@ -166,11 +184,7 @@ impl Timeline {
         if self.fallback {
             look.style = Style::Glow;
         }
-        let duration = if frame.animate {
-            PLAY_DURATION
-        } else {
-            REDUCED_DURATION
-        };
+        let duration = arrival_duration(look.style, frame.animate);
         let elapsed = now.saturating_sub(started);
         if elapsed >= duration {
             self.arrival = None;

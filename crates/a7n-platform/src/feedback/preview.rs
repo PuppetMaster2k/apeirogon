@@ -12,7 +12,7 @@ use tiny_skia::{Pixmap, PixmapPaint, PixmapRef, Transform};
 
 use super::look::{self, BEAM_THICKNESS, Rect};
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
-use super::timeline::{End, FADE_DURATION, PLAY_DURATION, Timeline};
+use super::timeline::{End, Timeline, arrival_duration, departure_duration};
 use super::{Color, Landing, Look, Size, Style};
 
 const WIDTH: u32 = 1600;
@@ -195,7 +195,10 @@ fn snapshot(look: Look, dark: bool, index: u32, arrival: bool) -> io::Result<Pix
         let mut frame = frame(rect, look, dark);
         frame.arrival = Some(Arrival::at(area(), rect, point, 1.0));
         timeline.land(look, Duration::ZERO);
-        timeline.render_landing(&mut frame, PLAY_DURATION * index / (FRAMES - 1));
+        timeline.render_landing(
+            &mut frame,
+            arrival_duration(look.style, true) * index / (FRAMES - 1),
+        );
         (frame, rect)
     } else {
         departure_frame(&mut timeline, look, dark, index)
@@ -224,11 +227,7 @@ fn departure_frame(timeline: &mut Timeline, look: Look, dark: bool, index: u32) 
     } else {
         let crossed = PUSH_STEP * 5;
         timeline.end(End::Crossed, crossed);
-        let duration = if look.style.animated() {
-            PLAY_DURATION
-        } else {
-            FADE_DURATION
-        };
+        let duration = departure_duration(look.style, true);
         crossed + duration * (index - 5) / 2
     };
     timeline.render_edge(&mut frame, now);
