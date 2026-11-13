@@ -1,16 +1,18 @@
 {
   "name": "Rust + Claude Code + Codex + Herdr",
-  "image": "mcr.microsoft.com/devcontainers/rust:2.1.5-1-bookworm@sha256:4d944fc913385b14c0507bc4636749a773543067c2f5fc885b6fd4a42e59f006",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
   "features": {
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "26"
-    },
     "ghcr.io/devcontainers/features/sshd:1": {
       "version": "latest"
     }
   },
   "remoteUser": "vscode",
-  "forwardPorts": [2222],
+  "forwardPorts": [
+    2222
+  ],
   "portsAttributes": {
     "2222": {
       "label": "SSH (Herdr)",
@@ -19,8 +21,7 @@
   },
   "containerEnv": {
     "CARGO_TARGET_DIR": "/home/vscode/target",
-    "HERDR_SSH_KEY": "${localEnv:HERDR_SSH_KEY}",
-    "HERDR_INSTALL_SHA256": "${localEnv:HERDR_INSTALL_SHA256}"
+    "HERDR_SSH_KEY": "${localEnv:HERDR_SSH_KEY}"
   },
   "remoteEnv": {
     "PATH": "/home/vscode/.local/bin:${containerEnv:PATH}"
@@ -43,7 +44,14 @@
         "rust-lang.rust-analyzer",
         "tamasfe.even-better-toml",
         "vadimcn.vscode-lldb",
-        "fill-labs.dependi"
+        "fill-labs.dependi",
+        "mhutchie.git-graph",
+        "donjayamanne.githistory",
+        "eamodio.gitlens",
+        "panicbit.cargo",
+        "washan.cargo-appraiser",
+        "fill-labs.dependi",
+        "redhat.vscode-yaml",
       ],
       "settings": {
         "rust-analyzer.check.command": "clippy"
