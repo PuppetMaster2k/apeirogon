@@ -273,9 +273,7 @@ crates/
   `aurora`, `arcs`, `ferrofluid`; unknown and retired styles read as `membrane`.
   Depth is 20–160 px (60), radius 60–360 px (160), speed 0.2–3.5 (1.3),
   frequency 0.4–2.5 (1.0), intensity 0.4–2.2 (1.2).
-  On crossing, departure fades in 150 ms. The same effect blooms on the landing
-  edge over 120 ms, holds, then fades by 800 ms. The optional Ring/Pulse/Dot
-  marker follows; `feedback.size` controls only this marker.
+  On crossing, departure fades in 150 ms; with `feedback.landing` enabled, the chosen effect plays once at the landing point, sized by `feedback.size` and masked as a fading Ring, expanding Pulse or shrinking Dot.
   The shared fixed palette includes solid colours and 22 gradients; Flare runs
   #FFF3B0 → #F5AF19 → #F12711. Native backends blit shared premultiplied raster
   frames, animating only while visible. Reduce-motion freezes phase, replaces

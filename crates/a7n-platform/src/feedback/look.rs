@@ -36,17 +36,32 @@ pub enum Landing {
 }
 
 impl Landing {
-    /// Radius relative to the backend's full ring, and opacity, at this instant.
+    pub(super) const fn radius(self) -> f64 {
+        match self {
+            Self::Ring => 80.0,
+            Self::Pulse => 110.0,
+            Self::Dot => 70.0,
+        }
+    }
+
+    pub(super) const fn band(self) -> f64 {
+        match self {
+            Self::Ring => 28.0,
+            Self::Pulse => 24.0,
+            Self::Dot => 0.0,
+        }
+    }
+
+    /// Radius relative to this shape's maximum, and opacity, at this instant.
     pub(super) fn frame(self, elapsed: Duration, duration: Duration, animate: bool) -> (f64, f64) {
-        const PULSE_START: f64 = 0.2;
-        const DOT_RADIUS: f64 = 0.35;
+        const PULSE_START: f64 = 30.0 / Landing::Pulse.radius();
         let progress = (elapsed.as_secs_f64() / duration.as_secs_f64()).clamp(0.0, 1.0);
         let motion = if animate { progress } else { 0.0 };
         let radius = match self {
             Self::Ring => 1.0,
             Self::Pulse if !animate => 1.0,
             Self::Pulse => PULSE_START + (1.0 - PULSE_START) * motion,
-            Self::Dot => DOT_RADIUS * (1.0 - motion),
+            Self::Dot => 1.0 - motion,
         };
         let alpha = if progress >= 1.0 {
             0.0
@@ -137,6 +152,14 @@ pub struct Look {
     pub show_edge: bool,
     #[serde(skip)]
     pub show_marker: bool,
+}
+
+pub(super) const LANDING_SOFT_EDGE: f64 = 4.0;
+
+impl Look {
+    pub(super) fn arrival_diameter(self) -> f64 {
+        (self.landing.radius() + LANDING_SOFT_EDGE) * 2.0 * self.size.multiplier()
+    }
 }
 
 impl Default for Look {

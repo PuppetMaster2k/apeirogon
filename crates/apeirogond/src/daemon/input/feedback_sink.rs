@@ -95,7 +95,7 @@ impl FeedbackSink {
     }
 
     pub(super) fn landing(&self, x: i32, y: i32) {
-        if self.config.edge || self.config.landing {
+        if self.config.landing {
             self.send(Command::Landing {
                 x,
                 y,
@@ -105,7 +105,7 @@ impl FeedbackSink {
     }
 
     pub(super) fn landing_at_cursor(&self) {
-        if self.config.edge || self.config.landing {
+        if self.config.landing {
             self.send(Command::LandingAtCursor {
                 look: self.arrival_look(),
             });

@@ -33,14 +33,13 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 use tokio::sync::mpsc;
 
 use super::look;
-use super::macos_geometry::{self as geometry, LANDING_DIAMETER, Rect};
+use super::macos_geometry::{self as geometry, Rect};
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
 use super::timeline::{End, Timeline, frame_interval};
 use super::{Command, Feedback, Look};
 use crate::main_thread::{self, Waker};
 use blit::Bitmap;
 
-const LANDING_RING_WIDTH: f64 = 4.0;
 /// Never fires on its own; every landing re-arms it.
 const TIMER_DISARMED_SECONDS: f64 = 1.0e12;
 
@@ -422,7 +421,7 @@ impl Panels {
 
     fn fade_landing(&mut self) {
         let look = self.landing_look;
-        let diameter = f64::from(raster::ARRIVAL_DIAMETER);
+        let diameter = look.arrival_diameter();
         let point = (self.landing_center.0, -self.landing_center.1);
         let screens = screen_frames(self.mtm);
         let Some(screen) =
@@ -447,13 +446,11 @@ impl Panels {
             pixel_size(rect.width * scale),
             pixel_size(rect.height * scale),
         );
-        self.landing_frame.arrival = Some(Arrival::at(area, rect, point, scale));
+        self.landing_frame.arrival = Some(Arrival::at(rect, point, scale));
         self.landing_frame.animate = self.animate;
         self.landing_frame.dark = true;
         self.landing_frame.opacity = 1.0;
         self.landing_frame.scale = scale;
-        self.landing_frame.marker_diameter = LANDING_DIAMETER * look.size.multiplier() * scale;
-        self.landing_frame.stroke = LANDING_RING_WIDTH * look.size.multiplier() * scale;
         if !self
             .timeline
             .render_landing(&mut self.landing_frame, self.edge_started.elapsed())

@@ -48,8 +48,6 @@ use blit::Bitmap;
 const WM_FEEDBACK: u32 = WM_APP;
 const CLASS_NAME: PCWSTR = w!("ApeirogonFeedback");
 const BASE_DPI: u32 = 96;
-const LANDING_DIAMETER_DIP: i32 = 56;
-const LANDING_RING_DIP: i32 = 5;
 const FADE_TIMER_ID: usize = 1;
 const EDGE_TIMER_ID: usize = 2;
 const CCHDEVICENAME: usize = 32;
@@ -329,16 +327,16 @@ impl Ui {
 
     fn fade_landing(&mut self) {
         let look = self.landing_look;
-        let base = i32::try_from(raster::ARRIVAL_DIAMETER).unwrap_or(LANDING_DIAMETER_DIP);
-        let diameter = u32::try_from(scale_dip(base, self.landing_dpi)).unwrap_or(1);
+        let scale = f64::from(self.landing_dpi) / f64::from(BASE_DPI);
+        let diameter = look.arrival_diameter() * scale;
         let area = monitor_at(self.landing_point).map_or_else(
             || {
-                let half = i32::try_from(diameter / 2).unwrap_or(0);
+                let half = diameter / 2.0;
                 look::Rect {
-                    x: f64::from(self.landing_point.0 - half),
-                    y: f64::from(self.landing_point.1 - half),
-                    width: f64::from(diameter),
-                    height: f64::from(diameter),
+                    x: f64::from(self.landing_point.0) - half,
+                    y: f64::from(self.landing_point.1) - half,
+                    width: diameter,
+                    height: diameter,
                 }
             },
             |monitor| monitor.rect.as_rect(),
@@ -347,19 +345,15 @@ impl Ui {
             f64::from(self.landing_point.0),
             f64::from(self.landing_point.1),
         );
-        let geometry = look::landing_rect(area, point, f64::from(diameter));
+        let geometry = look::landing_rect(area, point, diameter);
         let bounds = geometry.bounds();
         let rect = Rect::from_bounds(bounds);
         self.landing_frame.resize(bounds.width, bounds.height);
-        self.landing_frame.arrival = Some(Arrival::at(area, geometry, point, 1.0));
+        self.landing_frame.arrival = Some(Arrival::at(geometry, point, 1.0));
         self.landing_frame.dark = true;
         self.landing_frame.animate = self.animate;
         self.landing_frame.opacity = 1.0;
         self.landing_frame.scale = f64::from(self.landing_dpi) / f64::from(BASE_DPI);
-        self.landing_frame.marker_diameter =
-            f64::from(scale_dip(LANDING_DIAMETER_DIP, self.landing_dpi)) * look.size.multiplier();
-        self.landing_frame.stroke =
-            f64::from(scale_dip(LANDING_RING_DIP, self.landing_dpi)) * look.size.multiplier();
         if !self
             .timeline
             .render_landing(&mut self.landing_frame, self.edge_started.elapsed())

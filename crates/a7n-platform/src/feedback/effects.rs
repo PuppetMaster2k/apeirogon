@@ -17,8 +17,8 @@ use tiny_skia::{
     Point, RadialGradient, Shader, SpreadMode, Stroke, Transform,
 };
 
+use super::parameters;
 use super::raster::{self, EdgeEffect, Frame};
-use super::timeline::{BLOOM_DURATION, REDUCED_DURATION};
 use super::{Look, Style};
 
 mod arcs;
@@ -37,6 +37,13 @@ pub(super) struct State {
     field: field::State,
     random: Random,
     last: Option<f32>,
+}
+
+impl State {
+    pub(super) fn reset_arrival_sparks(&mut self) {
+        self.sparks.reset();
+        self.last = None;
+    }
 }
 
 struct Random(u32);
@@ -197,6 +204,9 @@ fn render(frame: &mut Frame, p: &Push, transform: Transform, seconds: f32) {
     };
     match p.look.style {
         Style::Membrane | Style::Clouds => field::render(&mut c, p, &mut state.field),
+        Style::Sparks if frame.arrival.is_some() => {
+            sparks::arrival(&mut c, p, &mut state.sparks, &mut state.random, dt);
+        }
         Style::Sparks => sparks::render(&mut c, p, &mut state.sparks, &mut state.random, dt),
         Style::Waves => waves::render(&mut c, p),
         Style::Sunrise => sunrise::render(&mut c, p),
@@ -221,75 +231,85 @@ fn render(frame: &mut Frame, p: &Push, transform: Transform, seconds: f32) {
     }
 }
 
-const RAMP: f32 = 0.12;
-const HOLD: f32 = 0.35;
+const ARRIVAL_EXTENT: f32 = 4.0;
+
 pub(super) fn arrival(frame: &mut Frame, look: Look, elapsed: Duration, duration: Duration) {
-    let bloom = if frame.animate {
-        BLOOM_DURATION
-    } else {
-        REDUCED_DURATION
-    };
-    let arrival = frame.arrival;
-    if look.show_edge
-        && elapsed < bloom
-        && let Some(a) = arrival
-        && let Some(edge) = a.edge
-    {
-        let scale = frame.scale.max(1.0) as f32;
-        let seconds = elapsed.as_secs_f32();
-        let progress = if frame.animate {
-            (seconds / RAMP).min(1.0)
-                * (1.0 - (seconds - HOLD).max(0.0) / (BLOOM_DURATION.as_secs_f32() - HOLD)).max(0.0)
-        } else {
-            1.0 - seconds / bloom.as_secs_f32()
-        };
-        let (pointer, length, transform) = match edge {
-            Edge::Top => (a.center.0, frame.width, Transform::from_scale(scale, scale)),
-            Edge::Bottom => (
-                a.center.0,
-                frame.width,
-                Transform::from_row(scale, 0.0, 0.0, -scale, 0.0, frame.height as f32),
-            ),
-            Edge::Right => (
-                a.center.1,
-                frame.height,
-                Transform::from_row(0.0, scale, -scale, 0.0, frame.width as f32, 0.0),
-            ),
-            _ => (
-                a.center.1,
-                frame.height,
-                Transform::from_row(0.0, scale, scale, 0.0, 0.0, 0.0),
-            ),
-        };
-        let p = Push {
-            look,
-            phase: if frame.animate {
-                seconds * look.speed * 1.6
-            } else {
-                0.0
-            },
-            proximity: progress,
-            pointer: pointer / scale,
-            length: length as f32 / scale,
-            start: 0.0,
-            edge,
-            animate: frame.animate,
-        };
-        render(frame, &p, transform, seconds);
+    if !look.show_marker {
+        frame.pixels.fill(0);
         return;
     }
-    frame.pixels.fill(0);
-    if look.show_marker {
-        let offset = if look.show_edge && arrival.is_some_and(|a| a.edge.is_some()) {
-            bloom
+    let scale = frame.scale.max(1.0) as f32;
+    let center = frame
+        .arrival
+        .map_or((frame.width as f32 / 2.0, frame.height as f32 / 2.0), |a| {
+            a.center
+        });
+    let radius = (look.landing.radius() * look.size.multiplier()) as f32;
+    let seconds = elapsed.as_secs_f32();
+    let mut p = Push {
+        look: Look {
+            radius: (radius * ARRIVAL_EXTENT * look.radius / parameters::RADIUS.default)
+                .max(radius),
+            depth: (radius * ARRIVAL_EXTENT * look.depth / parameters::DEPTH.default).max(radius),
+            ..look
+        },
+        phase: if frame.animate {
+            seconds * look.speed * 1.6
         } else {
-            Duration::ZERO
-        };
-        raster::render_marker(
-            frame,
-            look,
-            elapsed.saturating_sub(offset),
-            duration.saturating_sub(offset),
-        );
+            0.0
+        },
+        proximity: 1.0,
+        pointer: frame.width as f32 / (2.0 * scale),
+        length: frame.width as f32 / scale,
+        start: 0.0,
+        edge: Edge::Top,
+        animate: frame.animate,
+    };
+    if look.style == Style::Sparks {
+        p.pointer = 0.0;
+        let transform = Transform::from_row(scale, 0.0, 0.0, scale, center.0, center.1);
+        render(frame, &p, transform, seconds);
+    } else {
+        render(frame, &p, Transform::from_scale(scale, scale), seconds);
+        wrap_arrival(frame, center);
     }
+    raster::mask_landing(frame, look, elapsed, duration);
+}
+
+fn wrap_arrival(frame: &mut Frame, center: (f32, f32)) {
+    use std::f32::consts::{PI, TAU};
+
+    frame.arrival_texture.resize(frame.pixels.len(), 0);
+    std::mem::swap(&mut frame.pixels, &mut frame.arrival_texture);
+    for (index, pixel) in frame.pixels.chunks_exact_mut(4).enumerate() {
+        let x = (index % frame.width as usize) as f32 + 0.5 - center.0;
+        let y = (index / frame.width as usize) as f32 + 0.5 - center.1;
+        // Unroll the full-push edge around the landing point, preserving its brightness.
+        let u = (y.atan2(x) + PI) / TAU * (frame.width - 1) as f32;
+        let v = x.hypot(y);
+        pixel.copy_from_slice(&sample_arrival(
+            &frame.arrival_texture,
+            frame.width,
+            frame.height,
+            u,
+            v,
+        ));
+    }
+}
+
+fn sample_arrival(pixels: &[u8], width: u32, height: u32, x: f32, y: f32) -> [u8; 4] {
+    if y >= (height - 1) as f32 {
+        return [0; 4];
+    }
+    let x0 = x.floor() as usize;
+    let y0 = y.floor() as usize;
+    let x1 = (x0 + 1).min(width as usize - 1);
+    let fx = x.fract();
+    let fy = y.fract();
+    std::array::from_fn(|channel| {
+        let at = |x, y| f32::from(pixels[(y * width as usize + x) * 4 + channel]);
+        let top = at(x0, y0) * (1.0 - fx) + at(x1, y0) * fx;
+        let bottom = at(x0, y0 + 1) * (1.0 - fx) + at(x1, y0 + 1) * fx;
+        (top * (1.0 - fy) + bottom * fy).round() as u8
+    })
 }

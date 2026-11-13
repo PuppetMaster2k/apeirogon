@@ -234,15 +234,10 @@ impl Overlay {
             look.show_edge = false;
         }
         self.timeline.land(look, self.edge_started.elapsed());
-        let base = if self.argb.is_some() {
-            raster::ARRIVAL_DIAMETER
-        } else {
-            LANDING_SIZE
-        };
         let diameter = if self.argb.is_some() {
-            base
+            look.arrival_diameter()
         } else {
-            look.size.pixels(base)
+            f64::from(look.size.pixels(LANDING_SIZE))
         };
         let monitors = crate::input::x11::monitors(&self.connection, self.root).unwrap_or_default();
         let screen = self
@@ -261,17 +256,15 @@ impl Overlay {
         self.frame_interval = self.display_frame_interval(monitor);
         let area = Rect::from_bounds(monitor);
         let point = (f64::from(x), f64::from(y));
-        let geometry = look::landing_rect(area, point, f64::from(diameter));
+        let geometry = look::landing_rect(area, point, diameter);
         let rect = geometry.bounds();
         self.landing_frame.resize(rect.width, rect.height);
-        self.landing_frame.arrival = Some(Arrival::at(area, geometry, point, 1.0));
+        self.landing_frame.arrival = Some(Arrival::at(geometry, point, 1.0));
         self.landing_frame.animate = self.animate && self.argb.is_some();
         if self.argb.is_some() {
             self.landing_frame.dark = true;
             self.landing_frame.opacity = 1.0;
             self.landing_frame.scale = 1.0;
-            self.landing_frame.marker_diameter = f64::from(LANDING_SIZE) * look.size.multiplier();
-            self.landing_frame.stroke = 2.0 * look.size.multiplier();
             self.timeline
                 .render_landing(&mut self.landing_frame, self.edge_started.elapsed());
             self.show(self.landing, rect)?;

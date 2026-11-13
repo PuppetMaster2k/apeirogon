@@ -11,7 +11,6 @@ use super::raster::{self, EdgeEffect, Frame};
 use super::{Look, Style};
 
 pub(super) const MARKER_DURATION: Duration = Duration::from_millis(650);
-pub(super) const BLOOM_DURATION: Duration = Duration::from_millis(800);
 pub(super) const REDUCED_DURATION: Duration = Duration::from_millis(200);
 const DEFAULT_REFRESH_HZ: f64 = 60.0;
 const MIN_REFRESH_HZ: f64 = 30.0;
@@ -21,14 +20,6 @@ pub(super) fn departure_duration(_style: Style, _animate: bool) -> Duration {
     Duration::from_millis(150)
 }
 pub(super) fn arrival_duration(_style: Style, animate: bool) -> Duration {
-    (if animate {
-        BLOOM_DURATION
-    } else {
-        REDUCED_DURATION
-    }) + marker_duration(animate)
-}
-
-fn marker_duration(animate: bool) -> Duration {
     if animate {
         MARKER_DURATION
     } else {
@@ -62,6 +53,7 @@ struct Departure {
 pub(super) struct Timeline {
     departure: Option<Departure>,
     arrival: Option<(Look, Duration)>,
+    arrival_pending: bool,
     /// A failing renderer is disabled for this feedback thread.
     fallback: bool,
 }
@@ -99,7 +91,8 @@ impl Timeline {
     }
 
     pub fn land(&mut self, look: Look, now: Duration) {
-        self.arrival = Some((look, now));
+        self.arrival = look.show_marker.then_some((look, now));
+        self.arrival_pending = true;
     }
 
     pub fn edge_playing(&self, animate: bool, _now: Duration) -> bool {
@@ -150,20 +143,16 @@ impl Timeline {
             frame.pixels.fill(0);
             return false;
         }
-        let duration = if look.show_edge && frame.arrival.is_some_and(|a| a.edge.is_some()) {
-            arrival_duration(look.style, frame.animate).saturating_sub(if look.show_marker {
-                Duration::ZERO
-            } else {
-                marker_duration(frame.animate)
-            })
-        } else {
-            marker_duration(frame.animate)
-        };
+        let duration = arrival_duration(look.style, frame.animate);
         let elapsed = now.saturating_sub(started);
         if elapsed >= duration {
             self.arrival = None;
             return false;
         }
+        if self.arrival_pending && look.style == Style::Sparks {
+            frame.studio.reset_arrival_sparks();
+        }
+        self.arrival_pending = false;
         self.guarded(look.style, || {
             raster::render_landing(frame, look, elapsed, duration);
         });

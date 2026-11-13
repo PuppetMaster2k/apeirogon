@@ -324,7 +324,12 @@ impl App {
                         }
                         let current = self.value(key, default);
                         let mut value = current.as_str();
-                        theme::setting_row(ui, title, "", Some(key), |ui| {
+                        let help = if key == "feedback.landing_style" {
+                            t!("Shape the arrival of the chosen effect.")
+                        } else {
+                            "".into()
+                        };
+                        theme::setting_row(ui, title, &help, Some(key), |ui| {
                             if theme::segmented(ui, &mut value, choices).changed() {
                                 self.edit(key, value, default);
                             }

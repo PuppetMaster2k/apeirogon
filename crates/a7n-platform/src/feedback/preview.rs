@@ -25,7 +25,6 @@ const DARK: [u8; 3] = [0x0e, 0x11, 0x16];
 const LIGHT: [u8; 3] = [0xf4, 0xf5, 0xf7];
 const PUSH_PROGRESS: [u16; 6] = [250, 500, 750, 1000, 1000, 1000];
 const PUSH_STEP: Duration = Duration::from_millis(200);
-const LANDING_STROKE: f64 = 2.0;
 
 /// Writes departure, arrival and full-edge PNGs into `out_dir`.
 ///
@@ -130,13 +129,11 @@ const fn area() -> Rect {
 
 // Preview dimensions are small, fixed and rounded like native pixel geometry.
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-fn frame(rect: Rect, look: Look, dark: bool) -> Frame {
+fn frame(rect: Rect, dark: bool) -> Frame {
     let mut frame = Frame {
         animate: true,
         dark,
         opacity: 1.0,
-        stroke: LANDING_STROKE * look.size.multiplier(),
-        marker_diameter: 24.0 * look.size.multiplier(),
         ..Frame::default()
     };
     frame.resize(
@@ -182,17 +179,17 @@ fn departure(look: Look, dark: bool, progress: u16, edge: Edge) -> (Frame, Rect,
             push: push - start,
         },
     };
-    (frame(rect, look, dark), rect, effect)
+    (frame(rect, dark), rect, effect)
 }
 
 fn snapshot(look: Look, dark: bool, index: u32, arrival: bool) -> io::Result<Pixmap> {
     let mut timeline = Timeline::default();
     let (frame, rect) = if arrival {
-        let point = (f64::from(WIDTH - 1), f64::from(PUSH_Y));
-        let diameter = f64::from(raster::ARRIVAL_DIAMETER);
+        let point = (f64::from(WIDTH - CROP / 2), f64::from(PUSH_Y));
+        let diameter = look.arrival_diameter();
         let rect = look::landing_rect(area(), point, diameter);
-        let mut frame = frame(rect, look, dark);
-        frame.arrival = Some(Arrival::at(area(), rect, point, 1.0));
+        let mut frame = frame(rect, dark);
+        frame.arrival = Some(Arrival::at(rect, point, 1.0));
         timeline.land(look, Duration::ZERO);
         let now = arrival_duration(look.style, true) * index / (FRAMES - 1);
         let steps = if matches!(look.style, Style::Sparks | Style::Arcs) {
