@@ -167,7 +167,7 @@ impl App {
                 Update::Response(Ok(Response::Waking { name })) => {
                     self.message = t!("Waking %{name}…", name = name).into_owned();
                 }
-                Update::Response(Ok(Response::Done)) => self.message = t!("Done").into_owned(),
+                Update::Response(Ok(Response::Done)) => self.message.clear(),
                 Update::Response(Ok(_)) => {
                     self.message = t!("Unexpected daemon response").into_owned();
                 }
