@@ -234,7 +234,7 @@ impl Ui {
             .map(|rect| Rect::from_bounds(rect.bounds()))
         } else if look.style.animated() {
             let depth = scale_dip(
-                i32::try_from(raster::EDGE_DEPTH).unwrap_or(1),
+                i32::try_from(raster::edge_depth(look.style)).unwrap_or(1),
                 monitor.map_or(BASE_DPI, |m| m.dpi),
             );
             let depth =
@@ -355,7 +355,7 @@ impl Ui {
     fn fade_landing(&mut self) {
         let look = self.landing_look;
         let base = if look.style.animated() {
-            i32::try_from(raster::ARRIVAL_SIZE).unwrap_or(LANDING_DIAMETER_DIP)
+            i32::try_from(raster::arrival_size(look.style)).unwrap_or(LANDING_DIAMETER_DIP)
         } else {
             LANDING_DIAMETER_DIP
         };

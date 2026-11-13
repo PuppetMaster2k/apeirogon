@@ -10,11 +10,11 @@ use std::time::Duration;
 use super::raster::{self, EdgeEffect, Frame};
 use super::{Look, Style};
 
-const PLAY_DURATION: Duration = Duration::from_millis(650);
-const FADE_DURATION: Duration = Duration::from_millis(140);
+pub(super) const PLAY_DURATION: Duration = Duration::from_millis(650);
+pub(super) const FADE_DURATION: Duration = Duration::from_millis(140);
 const REDUCED_DURATION: Duration = Duration::from_millis(200);
 const QUARTER: u16 = 250;
-const SHUDDER_DURATION: Duration = Duration::from_millis(250);
+pub(super) const SHUDDER_DURATION: Duration = Duration::from_millis(250);
 const DEFAULT_REFRESH_HZ: f64 = 60.0;
 const MIN_REFRESH_HZ: f64 = 30.0;
 const MAX_REFRESH_HZ: f64 = 240.0;

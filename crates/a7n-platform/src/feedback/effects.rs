@@ -5,21 +5,15 @@
 
 use std::f32::consts::{PI, TAU};
 
-use a7n_proto::v1::Edge;
-use tiny_skia::{PathBuilder, Transform};
+use tiny_skia::PathBuilder;
 
 use super::Style;
 use super::raster::{Arrival, Canvas};
 use super::timeline::{End, Motion};
 
+mod membrane;
+
 const EDGE_INSET: f32 = 0.09;
-const LINE_WIDTH: f32 = 0.045;
-const DENT_DEPTH: f32 = 0.72;
-const BELL_WIDE: f32 = 2.8;
-const BELL_NARROW: f32 = 1.0;
-const SHUDDER_REACH: f32 = 6.0;
-const PARTING_REACH: f32 = 5.0;
-const PATH_STEP: f32 = 0.12;
 const PARTICLES: u16 = 32;
 const GOLDEN_ANGLE: f32 = 2.399_963_1;
 const PARTICLE_VARIATION: f32 = 12.989_8;
@@ -50,7 +44,7 @@ impl Push {
 
 pub(super) fn departure(canvas: &mut Canvas<'_>, push: &Push) {
     match push.style {
-        Style::Membrane => membrane(canvas, push),
+        Style::Membrane => membrane::departure(canvas, push),
         Style::Sparks => gathering(canvas, push),
         Style::Aperture => aperture(canvas, push),
         Style::Glow | Style::Beam => {}
@@ -60,72 +54,6 @@ pub(super) fn departure(canvas: &mut Canvas<'_>, push: &Push) {
 fn ease_out(phase: f32) -> f32 {
     1.0 - (1.0 - phase).powi(3)
 }
-fn bell(distance: f32, width: f32) -> f32 {
-    (-0.5 * (distance / width).powi(2)).exp()
-}
-
-fn membrane(canvas: &mut Canvas<'_>, push: &Push) {
-    let phase = push.breakthrough().map_or(0.0, ease_out);
-    let gap = phase * (push.depth * PARTING_REACH).min(push.length * 0.42);
-    let width = push.depth * LINE_WIDTH * (1.0 - push.progress * 0.65);
-    canvas.linear(0.0, push.length, push.progress * 0.35, 1.0);
-    for (start, end) in [(0.0, push.pointer - gap), (push.pointer + gap, push.length)] {
-        if end <= start {
-            continue;
-        }
-        let bend = |x: f32| {
-            let distance = x - push.pointer;
-            let sigma = push.depth * (BELL_WIDE + (BELL_NARROW - BELL_WIDE) * push.progress);
-            let dent = push.depth * DENT_DEPTH * push.progress.powf(1.5) * (1.0 - phase);
-            let wave_distance =
-                distance.abs() - (1.0 - push.motion.tick) * push.depth * SHUDDER_REACH;
-            let shudder = push.motion.tick
-                * push.depth
-                * LINE_WIDTH
-                * bell(wave_distance, push.depth * 0.5)
-                * (wave_distance / push.depth * TAU).sin();
-            let curl = phase * push.depth * 0.3 * bell(distance.abs() - gap, push.depth * 0.5);
-            push.depth * EDGE_INSET + dent * bell(distance, sigma) + shudder + curl
-        };
-        let path = curved_line(
-            start.max(0.0),
-            end.min(push.length),
-            push.depth * PATH_STEP,
-            bend,
-        );
-        if let Some(path) = path {
-            canvas.stroke(&path, width);
-        }
-    }
-}
-
-/// Hermite segments retain the bell's tangent, including where the line parts.
-fn curved_line(
-    start: f32,
-    end: f32,
-    step: f32,
-    bend: impl Fn(f32) -> f32,
-) -> Option<tiny_skia::Path> {
-    let mut path = PathBuilder::new();
-    let mut x = start;
-    path.move_to(x, bend(x));
-    while x < end {
-        let next = (x + step.max(1.0)).min(end);
-        let third = (next - x) / 3.0;
-        let slope = |at: f32| bend(at + 0.5) - bend(at - 0.5);
-        path.cubic_to(
-            x + third,
-            bend(x) + slope(x) * third,
-            next - third,
-            bend(next) - slope(next) * third,
-            next,
-            bend(next),
-        );
-        x = next;
-    }
-    path.finish()
-}
-
 fn gathering(canvas: &mut Canvas<'_>, push: &Push) {
     let contraction = push
         .breakthrough()
@@ -208,7 +136,7 @@ pub(super) fn arrival(
     let motion = if animate { phase } else { STATIC_PHASE };
     let radius = canvas.width.min(canvas.height) / 2.0 * ARRIVAL_MARGIN;
     match style {
-        Style::Membrane => arriving_membrane(canvas, arrival, radius, motion, 1.0 - phase),
+        Style::Membrane => membrane::arrival(canvas, arrival, radius, motion, phase),
         Style::Sparks => burst(canvas, arrival.center, radius, motion, 1.0 - phase),
         Style::Aperture => {
             let opening = (PI * motion).sin().max(0.0);
@@ -221,54 +149,6 @@ pub(super) fn arrival(
             );
         }
         Style::Glow | Style::Beam => {}
-    }
-}
-
-fn arriving_membrane(
-    canvas: &mut Canvas<'_>,
-    arrival: Arrival,
-    radius: f32,
-    phase: f32,
-    alpha: f32,
-) {
-    let center = arrival.center;
-    let edge = arrival.edge.unwrap_or(Edge::Left);
-    let (length, _) = canvas.orient(edge);
-    let (along, inward) = match edge {
-        Edge::Top => (center.0, center.1),
-        Edge::Bottom => (center.0, canvas.height - center.1),
-        Edge::Right => (center.1, canvas.width - center.0),
-        Edge::Left | Edge::Unspecified => (center.1, center.0),
-    };
-    let inset = if arrival.edge.is_some() {
-        radius * EDGE_INSET
-    } else {
-        inward
-    };
-    let gap = radius * (1.0 - ease_out((phase * 2.0).min(1.0)));
-    for (start, end) in [(0.0, along - gap), (along + gap, length)] {
-        if start >= end {
-            continue;
-        }
-        let mut path = PathBuilder::new();
-        path.move_to(start, inset);
-        path.line_to(end, inset);
-        if let Some(path) = path.finish() {
-            canvas.soft((along, inset), radius, phase, alpha);
-            canvas.stroke(&path, radius * LINE_WIDTH);
-        }
-    }
-    canvas.transform = Transform::identity();
-    for delay in [0.0, 0.18] {
-        let age = (phase - delay) / (1.0 - delay);
-        if age > 0.0 {
-            canvas.ring(
-                center,
-                radius * ease_out(age),
-                radius * LINE_WIDTH * (1.0 - age * 0.5),
-                alpha * (1.0 - age).powi(2),
-            );
-        }
     }
 }
 

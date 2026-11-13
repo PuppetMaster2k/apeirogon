@@ -43,6 +43,8 @@ use crate::input::Bounds;
 mod effects;
 mod look;
 mod palette;
+#[cfg(feature = "fx-preview")]
+pub mod preview;
 mod raster;
 mod timeline;
 pub use look::{Color, Landing, Look, Size, Style};

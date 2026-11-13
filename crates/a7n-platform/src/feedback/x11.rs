@@ -228,7 +228,7 @@ impl Overlay {
     fn show_landing(&mut self, x: i32, y: i32, look: Look) -> Option<()> {
         self.timeline.land(look, self.edge_started.elapsed());
         let base = if look.style.animated() && self.argb.is_some() {
-            raster::ARRIVAL_SIZE
+            raster::arrival_size(look.style)
         } else {
             LANDING_SIZE
         };
@@ -348,7 +348,7 @@ impl Overlay {
             glow_rect(monitor, edge, along, 1000, look.size).map(|mut rect| {
                 let depth = look
                     .size
-                    .pixels(raster::EDGE_DEPTH)
+                    .pixels(raster::edge_depth(look.style))
                     .min(monitor.width)
                     .min(monitor.height);
                 match edge {

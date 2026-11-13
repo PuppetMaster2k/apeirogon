@@ -12,9 +12,12 @@ use tiny_skia::{
 };
 
 use super::timeline::Motion;
-use super::{Landing, Look};
+use super::{Landing, Look, Style};
 
 const CHANNELS: usize = 4;
+const MEMBRANE_COLOR_SHIFT: f32 = 0.35;
+const MEMBRANE_TIP_TINT: f32 = 0.45;
+const MEMBRANE_DARK_TIP_TINT: f32 = 0.55;
 
 #[derive(Default)]
 pub(super) struct Frame {
@@ -57,8 +60,25 @@ pub(super) struct EdgeEffect {
     pub along: Along,
 }
 
-pub(super) const EDGE_DEPTH: u32 = 48;
-pub(super) const ARRIVAL_SIZE: u32 = 160;
+pub(super) const MEMBRANE_DEPTH: u32 = 96;
+
+pub(super) const fn edge_depth(style: Style) -> u32 {
+    if matches!(style, Style::Membrane) {
+        MEMBRANE_DEPTH
+    } else {
+        48
+    }
+}
+pub(super) const MEMBRANE_ARRIVAL_SIZE: u32 = 224;
+const ARRIVAL_SIZE: u32 = 160;
+
+pub(super) const fn arrival_size(style: Style) -> u32 {
+    if matches!(style, Style::Membrane) {
+        MEMBRANE_ARRIVAL_SIZE
+    } else {
+        ARRIVAL_SIZE
+    }
+}
 const PROGRESS_FULL: f32 = 1000.0;
 
 #[derive(Clone, Copy)]
@@ -290,6 +310,24 @@ impl<'a> Canvas<'a> {
             (alpha * self.opacity).clamp(0.0, 1.0),
         )
         .unwrap_or(tiny_skia::Color::TRANSPARENT)
+    }
+
+    pub fn membrane_color(&mut self, position: f32, pressure: f32, alpha: f32) {
+        let color = self.color(position + pressure * MEMBRANE_COLOR_SHIFT, alpha);
+        let tint = pressure
+            * if self.dark {
+                MEMBRANE_DARK_TIP_TINT
+            } else {
+                MEMBRANE_TIP_TINT
+            };
+        let color = tiny_skia::Color::from_rgba(
+            color.red() + (1.0 - color.red()) * tint,
+            color.green() + (1.0 - color.green()) * tint,
+            color.blue() + (1.0 - color.blue()) * tint,
+            color.alpha(),
+        )
+        .unwrap_or(color);
+        self.paint.shader = Shader::SolidColor(color);
     }
 
     pub fn stops(&self, alpha: f32) -> Vec<GradientStop> {

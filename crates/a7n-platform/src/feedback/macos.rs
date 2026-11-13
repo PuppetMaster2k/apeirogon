@@ -276,9 +276,10 @@ impl Panels {
         } else {
             let mut rect = geometry::glow_rect(screen, edge, progress, look.size);
             if look.style.animated() {
-                let thickness = (f64::from(raster::EDGE_DEPTH) * look.size.multiplier())
-                    .min(screen.width)
-                    .min(screen.height);
+                let thickness = (f64::from(raster::edge_depth(look.style))
+                    * look.size.multiplier())
+                .min(screen.width)
+                .min(screen.height);
                 rect = rect.map(|mut rect| {
                     match edge {
                         a7n_proto::v1::Edge::Top => {
@@ -444,7 +445,7 @@ impl Panels {
     fn fade_landing(&mut self) {
         let look = self.landing_look;
         let base = if look.style.animated() {
-            f64::from(raster::ARRIVAL_SIZE)
+            f64::from(raster::arrival_size(look.style))
         } else {
             LANDING_DIAMETER
         };
