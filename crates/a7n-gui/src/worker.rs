@@ -4,13 +4,17 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use a7n_ipc::config::Config;
-use a7n_ipc::{IpcClient, MachineId, Request, Response};
+use a7n_ipc::{IpcClient, IpcError, MachineId, Request, Response};
 use eframe::egui;
 use rust_i18n::t;
 use tokio::sync::mpsc as async_mpsc;
 
 const MAILBOX_CAPACITY: usize = 32;
 const STATUS_INTERVAL: Duration = Duration::from_secs(1);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+// The daemon records for up to 10 seconds; leave time for its reply.
+const RECORD_HOTKEY_TIMEOUT: Duration = Duration::from_secs(15);
+const LONG_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub(super) enum Command {
     Request(Request),
@@ -133,11 +137,22 @@ async fn request_daemon(
     if client.is_none() {
         *client = Some(IpcClient::connect().await.map_err(|e| e.to_string())?);
     }
-    let result = client
-        .as_mut()
-        .expect("client connected above")
-        .request(request)
-        .await;
+    let timeout = match request {
+        Request::RecordHotkey { .. } => RECORD_HOTKEY_TIMEOUT,
+        Request::PairHost | Request::PairJoin { .. } | Request::SendFiles { .. } => {
+            LONG_REQUEST_TIMEOUT
+        }
+        _ => REQUEST_TIMEOUT,
+    };
+    let result = tokio::time::timeout(
+        timeout,
+        client
+            .as_mut()
+            .expect("client connected above")
+            .request(request),
+    )
+    .await
+    .unwrap_or(Err(IpcError::Timeout));
     if result.is_err() {
         *client = None;
     }
