@@ -263,42 +263,25 @@ crates/
   X11 detects only EWMH full-screen windows; borderless games without that state
   are not held.
 
-- **Feedback:** appearance syncs across the desk through settings sync:
-  `feedback.style`, `feedback.color`, `feedback.size` and `feedback.landing_style`.
-  Enable toggles `feedback.edge`, `feedback.landing` and `feedback.haptics` stay local.
-  Setting `feedback.edge`
-  (default true) draws a glow along the pushed edge that grows with the built-up
-  resistance; `feedback.style` chooses `glow` (default), a growing solid
-  `beam`, an opening `aperture`, gathering `sparks`, a bending `membrane`, or
-  a flowing plasma glow `flow`
-  (`ripple` remains a read alias). Animated styles pair a pressure-driven
-  departure with a matching arrival lasting about 650 ms. Quarter crossings
-  shudder or brighten the departure; breakthrough plays its finish instead of
-  removing it, while abandoned pushes drain back. Membrane parts at the pointer
-  and closes behind the landing with damped rings; sparks pull into the crossing
-  and burst out at the landing; aperture flashes closed and opens/closes on arrival.
-  Flow grows around the pushed edge, contracts and flashes on crossing (500 ms),
-  then blooms at the landing edge (700 ms); reduced motion freezes its pattern.
-  `feedback.color` chooses `accent` (default), `green`, `orange`, `pink`, or one
-  of the 22 fixed gradients from issue #258 (the shared palette defines their
-  names and stops). Gradients run along the pushed edge, around landing rings,
-  and radially across dots. The GUI shows each colour with a swatch,
-  and `feedback.size` chooses `small`, `medium` (default) or `large`; `feedback.landing` (default true) briefly marks where the pointer
-  lands after a take, using the same colour and size;
-  `feedback.landing_style` chooses `ring` (default), an expanding `pulse`, or a
-  shrinking filled `dot` for Glow and Beam. Reduce-motion uses static
-  progress-dependent departures and short arrival fades; `feedback.haptics` (default false, macOS only) ticks the
-  trackpad at each quarter of the push. The daemon decides what to send
-  (progress changes of at least 5 % and quarter crossings); each OS backend draws
-  a click-through overlay that never takes focus and honours the OS reduce-motion
-  setting itself. Animated edges redraw at approximately 60 fps only while
-  visible; reduce-motion freezes their motion while retaining push progress.
-  X11 reads GNOME/KDE animation preferences at startup and uses static frames
-  on unknown desktops. Native backends blit shared premultiplied raster frames;
-  X11 retains solid-colour drawing without an ARGB visual or compositor.
-  Windows, macOS and X11 are supported; Wayland has none, because a background
-  daemon cannot place an overlay at the screen edges there (layer-shell is
-  compositor-specific and not used).
+- **Feedback:** appearance syncs through the settings allow-list: `feedback.style`,
+  `feedback.color`, `feedback.size`, `feedback.landing_style`, `feedback.depth`,
+  `feedback.radius`, `feedback.speed`, `feedback.frequency`, `feedback.intensity`.
+  Enable toggles `feedback.edge`, `feedback.landing`, `feedback.haptics` stay local.
+  Only pushing an edge connected to a machine draws an effect, pinned to that
+  push point and clipped to the pushed monitor. Push progress supplies proximity.
+  Styles are `membrane` (default, plasma), `sparks`, `waves`, `clouds`, `sunrise`,
+  `aurora`, `arcs`, `ferrofluid`; unknown and retired styles read as `membrane`.
+  Depth is 20–160 px (60), radius 60–360 px (160), speed 0.2–3.5 (1.3),
+  frequency 0.4–2.5 (1.0), intensity 0.4–2.2 (1.2).
+  On crossing, departure fades in 150 ms. The same effect blooms on the landing
+  edge over 120 ms, holds, then fades by 800 ms. The optional Ring/Pulse/Dot
+  marker follows; `feedback.size` controls only this marker.
+  The shared fixed palette includes solid colours and 22 gradients; Flare runs
+  #FFF3B0 → #F5AF19 → #F12711. Native backends blit shared premultiplied raster
+  frames, animating only while visible. Reduce-motion freezes phase, replaces
+  sparks/arcs with their glow spots and uses arrival fades. X11 without an ARGB
+  visual/compositor retains its solid fallback; Wayland has no feedback overlay.
+  Haptics (default false, macOS only) tick at push quarters.
 
 - **Safety hotkeys** (all rebindable):
   - Return to the local machine: double-tap the trigger key (Right Alt / Right

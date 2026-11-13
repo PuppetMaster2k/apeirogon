@@ -37,18 +37,17 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 use windows_sys::core::{BOOL, PCWSTR, w};
 
-use self::geometry::{Rect, glow_alpha, glow_rect};
-use super::look::{self, BEAM_THICKNESS};
+use self::geometry::{Rect, glow_rect};
+use super::look;
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
 use super::timeline::{End, Timeline, frame_interval};
-use super::{Command, Feedback, Look, Style};
+use super::{Command, Feedback, Look};
 use blit::Bitmap;
 
 /// Carries a boxed [`Command`] in `lParam` from the relay to the UI thread.
 const WM_FEEDBACK: u32 = WM_APP;
 const CLASS_NAME: PCWSTR = w!("ApeirogonFeedback");
 const BASE_DPI: u32 = 96;
-const GLOW_THICKNESS_DIP: i32 = 6;
 const LANDING_DIAMETER_DIP: i32 = 56;
 const LANDING_RING_DIP: i32 = 5;
 const FADE_TIMER_ID: usize = 1;
@@ -218,37 +217,15 @@ impl Ui {
         let area = monitor
             .and_then(|monitor| monitor.rect.intersect(display))
             .unwrap_or(display);
-        let thickness = scale_dip(GLOW_THICKNESS_DIP, monitor.map_or(BASE_DPI, |m| m.dpi));
-        let thickness = i32::try_from(look.size.pixels(u32::try_from(thickness).unwrap_or(1)))
-            .unwrap_or(thickness);
-        let rect = if look.style == Style::Beam {
-            let area = area.as_rect();
-            let dpi = monitor.map_or(BASE_DPI, |m| m.dpi);
-            look::beam_rect(
-                area,
-                edge,
-                (f64::from(pointer.0), f64::from(pointer.1)),
-                progress,
-                BEAM_THICKNESS * f64::from(dpi) / f64::from(BASE_DPI) * look.size.multiplier(),
-            )
-            .map(|rect| Rect::from_bounds(rect.bounds()))
-        } else if look.style.animated() {
-            let depth = scale_dip(
-                i32::try_from(raster::edge_depth(look.style)).unwrap_or(1),
-                monitor.map_or(BASE_DPI, |m| m.dpi),
-            );
-            let depth =
-                i32::try_from(look.size.pixels(u32::try_from(depth).unwrap_or(1))).unwrap_or(depth);
-            glow_rect(
-                area,
-                edge,
-                1000,
-                depth.min(area.width()).min(area.height()),
-                pointer,
-            )
-        } else {
-            glow_rect(area, edge, progress, thickness, pointer)
-        };
+        let dpi = monitor.map_or(BASE_DPI, |m| m.dpi);
+        let depth = scale_dip(i32::try_from(raster::OVERLAY_DEPTH).unwrap_or(1), dpi);
+        let rect = glow_rect(
+            area,
+            edge,
+            1000,
+            depth.min(area.width()).min(area.height()),
+            pointer,
+        );
         let Some(rect) = rect else {
             self.edge_timer(false);
             self.timeline
@@ -261,13 +238,11 @@ impl Ui {
             u32::try_from(rect.height()).unwrap_or(1),
         );
         self.glow_frame.dark = true;
-        self.glow_frame.opacity = if look.style == Style::Beam {
-            1.0
-        } else {
-            f64::from(glow_alpha(progress)) / 255.0
-        };
+        self.glow_frame.opacity = 1.0;
+        self.glow_frame.scale = f64::from(dpi) / f64::from(BASE_DPI);
         let horizontal = matches!(edge, Edge::Top | Edge::Bottom);
         let along = Along {
+            origin: (f64::from(area.left), f64::from(area.top)),
             start: f64::from(if horizontal {
                 rect.left - area.left
             } else {
@@ -354,14 +329,8 @@ impl Ui {
 
     fn fade_landing(&mut self) {
         let look = self.landing_look;
-        let base = if look.style.animated() {
-            i32::try_from(raster::arrival_size(look.style)).unwrap_or(LANDING_DIAMETER_DIP)
-        } else {
-            LANDING_DIAMETER_DIP
-        };
-        let diameter = look
-            .size
-            .pixels(u32::try_from(scale_dip(base, self.landing_dpi)).unwrap_or(1));
+        let base = i32::try_from(raster::ARRIVAL_DIAMETER).unwrap_or(LANDING_DIAMETER_DIP);
+        let diameter = u32::try_from(scale_dip(base, self.landing_dpi)).unwrap_or(1);
         let area = monitor_at(self.landing_point).map_or_else(
             || {
                 let half = i32::try_from(diameter / 2).unwrap_or(0);
@@ -378,14 +347,17 @@ impl Ui {
             f64::from(self.landing_point.0),
             f64::from(self.landing_point.1),
         );
-        let geometry = look::landing_rect(area, point, f64::from(diameter), look.style);
+        let geometry = look::landing_rect(area, point, f64::from(diameter));
         let bounds = geometry.bounds();
         let rect = Rect::from_bounds(bounds);
         self.landing_frame.resize(bounds.width, bounds.height);
         self.landing_frame.arrival = Some(Arrival::at(area, geometry, point, 1.0));
         self.landing_frame.dark = true;
         self.landing_frame.animate = self.animate;
-        self.landing_frame.opacity = 220.0 / 255.0;
+        self.landing_frame.opacity = 1.0;
+        self.landing_frame.scale = f64::from(self.landing_dpi) / f64::from(BASE_DPI);
+        self.landing_frame.marker_diameter =
+            f64::from(scale_dip(LANDING_DIAMETER_DIP, self.landing_dpi)) * look.size.multiplier();
         self.landing_frame.stroke =
             f64::from(scale_dip(LANDING_RING_DIP, self.landing_dpi)) * look.size.multiplier();
         if !self

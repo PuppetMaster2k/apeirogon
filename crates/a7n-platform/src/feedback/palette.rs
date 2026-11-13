@@ -123,7 +123,7 @@ const PALETTE: &[Entry] = &[
         color: Color::Flare,
         key: "flare",
         name: "Flare",
-        stops: &[[0xf1, 0x27, 0x11], [0xf5, 0xaf, 0x19]],
+        stops: &[[0xff, 0xf3, 0xb0], [0xf5, 0xaf, 0x19], [0xf1, 0x27, 0x11]],
     },
     Entry {
         color: Color::UltraVoilet,

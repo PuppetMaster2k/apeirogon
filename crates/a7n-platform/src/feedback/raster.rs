@@ -7,18 +7,14 @@ use std::time::Duration;
 use a7n_proto::v1::Edge;
 
 use tiny_skia::{
-    FillRule, GradientStop, LineCap, LinearGradient, Paint, Path, PathBuilder, PixmapMut, Point,
-    RadialGradient, Rect, Shader, SpreadMode, Stroke, SweepGradient, Transform,
+    FillRule, GradientStop, LineCap, Paint, Path, PathBuilder, PixmapMut, Point, RadialGradient,
+    Shader, SpreadMode, Stroke, SweepGradient, Transform,
 };
 
-use super::timeline::Motion;
-use super::{Landing, Look, Style};
+use super::{Landing, Look};
 
 const CHANNELS: usize = 4;
-const MEMBRANE_COLOR_SHIFT: f32 = 0.35;
-const MEMBRANE_TIP_TINT: f32 = 0.45;
-const MEMBRANE_DARK_TIP_TINT: f32 = 0.55;
-
+const LANDING_EDGE_INSET: f64 = 32.0;
 #[derive(Default)]
 pub(super) struct Frame {
     pub width: u32,
@@ -29,7 +25,9 @@ pub(super) struct Frame {
     pub opacity: f64,
     pub stroke: f64,
     pub arrival: Option<Arrival>,
-    pub(super) flow: super::flow::State,
+    pub(super) studio: super::effects::State,
+    pub scale: f64,
+    pub marker_diameter: f64,
 }
 
 impl Frame {
@@ -47,6 +45,7 @@ impl Frame {
 /// Positions along the whole pushed edge, in the same units as the frame.
 #[derive(Clone, Copy)]
 pub(super) struct Along {
+    pub origin: (f64, f64),
     pub start: f64,
     pub span: f64,
     pub push: f64,
@@ -61,30 +60,9 @@ pub(super) struct EdgeEffect {
     pub along: Along,
 }
 
-pub(super) const MEMBRANE_DEPTH: u32 = 96;
-
-pub(super) const fn edge_depth(style: Style) -> u32 {
-    if matches!(style, Style::Membrane) {
-        MEMBRANE_DEPTH
-    } else if matches!(style, Style::Flow) {
-        super::flow::OVERLAY_DEPTH
-    } else {
-        48
-    }
-}
-pub(super) const MEMBRANE_ARRIVAL_SIZE: u32 = 224;
-const ARRIVAL_SIZE: u32 = 160;
-
-pub(super) const fn arrival_size(style: Style) -> u32 {
-    if matches!(style, Style::Membrane) {
-        MEMBRANE_ARRIVAL_SIZE
-    } else if matches!(style, Style::Flow) {
-        super::flow::ARRIVAL_DIAMETER
-    } else {
-        ARRIVAL_SIZE
-    }
-}
-const PROGRESS_FULL: f32 = 1000.0;
+// Sunrise corona and the widest curtains determine the maximum overlay extent.
+pub(super) const OVERLAY_DEPTH: u32 = 540;
+pub(super) const ARRIVAL_DIAMETER: u32 = 1080;
 
 #[derive(Clone, Copy)]
 pub(super) struct Arrival {
@@ -110,7 +88,7 @@ impl Arrival {
         let edge = distances
             .into_iter()
             .min_by(|a, b| a.0.total_cmp(&b.0))
-            .filter(|(distance, _)| *distance < rect.width.min(rect.height) / 2.0)
+            .filter(|(distance, _)| *distance <= LANDING_EDGE_INSET)
             .map(|(_, edge)| edge);
         Self {
             center: (
@@ -122,75 +100,36 @@ impl Arrival {
     }
 }
 
-// Native desktop spans and elapsed animation values fit skia's f32 geometry.
-#[allow(clippy::cast_possible_truncation)]
-pub(super) fn render_departure(frame: &mut Frame, effect: EdgeEffect, mut motion: Motion) {
-    let animate = frame.animate;
-    if !animate {
-        motion.seconds = 0.4;
-        motion.tick = 0.0;
-        motion.finish = None;
-    }
-    if effect.look.style == Style::Flow {
-        super::flow::departure(frame, effect, motion);
-        return;
-    }
-    let Some(mut canvas) = Canvas::new(frame, effect.look) else {
-        return;
-    };
-    let (length, depth) = canvas.orient(effect.edge);
-    let start = -effect.along.start as f32;
-    let end = start + effect.along.span as f32;
-    canvas.linear(start, end, 0.0, 1.0);
-    if effect.look.style.animated() {
-        super::effects::departure(
-            &mut canvas,
-            &super::effects::Push {
-                style: effect.look.style,
-                length,
-                depth,
-                pointer: effect.along.push as f32,
-                progress: (f32::from(effect.progress) / PROGRESS_FULL).min(1.0),
-                motion,
-            },
-        );
-    } else if let Some(rect) = Rect::from_xywh(0.0, 0.0, length, depth) {
-        canvas.fill(&PathBuilder::from_rect(rect));
-    }
+pub(super) fn render_departure(frame: &mut Frame, effect: EdgeEffect, seconds: f32) {
+    super::effects::departure(frame, effect, seconds);
 }
 
-// The shared frame is bounded by the native overlay size.
-#[allow(clippy::cast_possible_truncation)]
 pub(super) fn render_landing(frame: &mut Frame, look: Look, elapsed: Duration, duration: Duration) {
-    if look.style == Style::Flow {
-        super::flow::arrival(frame, look, elapsed, duration);
-        return;
-    }
+    super::effects::arrival(frame, look, elapsed, duration);
+}
+
+// Marker geometry and palette are unchanged; its radius no longer depends on the effect window.
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+pub(super) fn render_marker(frame: &mut Frame, look: Look, elapsed: Duration, duration: Duration) {
     let (radius, alpha) = look.landing.frame(elapsed, duration, frame.animate);
     let stroke = frame.stroke as f32;
-    let animate = frame.animate;
-    let arrival = frame.arrival;
-    let phase = (elapsed.as_secs_f32() / duration.as_secs_f32()).clamp(0.0, 1.0);
-    let alpha = if animate { alpha as f32 } else { 1.0 - phase };
+    let center = frame
+        .arrival
+        .map_or((frame.width as f32 / 2.0, frame.height as f32 / 2.0), |a| {
+            a.center
+        });
+    let diameter = frame.marker_diameter as f32;
+    let alpha = if frame.animate {
+        alpha
+    } else {
+        1.0 - (elapsed.as_secs_f64() / duration.as_secs_f64()).clamp(0.0, 1.0)
+    };
     let Some(mut canvas) = Canvas::new(frame, look) else {
         return;
     };
-    let center = Point::from_xy(canvas.width / 2.0, canvas.height / 2.0);
-    if look.style.animated() {
-        super::effects::arrival(
-            &mut canvas,
-            look.style,
-            arrival.unwrap_or(Arrival {
-                center: (center.x, center.y),
-                edge: None,
-            }),
-            phase,
-            animate,
-        );
-        return;
-    }
-    let radius = ((canvas.width.min(canvas.height) - stroke) / 2.0 * radius as f32).max(0.01);
-    let stops = canvas.stops(alpha);
+    let center = Point::from_xy(center.0, center.1);
+    let radius = ((diameter - stroke) / 2.0 * radius as f32).max(0.01);
+    let stops = canvas.stops(alpha as f32);
     canvas.paint.shader = if look.landing == Landing::Dot {
         RadialGradient::new(
             center,
@@ -211,7 +150,7 @@ pub(super) fn render_landing(frame: &mut Frame, look: Look, elapsed: Duration, d
             Transform::from_rotate_at(180.0, center.x, center.y),
         )
     }
-    .unwrap_or_else(|| canvas.solid(0.0, alpha));
+    .unwrap_or_else(|| canvas.solid(0.0, alpha as f32));
     canvas.circle(
         (center.x, center.y),
         radius,
@@ -223,8 +162,6 @@ pub(super) struct Canvas<'a> {
     pixmap: PixmapMut<'a>,
     pub paint: Paint<'static>,
     pub transform: Transform,
-    pub width: f32,
-    pub height: f32,
     look: Look,
     dark: bool,
     opacity: f32,
@@ -238,76 +175,10 @@ impl<'a> Canvas<'a> {
             pixmap: PixmapMut::from_bytes(&mut frame.pixels, frame.width, frame.height)?,
             paint: Paint::default(),
             transform: Transform::identity(),
-            width: frame.width as f32,
-            height: frame.height as f32,
             look,
             dark: frame.dark,
             opacity: frame.opacity as f32,
         })
-    }
-
-    pub fn orient(&mut self, edge: Edge) -> (f32, f32) {
-        self.transform = match edge {
-            Edge::Top => Transform::identity(),
-            Edge::Bottom => Transform::from_row(1.0, 0.0, 0.0, -1.0, 0.0, self.height),
-            Edge::Left | Edge::Unspecified => Transform::from_row(0.0, 1.0, 1.0, 0.0, 0.0, 0.0),
-            Edge::Right => Transform::from_row(0.0, 1.0, -1.0, 0.0, self.width, 0.0),
-        };
-        if matches!(edge, Edge::Top | Edge::Bottom) {
-            (self.width, self.height)
-        } else {
-            (self.height, self.width)
-        }
-    }
-
-    pub fn linear(&mut self, start: f32, end: f32, shift: f32, alpha: f32) {
-        let stops = (0..=48_u16)
-            .map(|i| {
-                let t = f32::from(i) / 48.0;
-                GradientStop::new(t, self.color(t + shift, alpha))
-            })
-            .collect();
-        self.paint.shader = LinearGradient::new(
-            Point::from_xy(start, 0.0),
-            Point::from_xy(end, 0.0),
-            stops,
-            SpreadMode::Pad,
-            Transform::identity(),
-        )
-        .unwrap_or_else(|| self.solid(shift, alpha));
-    }
-
-    pub fn soft(&mut self, center: (f32, f32), radius: f32, position: f32, alpha: f32) {
-        let center = Point::from_xy(center.0, center.1);
-        let stops = [0.0, 0.25, 1.0]
-            .into_iter()
-            .map(|t| {
-                GradientStop::new(t, self.color(position + t * 0.3, alpha * (1.0 - t).powi(2)))
-            })
-            .collect();
-        self.paint.shader = RadialGradient::new(
-            center,
-            0.0,
-            center,
-            radius.max(0.01),
-            stops,
-            SpreadMode::Pad,
-            Transform::identity(),
-        )
-        .unwrap_or_else(|| self.solid(position, alpha));
-    }
-
-    pub fn ring(&mut self, center: (f32, f32), radius: f32, width: f32, alpha: f32) {
-        self.paint.shader = SweepGradient::new(
-            Point::from_xy(center.0, center.1),
-            0.0,
-            360.0,
-            self.stops(alpha),
-            SpreadMode::Pad,
-            Transform::identity(),
-        )
-        .unwrap_or_else(|| self.solid(0.0, alpha));
-        self.circle(center, radius, Some(width));
     }
 
     pub fn solid(&self, position: f32, alpha: f32) -> Shader<'static> {
@@ -323,24 +194,6 @@ impl<'a> Canvas<'a> {
             (alpha * self.opacity).clamp(0.0, 1.0),
         )
         .unwrap_or(tiny_skia::Color::TRANSPARENT)
-    }
-
-    pub fn membrane_color(&mut self, position: f32, pressure: f32, alpha: f32) {
-        let color = self.color(position + pressure * MEMBRANE_COLOR_SHIFT, alpha);
-        let tint = pressure
-            * if self.dark {
-                MEMBRANE_DARK_TIP_TINT
-            } else {
-                MEMBRANE_TIP_TINT
-            };
-        let color = tiny_skia::Color::from_rgba(
-            color.red() + (1.0 - color.red()) * tint,
-            color.green() + (1.0 - color.green()) * tint,
-            color.blue() + (1.0 - color.blue()) * tint,
-            color.alpha(),
-        )
-        .unwrap_or(color);
-        self.paint.shader = Shader::SolidColor(color);
     }
 
     pub fn stops(&self, alpha: f32) -> Vec<GradientStop> {

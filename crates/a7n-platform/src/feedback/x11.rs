@@ -8,6 +8,7 @@
 
 mod blit;
 mod geometry;
+mod window;
 
 use std::sync::mpsc;
 use std::thread;
@@ -17,19 +18,19 @@ use a7n_proto::v1::Edge;
 use x11rb::connection::Connection;
 use x11rb::protocol::shape::{ConnectionExt as _, SK, SO};
 use x11rb::protocol::xproto::{
-    AtomEnum, ChangeWindowAttributesAux, ClipOrdering, ConfigureWindowAux, ConnectionExt as _,
-    CreateWindowAux, PropMode, Rectangle, StackMode, Window, WindowClass,
+    ChangeWindowAttributesAux, ClipOrdering, ConfigureWindowAux, ConnectionExt as _, StackMode,
+    Window,
 };
 use x11rb::rust_connection::RustConnection;
-use x11rb::wrapper::ConnectionExt as _;
 
-use super::look::{self, BEAM_THICKNESS, Rect};
+use super::look::{self, Rect};
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
 use super::timeline::{End, Timeline, frame_interval};
-use super::{Color, Command, Feedback, Landing, Look, Style, channel};
+use super::{Command, Feedback, Landing, Look, channel};
 use crate::input::Bounds;
 use blit::Argb;
 use geometry::{glow_rect, pick_monitor};
+use window::{create_overlay_window, landing_shape};
 
 x11rb::atom_manager! {
     Atoms: AtomsCookie {
@@ -225,14 +226,24 @@ impl Overlay {
         }
     }
 
-    fn show_landing(&mut self, x: i32, y: i32, look: Look) -> Option<()> {
+    fn show_landing(&mut self, x: i32, y: i32, mut look: Look) -> Option<()> {
+        if self.argb.is_none() {
+            if !look.show_marker {
+                return Some(());
+            }
+            look.show_edge = false;
+        }
         self.timeline.land(look, self.edge_started.elapsed());
-        let base = if look.style.animated() && self.argb.is_some() {
-            raster::arrival_size(look.style)
+        let base = if self.argb.is_some() {
+            raster::ARRIVAL_DIAMETER
         } else {
             LANDING_SIZE
         };
-        let diameter = look.size.pixels(base);
+        let diameter = if self.argb.is_some() {
+            base
+        } else {
+            look.size.pixels(base)
+        };
         let monitors = crate::input::x11::monitors(&self.connection, self.root).unwrap_or_default();
         let screen = self
             .connection
@@ -250,7 +261,7 @@ impl Overlay {
         self.frame_interval = self.display_frame_interval(monitor);
         let area = Rect::from_bounds(monitor);
         let point = (f64::from(x), f64::from(y));
-        let geometry = look::landing_rect(area, point, f64::from(diameter), look.style);
+        let geometry = look::landing_rect(area, point, f64::from(diameter));
         let rect = geometry.bounds();
         self.landing_frame.resize(rect.width, rect.height);
         self.landing_frame.arrival = Some(Arrival::at(area, geometry, point, 1.0));
@@ -258,6 +269,8 @@ impl Overlay {
         if self.argb.is_some() {
             self.landing_frame.dark = true;
             self.landing_frame.opacity = 1.0;
+            self.landing_frame.scale = 1.0;
+            self.landing_frame.marker_diameter = f64::from(LANDING_SIZE) * look.size.multiplier();
             self.landing_frame.stroke = 2.0 * look.size.multiplier();
             self.timeline
                 .render_landing(&mut self.landing_frame, self.edge_started.elapsed());
@@ -335,22 +348,9 @@ impl Overlay {
                 .clear_area(false, self.glow, 0, 0, 0, 0)
                 .ok()?;
         }
-        let rect = if look.style == Style::Beam {
-            look::beam_rect(
-                Rect::from_bounds(monitor),
-                edge,
-                (f64::from(x), f64::from(y)),
-                progress,
-                BEAM_THICKNESS * look.size.multiplier(),
-            )
-            .map(Rect::bounds)
-        } else if look.style.animated() && self.argb.is_some() {
+        let rect = if self.argb.is_some() {
             glow_rect(monitor, edge, along, 1000, look.size).map(|mut rect| {
-                let depth = look
-                    .size
-                    .pixels(raster::edge_depth(look.style))
-                    .min(monitor.width)
-                    .min(monitor.height);
+                let depth = raster::OVERLAY_DEPTH.min(monitor.width).min(monitor.height);
                 match edge {
                     Edge::Top => rect.height = depth,
                     Edge::Bottom => {
@@ -380,8 +380,10 @@ impl Overlay {
             self.edge_frame.dark = true;
             self.edge_frame.animate = self.animate;
             self.edge_frame.opacity = 1.0;
+            self.edge_frame.scale = 1.0;
             let horizontal = matches!(edge, Edge::Top | Edge::Bottom);
             let along = Along {
+                origin: (f64::from(monitor.x), f64::from(monitor.y)),
                 start: f64::from(if horizontal {
                     rect.x - monitor.x
                 } else {
@@ -428,108 +430,4 @@ impl Overlay {
         self.connection.unmap_window(window).ok()?;
         self.connection.flush().ok()
     }
-}
-
-/// Rasterize a circle into scanlines for SHAPE, without requiring a compositor.
-fn landing_shape(diameter: u16, dot: bool, scale: f64) -> Vec<Rectangle> {
-    const RING_WIDTH: f64 = 2.0;
-    let radius = f64::from(diameter) / 2.0;
-    let inner = if dot {
-        0.0
-    } else {
-        (radius - RING_WIDTH * scale).max(0.0)
-    };
-    let mut shape = Vec::new();
-    for y in 0..diameter {
-        let dy = f64::from(y) + 0.5 - radius;
-        let mut start = None;
-        for x in 0..=diameter {
-            let dx = f64::from(x) + 0.5 - radius;
-            let distance = dx * dx + dy * dy;
-            let filled = x < diameter && distance <= radius * radius && distance >= inner * inner;
-            if filled {
-                start.get_or_insert(x);
-            } else if let Some(from) = start.take() {
-                shape.push(Rectangle {
-                    x: i16::try_from(from).unwrap_or(0),
-                    y: i16::try_from(y).unwrap_or(0),
-                    width: x - from,
-                    height: 1,
-                });
-            }
-        }
-    }
-    shape
-}
-
-/// An unmapped, click-through, override-redirect window in the accent colour.
-fn create_overlay_window(
-    connection: &RustConnection,
-    screen_number: usize,
-    atoms: &Atoms,
-    argb: Option<&Argb>,
-) -> Option<Window> {
-    let screen = connection.setup().roots.get(screen_number)?;
-    let window = connection.generate_id().ok()?;
-    let mut aux = CreateWindowAux::new()
-        .override_redirect(1)
-        .background_pixel(rgb_pixel(Color::Accent.sample(0.0, true)));
-    if let Some(argb) = argb {
-        aux = aux
-            .background_pixel(0)
-            .border_pixel(0)
-            .colormap(argb.colormap);
-    }
-    connection
-        .create_window(
-            if argb.is_some() {
-                32
-            } else {
-                screen.root_depth
-            },
-            window,
-            screen.root,
-            0,
-            0,
-            1,
-            1,
-            0,
-            WindowClass::INPUT_OUTPUT,
-            argb.map_or(screen.root_visual, |argb| argb.visual),
-            &aux,
-        )
-        .ok()?
-        .check()
-        .ok()?;
-    // An empty input region lets every click fall through to the windows below.
-    connection
-        .shape_rectangles(
-            SO::SET,
-            SK::INPUT,
-            ClipOrdering::UNSORTED,
-            window,
-            0,
-            0,
-            &[],
-        )
-        .ok()?;
-    connection
-        .change_property32(
-            PropMode::REPLACE,
-            window,
-            atoms.window_type,
-            AtomEnum::ATOM,
-            &[atoms.type_notification],
-        )
-        .ok()?;
-    connection
-        .change_property32(
-            PropMode::REPLACE,
-            window,
-            atoms.state,
-            AtomEnum::ATOM,
-            &[atoms.state_above, atoms.skip_taskbar, atoms.skip_pager],
-        )
-        .ok()?;
-    Some(window)
 }

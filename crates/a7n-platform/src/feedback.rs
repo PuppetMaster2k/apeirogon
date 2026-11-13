@@ -41,9 +41,9 @@ use tokio::sync::mpsc;
 use crate::input::Bounds;
 
 mod effects;
-mod flow;
 mod look;
 mod palette;
+pub mod parameters;
 #[cfg(feature = "fx-preview")]
 pub mod preview;
 mod raster;
@@ -65,7 +65,7 @@ mod x11;
 /// Commands the daemon may queue before the backend catches up.
 const COMMAND_CAPACITY: usize = 16;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Command {
     Edge {
         display: Bounds,

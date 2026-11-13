@@ -18,8 +18,6 @@ use crate::input::Bounds;
 const PROGRESS_FULL: i32 = 1000;
 /// Share of the edge the glow covers before any resistance has built up.
 const GLOW_MIN_PERMILLE: i32 = 250;
-const GLOW_ALPHA_MIN: u8 = 90;
-const GLOW_ALPHA_MAX: u8 = 230;
 
 #[cfg(test)]
 pub(super) const LANDING_DURATION: Duration = Duration::from_millis(400);
@@ -123,14 +121,6 @@ pub(super) fn glow_rect(
             bottom: area.bottom,
         },
     })
-}
-
-/// The glow gets more opaque as the resistance builds up.
-pub(super) fn glow_alpha(progress: u16) -> u8 {
-    let progress = i32::from(progress).min(PROGRESS_FULL);
-    let range = i32::from(GLOW_ALPHA_MAX - GLOW_ALPHA_MIN);
-    let alpha = i32::from(GLOW_ALPHA_MIN) + range * progress / PROGRESS_FULL;
-    u8::try_from(alpha).unwrap_or(GLOW_ALPHA_MAX)
 }
 
 /// Opacity of the landing marker `elapsed` after it appeared. Without

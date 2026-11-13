@@ -10,7 +10,7 @@ use std::time::Duration;
 use a7n_proto::v1::Edge;
 use tiny_skia::{Pixmap, PixmapPaint, PixmapRef, Transform};
 
-use super::look::{self, BEAM_THICKNESS, Rect};
+use super::look::{self, Rect};
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
 use super::timeline::{End, Timeline, arrival_duration, departure_duration};
 use super::{Color, Landing, Look, Size, Style};
@@ -18,15 +18,13 @@ use super::{Color, Landing, Look, Size, Style};
 const WIDTH: u32 = 1600;
 const HEIGHT: u32 = 1000;
 const PUSH_Y: u32 = HEIGHT * 2 / 5;
-const CROP: u32 = 360;
+const CROP: u32 = 480;
 const GAP: u32 = 4;
 const FRAMES: u32 = 8;
 const DARK: [u8; 3] = [0x0e, 0x11, 0x16];
 const LIGHT: [u8; 3] = [0xf4, 0xf5, 0xf7];
-const PUSH_PROGRESS: [u16; 5] = [0, 250, 500, 750, 950];
+const PUSH_PROGRESS: [u16; 6] = [250, 500, 750, 1000, 1000, 1000];
 const PUSH_STEP: Duration = Duration::from_millis(200);
-const GLOW_DEPTH: f64 = 6.0;
-const LANDING_DIAMETER: f64 = 24.0;
 const LANDING_STROKE: f64 = 2.0;
 
 /// Writes departure, arrival and full-edge PNGs into `out_dir`.
@@ -46,6 +44,7 @@ pub fn sheet(
         landing,
         color,
         size,
+        ..Look::default()
     };
     let name = format!("{style:?}").to_ascii_lowercase();
     for arrival in [false, true] {
@@ -83,7 +82,13 @@ pub fn sheet(
     let (mut frame, rect, effect) = departure(look, true, 750, Edge::Top);
     let mut timeline = Timeline::default();
     timeline.push(effect, Duration::ZERO);
-    timeline.render_edge(&mut frame, Duration::ZERO);
+    for step in if matches!(style, Style::Sparks | Style::Arcs) {
+        0..=60_u32
+    } else {
+        60..=60
+    } {
+        timeline.render_edge(&mut frame, Duration::from_secs_f64(f64::from(step) / 60.0));
+    }
     let mut strip = pixmap(WIDTH, frame.height)?;
     strip.fill(tiny_skia::Color::from_rgba8(DARK[0], DARK[1], DARK[2], 255));
     overlay(&mut strip, &frame, rect)?;
@@ -131,6 +136,7 @@ fn frame(rect: Rect, look: Look, dark: bool) -> Frame {
         dark,
         opacity: 1.0,
         stroke: LANDING_STROKE * look.size.multiplier(),
+        marker_diameter: 24.0 * look.size.multiplier(),
         ..Frame::default()
     };
     frame.resize(
@@ -148,32 +154,29 @@ fn departure(look: Look, dark: bool, progress: u16, edge: Edge) -> (Frame, Rect,
     } else {
         f64::from(PUSH_Y)
     };
-    let depth = if look.style.animated() {
-        f64::from(raster::edge_depth(look.style))
-    } else if look.style == Style::Beam {
-        BEAM_THICKNESS
+    let depth = f64::from(raster::OVERLAY_DEPTH);
+    let rect = if horizontal {
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            width: f64::from(WIDTH),
+            height: depth.min(f64::from(HEIGHT)),
+        }
     } else {
-        GLOW_DEPTH
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            width: depth.min(f64::from(WIDTH)),
+            height: f64::from(HEIGHT),
+        }
     };
-    let point = if horizontal { (push, 0.0) } else { (0.0, push) };
-    let rect = look::beam_rect(
-        area(),
-        edge,
-        point,
-        if look.style.animated() {
-            1000
-        } else {
-            progress
-        },
-        depth * look.size.multiplier(),
-    )
-    .expect("fixed preview monitor and specified edge have valid geometry");
     let start = if horizontal { rect.x } else { rect.y };
     let effect = EdgeEffect {
         look,
         edge,
         progress,
         along: Along {
+            origin: (0.0, 0.0),
             start,
             span: f64::from(span),
             push: push - start,
@@ -186,19 +189,24 @@ fn snapshot(look: Look, dark: bool, index: u32, arrival: bool) -> io::Result<Pix
     let mut timeline = Timeline::default();
     let (frame, rect) = if arrival {
         let point = (f64::from(WIDTH - 1), f64::from(PUSH_Y));
-        let diameter = if look.style.animated() {
-            f64::from(raster::arrival_size(look.style))
-        } else {
-            LANDING_DIAMETER
-        } * look.size.multiplier();
-        let rect = look::landing_rect(area(), point, diameter, look.style);
+        let diameter = f64::from(raster::ARRIVAL_DIAMETER);
+        let rect = look::landing_rect(area(), point, diameter);
         let mut frame = frame(rect, look, dark);
         frame.arrival = Some(Arrival::at(area(), rect, point, 1.0));
         timeline.land(look, Duration::ZERO);
-        timeline.render_landing(
-            &mut frame,
-            arrival_duration(look.style, true) * index / (FRAMES - 1),
-        );
+        let now = arrival_duration(look.style, true) * index / (FRAMES - 1);
+        let steps = if matches!(look.style, Style::Sparks | Style::Arcs) {
+            0..=120_u32
+        } else {
+            120..=120
+        };
+        for step in steps {
+            let at = Duration::from_secs_f64(f64::from(step) / 60.0).min(now);
+            timeline.render_landing(&mut frame, at);
+            if at == now {
+                break;
+            }
+        }
         (frame, rect)
     } else {
         departure_frame(&mut timeline, look, dark, index)
@@ -211,26 +219,33 @@ fn snapshot(look: Look, dark: bool, index: u32, arrival: bool) -> io::Result<Pix
 fn departure_frame(timeline: &mut Timeline, look: Look, dark: bool, index: u32) -> (Frame, Rect) {
     let progress = PUSH_PROGRESS.get(index as usize).copied().unwrap_or(1000);
     let (mut frame, rect, mut effect) = departure(look, dark, progress, Edge::Left);
-    for (step, progress) in PUSH_PROGRESS
-        .into_iter()
-        .enumerate()
-        .take(index as usize + 1)
-    {
-        effect.progress = progress;
-        timeline.push(
-            effect,
-            PUSH_STEP * u32::try_from(step).expect("five push samples fit u32"),
-        );
-    }
-    let now = if index < 5 {
-        PUSH_STEP * index
+    let crossed = PUSH_STEP * 6;
+    let now = if index < 6 {
+        PUSH_STEP * (index + 1)
     } else {
-        let crossed = PUSH_STEP * 5;
-        timeline.end(End::Crossed, crossed);
-        let duration = departure_duration(look.style, true);
-        crossed + duration * (index - 5) / 2
+        crossed + departure_duration(look.style, true) * (index - 6) / 2
     };
-    timeline.render_edge(&mut frame, now);
+    if !matches!(look.style, Style::Sparks | Style::Arcs) {
+        timeline.push(effect, Duration::ZERO);
+        if index >= 6 {
+            timeline.end(End::Crossed, crossed);
+        }
+        timeline.render_edge(&mut frame, now);
+        return (frame, rect);
+    }
+    for step in 0..=100_u32 {
+        let at = Duration::from_secs_f64(f64::from(step) / 60.0).min(now);
+        if at < crossed {
+            effect.progress = PUSH_PROGRESS[(step / 12).min(5) as usize];
+            timeline.push(effect, at);
+        } else {
+            timeline.end(End::Crossed, crossed);
+        }
+        timeline.render_edge(&mut frame, at);
+        if at == now {
+            break;
+        }
+    }
     (frame, rect)
 }
 

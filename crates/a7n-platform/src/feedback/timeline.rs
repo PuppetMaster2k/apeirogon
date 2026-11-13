@@ -2,7 +2,7 @@
 
 //! Shared feedback state machine. Native event loops supply monotonic elapsed time.
 //!
-//! Every frame is a pure function of its inputs; time comes in as a parameter.
+//! Native loops own state and supply elapsed time; particles persist between frames.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::time::Duration;
@@ -10,34 +10,29 @@ use std::time::Duration;
 use super::raster::{self, EdgeEffect, Frame};
 use super::{Look, Style};
 
-pub(super) const PLAY_DURATION: Duration = Duration::from_millis(650);
-pub(super) const FADE_DURATION: Duration = Duration::from_millis(140);
-const REDUCED_DURATION: Duration = Duration::from_millis(200);
-const QUARTER: u16 = 250;
-pub(super) const SHUDDER_DURATION: Duration = Duration::from_millis(250);
+pub(super) const MARKER_DURATION: Duration = Duration::from_millis(650);
+pub(super) const BLOOM_DURATION: Duration = Duration::from_millis(800);
+pub(super) const REDUCED_DURATION: Duration = Duration::from_millis(200);
 const DEFAULT_REFRESH_HZ: f64 = 60.0;
 const MIN_REFRESH_HZ: f64 = 30.0;
 const MAX_REFRESH_HZ: f64 = 240.0;
 
-pub(super) fn departure_duration(style: Style, animate: bool) -> Duration {
-    if !animate {
-        REDUCED_DURATION
-    } else if style == Style::Flow {
-        super::flow::FINISH_DURATION
-    } else if style.animated() {
-        PLAY_DURATION
+pub(super) fn departure_duration(_style: Style, _animate: bool) -> Duration {
+    Duration::from_millis(150)
+}
+pub(super) fn arrival_duration(_style: Style, animate: bool) -> Duration {
+    (if animate {
+        BLOOM_DURATION
     } else {
-        FADE_DURATION
-    }
+        REDUCED_DURATION
+    }) + marker_duration(animate)
 }
 
-pub(super) fn arrival_duration(style: Style, animate: bool) -> Duration {
-    if !animate {
-        REDUCED_DURATION
-    } else if style == Style::Flow {
-        super::flow::ARRIVAL_DURATION
+fn marker_duration(animate: bool) -> Duration {
+    if animate {
+        MARKER_DURATION
     } else {
-        PLAY_DURATION
+        REDUCED_DURATION
     }
 }
 
@@ -57,44 +52,37 @@ pub(super) enum End {
     Abandoned,
 }
 
-#[derive(Clone, Copy, Default)]
-pub(super) struct Motion {
-    pub seconds: f32,
-    pub tick: f32,
-    pub finish: Option<(End, f32)>,
-}
-
 struct Departure {
     effect: EdgeEffect,
     started: Duration,
-    tick: Option<Duration>,
-    ended: Option<(End, Duration)>,
+    ended: Option<Duration>,
 }
 
 #[derive(Default)]
 pub(super) struct Timeline {
     departure: Option<Departure>,
     arrival: Option<(Look, Duration)>,
-    /// Set once an effect panicked; every later frame is the plain glow.
+    /// A failing renderer is disabled for this feedback thread.
     fallback: bool,
 }
 
 impl Timeline {
     pub fn push(&mut self, effect: EdgeEffect, now: Duration) {
         let Some(departure) = self.departure.as_mut().filter(|d| {
-            d.ended.is_none() && d.effect.edge == effect.edge && d.effect.look == effect.look
+            d.ended.is_none()
+                && d.effect.edge == effect.edge
+                && d.effect.look == effect.look
+                && d.effect.along.origin == effect.along.origin
         }) else {
             self.departure = Some(Departure {
                 effect,
                 started: now,
-                tick: (effect.progress >= QUARTER).then_some(now),
                 ended: None,
             });
             return;
         };
-        if effect.progress / QUARTER > departure.effect.progress / QUARTER {
-            departure.tick = Some(now);
-        }
+        let mut effect = effect;
+        effect.along.push = departure.effect.along.push;
         departure.effect = effect;
     }
 
@@ -102,7 +90,7 @@ impl Timeline {
         if let Some(departure) = &mut self.departure {
             // Repeated clears must not restart a finish that is already playing.
             if departure.ended.is_none() {
-                departure.ended = Some((end, now));
+                departure.ended = Some(now);
                 if matches!(end, End::Crossed) {
                     departure.effect.progress = 1000;
                 }
@@ -114,20 +102,12 @@ impl Timeline {
         self.arrival = Some((look, now));
     }
 
-    pub fn edge_playing(&self, animate: bool, now: Duration) -> bool {
-        self.departure.as_ref().is_some_and(|d| {
-            let style = if self.fallback {
-                Style::Glow
-            } else {
-                d.effect.look.style
-            };
-            d.ended.is_some()
-                || (animate
-                    && style.animated()
-                    && (matches!(style, Style::Sparks | Style::Flow)
-                        || d.tick
-                            .is_some_and(|tick| now.saturating_sub(tick) < SHUDDER_DURATION)))
-        })
+    pub fn edge_playing(&self, animate: bool, _now: Duration) -> bool {
+        !self.fallback
+            && self
+                .departure
+                .as_ref()
+                .is_some_and(|d| d.ended.is_some() || animate)
     }
 
     pub fn landing_visible(&self) -> bool {
@@ -138,53 +118,47 @@ impl Timeline {
         let Some(departure) = &self.departure else {
             return false;
         };
-        let mut effect = departure.effect;
         if self.fallback {
-            effect.look.style = Style::Glow;
+            frame.pixels.fill(0);
+            return false;
         }
-        let mut motion = Motion {
-            seconds: now.saturating_sub(departure.started).as_secs_f32(),
-            tick: departure.tick.map_or(0.0, |tick| {
-                (1.0 - now.saturating_sub(tick).as_secs_f32() / SHUDDER_DURATION.as_secs_f32())
-                    .max(0.0)
-            }),
-            finish: None,
-        };
+        let effect = departure.effect;
+        let seconds = now.saturating_sub(departure.started).as_secs_f32();
         let opacity = frame.opacity;
-        if let Some((end, started)) = departure.ended {
+        if let Some(started) = departure.ended {
             let duration = departure_duration(effect.look.style, frame.animate);
             let phase = now.saturating_sub(started).as_secs_f32() / duration.as_secs_f32();
             if phase >= 1.0 {
                 self.departure = None;
                 return false;
             }
-            if effect.look.style != Style::Flow {
-                motion.seconds = started.saturating_sub(departure.started).as_secs_f32();
-            }
-            motion.finish = Some((end, phase));
             frame.opacity *= f64::from(1.0 - phase);
-            if matches!(end, End::Abandoned) {
-                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                {
-                    effect.progress = (f32::from(effect.progress) * (1.0 - phase)) as u16;
-                }
-            }
         }
         self.guarded(effect.look.style, || {
-            raster::render_departure(frame, effect, motion);
+            raster::render_departure(frame, effect, seconds);
         });
         frame.opacity = opacity;
         true
     }
 
     pub fn render_landing(&mut self, frame: &mut Frame, now: Duration) -> bool {
-        let Some((mut look, started)) = self.arrival else {
+        let Some((look, started)) = self.arrival else {
             return false;
         };
         if self.fallback {
-            look.style = Style::Glow;
+            self.arrival = None;
+            frame.pixels.fill(0);
+            return false;
         }
-        let duration = arrival_duration(look.style, frame.animate);
+        let duration = if look.show_edge && frame.arrival.is_some_and(|a| a.edge.is_some()) {
+            arrival_duration(look.style, frame.animate).saturating_sub(if look.show_marker {
+                Duration::ZERO
+            } else {
+                marker_duration(frame.animate)
+            })
+        } else {
+            marker_duration(frame.animate)
+        };
         let elapsed = now.saturating_sub(started);
         if elapsed >= duration {
             self.arrival = None;
@@ -252,6 +226,7 @@ mod tests {
             edge: Edge::Top,
             progress: 500,
             along: Along {
+                origin: (0.0, 0.0),
                 start: 0.0,
                 span: 8.0,
                 push: 4.0,

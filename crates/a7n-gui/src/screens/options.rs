@@ -296,20 +296,8 @@ impl App {
             ui.add_space(theme::size::ROW_GAP);
             theme::card(ui, |ui| {
                 ui.add_enabled_ui(feedback_supported, |ui| {
+                    self.feedback_effect(ui);
                     for (key, title, default, choices) in [
-                        (
-                            "feedback.style",
-                            &t!("Style"),
-                            "glow",
-                            &[
-                                ("glow", t!("Glow").as_ref()),
-                                ("beam", t!("Beam").as_ref()),
-                                ("aperture", t!("Aperture").as_ref()),
-                                ("sparks", t!("Sparks").as_ref()),
-                                ("membrane", t!("Membrane").as_ref()),
-                                ("flow", t!("Flow").as_ref()),
-                            ][..],
-                        ),
                         (
                             "feedback.landing_style",
                             &t!("Landing animation"),
@@ -331,9 +319,7 @@ impl App {
                             ][..],
                         ),
                     ] {
-                        if (key == "feedback.style" && !edge)
-                            || (key == "feedback.landing_style" && !landing)
-                        {
+                        if !landing {
                             continue;
                         }
                         let current = self.value(key, default);

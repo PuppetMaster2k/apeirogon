@@ -4,8 +4,9 @@
 
 use std::time::Duration;
 
-use a7n_proto::v1::Edge;
 use serde::{Deserialize, Serialize};
+
+use super::parameters;
 
 #[cfg(not(target_os = "macos"))]
 use crate::input::Bounds;
@@ -13,23 +14,16 @@ use crate::input::Bounds;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Style {
-    #[default]
-    Glow,
-    Beam,
-    Aperture,
     Sparks,
-    #[serde(alias = "ripple")]
+    Waves,
+    Clouds,
+    Sunrise,
+    Aurora,
+    Arcs,
+    Ferrofluid,
+    #[default]
+    #[serde(other)]
     Membrane,
-    Flow,
-}
-
-impl Style {
-    pub(super) const fn animated(self) -> bool {
-        matches!(
-            self,
-            Self::Aperture | Self::Sparks | Self::Membrane | Self::Flow
-        )
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,7 +103,7 @@ pub enum Size {
 }
 
 impl Size {
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(all(unix, not(target_os = "macos")))]
     // Physical pixel dimensions are rounded after applying the local scale.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub(super) fn pixels(self, base: u32) -> u32 {
@@ -126,7 +120,7 @@ impl Size {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Look {
     pub style: Style,
@@ -134,10 +128,34 @@ pub struct Look {
     pub landing: Landing,
     pub color: Color,
     pub size: Size,
+    pub depth: f32,
+    pub radius: f32,
+    pub speed: f32,
+    pub frequency: f32,
+    pub intensity: f32,
+    #[serde(skip)]
+    pub show_edge: bool,
+    #[serde(skip)]
+    pub show_marker: bool,
 }
 
-pub(super) const BEAM_THICKNESS: f64 = 3.0;
-const PROGRESS_FULL: f64 = 1000.0;
+impl Default for Look {
+    fn default() -> Self {
+        Self {
+            style: Style::default(),
+            landing: Landing::default(),
+            color: Color::default(),
+            size: Size::default(),
+            depth: parameters::DEPTH.default,
+            radius: parameters::RADIUS.default,
+            speed: parameters::SPEED.default,
+            frequency: parameters::FREQUENCY.default,
+            intensity: parameters::INTENSITY.default,
+            show_edge: true,
+            show_marker: true,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Rect {
@@ -171,68 +189,8 @@ impl Rect {
     }
 }
 
-pub(super) fn beam_rect(
-    area: Rect,
-    edge: Edge,
-    pointer: (f64, f64),
-    progress: u16,
-    thickness: f64,
-) -> Option<Rect> {
-    let horizontal = match edge {
-        Edge::Top | Edge::Bottom => true,
-        Edge::Left | Edge::Right => false,
-        Edge::Unspecified => return None,
-    };
-    let (start, span, along) = if horizontal {
-        (area.x, area.width, pointer.0)
-    } else {
-        (area.y, area.height, pointer.1)
-    };
-    if span <= 0.0 || thickness <= 0.0 {
-        return None;
-    }
-    let length = (span * f64::from(progress) / PROGRESS_FULL).clamp(1.0_f64.min(span), span);
-    let from = (along - length / 2.0).clamp(start, start + span - length);
-    let thickness = thickness.min(if horizontal { area.height } else { area.width });
-    Some(match edge {
-        Edge::Top => Rect {
-            x: from,
-            y: area.y,
-            width: length,
-            height: thickness,
-        },
-        Edge::Bottom => Rect {
-            x: from,
-            y: area.y + area.height - thickness,
-            width: length,
-            height: thickness,
-        },
-        Edge::Left => Rect {
-            x: area.x,
-            y: from,
-            width: thickness,
-            height: length,
-        },
-        Edge::Right => Rect {
-            x: area.x + area.width - thickness,
-            y: from,
-            width: thickness,
-            height: length,
-        },
-        Edge::Unspecified => return None,
-    })
-}
-
 /// Keep expanding arrivals on the landing monitor, including points at its edge.
-pub(super) fn landing_rect(area: Rect, point: (f64, f64), diameter: f64, style: Style) -> Rect {
-    if !style.animated() {
-        return Rect {
-            x: point.0 - diameter / 2.0,
-            y: point.1 - diameter / 2.0,
-            width: diameter,
-            height: diameter,
-        };
-    }
+pub(super) fn landing_rect(area: Rect, point: (f64, f64), diameter: f64) -> Rect {
     let width = diameter.min(area.width);
     let height = diameter.min(area.height);
     Rect {
@@ -266,41 +224,6 @@ mod tests {
             assert!(later.1 < start.1);
             assert_eq!(reduced, style.frame(Duration::ZERO, duration, false));
             assert_eq!(style.frame(duration, duration, true).1, 0.0);
-        }
-    }
-
-    #[test]
-    fn beam_rect_progress_grows_along_pushed_edge() {
-        // Arrange
-        let area = Rect {
-            x: -100.0,
-            y: 20.0,
-            width: 1000.0,
-            height: 800.0,
-        };
-        for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
-            // Act
-            let small = beam_rect(area, edge, (400.0, 420.0), 250, BEAM_THICKNESS).unwrap();
-            let large = beam_rect(area, edge, (400.0, 420.0), 750, BEAM_THICKNESS).unwrap();
-
-            // Assert
-            for rect in [small, large] {
-                assert!(rect.x >= area.x && rect.y >= area.y);
-                assert!(rect.x + rect.width <= area.x + area.width);
-                assert!(rect.y + rect.height <= area.y + area.height);
-                match edge {
-                    Edge::Top => assert_eq!(rect.y, area.y),
-                    Edge::Bottom => assert_eq!(rect.y + rect.height, area.y + area.height),
-                    Edge::Left => assert_eq!(rect.x, area.x),
-                    Edge::Right => assert_eq!(rect.x + rect.width, area.x + area.width),
-                    Edge::Unspecified => unreachable!(),
-                }
-            }
-            if matches!(edge, Edge::Top | Edge::Bottom) {
-                assert_eq!((small.width, large.width), (250.0, 750.0));
-            } else {
-                assert_eq!((small.height, large.height), (200.0, 600.0));
-            }
         }
     }
 }

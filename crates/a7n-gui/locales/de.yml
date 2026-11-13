@@ -251,6 +251,18 @@
 "Denied": "Gesperrt"
 
 Aperture: Blende
-Sparks: Funken
+Sparks: Funkenregen
 Membrane: Membran
 Flow: Fluss
+
+Waves: Wellen
+Clouds: Wolken
+Sunrise: Sonnenaufgang
+Aurora: Polarlicht
+Arcs: Blitze
+Ferrofluid: Ferrofluid
+Depth: Tiefe
+Radius: Radius
+Frequency: Dichte
+Intensity: Intensität
+Speed: Tempo

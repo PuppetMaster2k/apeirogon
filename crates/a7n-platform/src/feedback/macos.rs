@@ -32,11 +32,11 @@ use objc2_core_foundation::{
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use tokio::sync::mpsc;
 
-use super::look::{self, BEAM_THICKNESS};
+use super::look;
 use super::macos_geometry::{self as geometry, LANDING_DIAMETER, Rect};
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
 use super::timeline::{End, Timeline, frame_interval};
-use super::{Command, Feedback, Look, Style};
+use super::{Command, Feedback, Look};
 use crate::main_thread::{self, Waker};
 use blit::Bitmap;
 
@@ -246,11 +246,8 @@ impl Panels {
             return;
         };
         let top = primary.height - f64::from(display.y);
-        let Some(mut screen) = geometry::screen_containing(
-            &screens,
-            f64::from(display.x) + f64::from(display.width) / 2.0,
-            top - f64::from(display.height) / 2.0,
-        ) else {
+        let pointer = NSEvent::mouseLocation();
+        let Some(mut screen) = geometry::screen_containing(&screens, pointer.x, pointer.y) else {
             return;
         };
         // The daemon narrows the display rectangle for a notch push.
@@ -259,46 +256,25 @@ impl Panels {
             screen.width = f64::from(display.width);
             screen.height = top - screen.y;
         }
-        let rect = if look.style == Style::Beam {
-            let pointer = NSEvent::mouseLocation();
-            let flipped = match edge {
-                a7n_proto::v1::Edge::Top => a7n_proto::v1::Edge::Bottom,
-                a7n_proto::v1::Edge::Bottom => a7n_proto::v1::Edge::Top,
-                other => other,
-            };
-            look::beam_rect(
-                screen,
-                flipped,
-                (pointer.x, pointer.y),
-                progress,
-                BEAM_THICKNESS * look.size.multiplier(),
-            )
-        } else {
-            let mut rect = geometry::glow_rect(screen, edge, progress, look.size);
-            if look.style.animated() {
-                let thickness = (f64::from(raster::edge_depth(look.style))
-                    * look.size.multiplier())
-                .min(screen.width)
-                .min(screen.height);
-                rect = rect.map(|mut rect| {
-                    match edge {
-                        a7n_proto::v1::Edge::Top => {
-                            rect.height = thickness;
-                            rect.y = screen.y + screen.height - thickness;
-                        }
-                        a7n_proto::v1::Edge::Bottom => rect.height = thickness,
-                        a7n_proto::v1::Edge::Left => rect.width = thickness,
-                        a7n_proto::v1::Edge::Right => {
-                            rect.width = thickness;
-                            rect.x = screen.x + screen.width - thickness;
-                        }
-                        a7n_proto::v1::Edge::Unspecified => {}
-                    }
-                    rect
-                });
+        let thickness = f64::from(raster::OVERLAY_DEPTH)
+            .min(screen.width)
+            .min(screen.height);
+        let rect = geometry::glow_rect(screen, edge, 1000, super::Size::Medium).map(|mut rect| {
+            match edge {
+                a7n_proto::v1::Edge::Top => {
+                    rect.height = thickness;
+                    rect.y = screen.y + screen.height - thickness;
+                }
+                a7n_proto::v1::Edge::Bottom => rect.height = thickness,
+                a7n_proto::v1::Edge::Left => rect.width = thickness,
+                a7n_proto::v1::Edge::Right => {
+                    rect.width = thickness;
+                    rect.x = screen.x + screen.width - thickness;
+                }
+                a7n_proto::v1::Edge::Unspecified => {}
             }
             rect
-        };
+        });
         let Some(rect) = rect else {
             self.timeline
                 .end(End::Abandoned, self.edge_started.elapsed());
@@ -324,10 +300,12 @@ impl Panels {
             pixel_size(rect.height * scale),
         );
         self.glow_frame.dark = true;
-        self.glow_frame.opacity = if look.style == Style::Beam { 1.0 } else { 0.65 };
+        self.glow_frame.opacity = 1.0;
+        self.glow_frame.scale = scale;
         let pointer = NSEvent::mouseLocation();
         let horizontal = matches!(edge, a7n_proto::v1::Edge::Top | a7n_proto::v1::Edge::Bottom);
         let along = Along {
+            origin: (screen.x, -screen.y - screen.height),
             start: if horizontal {
                 (rect.x - screen.x) * scale
             } else {
@@ -444,12 +422,7 @@ impl Panels {
 
     fn fade_landing(&mut self) {
         let look = self.landing_look;
-        let base = if look.style.animated() {
-            f64::from(raster::arrival_size(look.style))
-        } else {
-            LANDING_DIAMETER
-        };
-        let diameter = base * look.size.multiplier();
+        let diameter = f64::from(raster::ARRIVAL_DIAMETER);
         let point = (self.landing_center.0, -self.landing_center.1);
         let screens = screen_frames(self.mtm);
         let Some(screen) =
@@ -461,7 +434,7 @@ impl Panels {
             y: -screen.y - screen.height,
             ..screen
         };
-        let rect = look::landing_rect(area, point, diameter, look.style);
+        let rect = look::landing_rect(area, point, diameter);
         self.landing.setFrame_display(
             ns_rect(Rect {
                 y: -rect.y - rect.height,
@@ -478,6 +451,8 @@ impl Panels {
         self.landing_frame.animate = self.animate;
         self.landing_frame.dark = true;
         self.landing_frame.opacity = 1.0;
+        self.landing_frame.scale = scale;
+        self.landing_frame.marker_diameter = LANDING_DIAMETER * look.size.multiplier() * scale;
         self.landing_frame.stroke = LANDING_RING_WIDTH * look.size.multiplier() * scale;
         if !self
             .timeline

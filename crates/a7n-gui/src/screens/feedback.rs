@@ -2,13 +2,76 @@
 
 use std::borrow::Cow;
 
-use a7n_platform::feedback::Color;
+use a7n_platform::feedback::{Color, parameters};
 use eframe::egui;
 use rust_i18n::t;
 
 use crate::{App, theme};
 
 impl App {
+    pub(super) fn feedback_effect(&mut self, ui: &mut egui::Ui) {
+        if self.value("feedback.edge", "true") != "true" {
+            return;
+        }
+        let choices = [
+            ("membrane", t!("Membrane")),
+            ("sparks", t!("Sparks")),
+            ("waves", t!("Waves")),
+            ("clouds", t!("Clouds")),
+            ("sunrise", t!("Sunrise")),
+            ("aurora", t!("Aurora")),
+            ("arcs", t!("Arcs")),
+            ("ferrofluid", t!("Ferrofluid")),
+        ];
+        let current = self.value("feedback.style", "membrane");
+        let selected = choices
+            .iter()
+            .find(|(key, _)| *key == current)
+            .unwrap_or(&choices[0]);
+        theme::setting_row(ui, &t!("Style"), "", Some("feedback.style"), |ui| {
+            egui::ComboBox::from_id_salt("feedback.style")
+                .selected_text(selected.1.as_ref())
+                .show_ui(ui, |ui| {
+                    for (key, label) in &choices {
+                        if ui
+                            .selectable_label(*key == selected.0, label.as_ref())
+                            .clicked()
+                        {
+                            self.edit("feedback.style", key, "membrane");
+                        }
+                    }
+                });
+        });
+        for (parameter, label) in parameters::ALL.into_iter().zip([
+            t!("Depth"),
+            t!("Radius"),
+            t!("Speed"),
+            t!("Frequency"),
+            t!("Intensity"),
+        ]) {
+            let key = parameter.key;
+            let default = parameter.default.to_string();
+            let min = f64::from(parameter.min);
+            let max = f64::from(parameter.max);
+            let step = parameter.step;
+            let mut value = self
+                .value(key, &default)
+                .parse()
+                .unwrap_or(f64::from(parameter.default));
+            if theme::slider(ui, &label, &mut value, min..=max, Some(step), |v| {
+                if step >= 1.0 {
+                    format!("{v:.0} px")
+                } else {
+                    format!("{v:.1}")
+                }
+            })
+            .changed()
+            {
+                self.edit(key, &value.to_string(), &default);
+            }
+        }
+    }
+
     pub(super) fn feedback_color(&mut self, ui: &mut egui::Ui) {
         let current = self.value("feedback.color", "accent");
         let (selected, _, name) = Color::choices()
