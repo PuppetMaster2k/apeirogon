@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.43.3...v0.44.0) (2026-11-13)
+
+
+### Features
+
+* use the designed app and tray icons ([#270](https://github.com/PuppetMaster2k/apeirogon/issues/270)) ([398ffe3](https://github.com/PuppetMaster2k/apeirogon/commit/398ffe3cb9ab2a5a76bcc0c13d687cff34a5b4f6))
+
 ## [0.43.3](https://github.com/PuppetMaster2k/apeirogon/compare/v0.43.2...v0.43.3) (2026-11-13)
 
 
