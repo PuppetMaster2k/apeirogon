@@ -1,0 +1,61 @@
+{
+  "name": "Rust + Claude Code + Codex + Herdr",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest"
+    }
+  },
+  "remoteUser": "vscode",
+  "forwardPorts": [
+    2222
+  ],
+  "portsAttributes": {
+    "2222": {
+      "label": "SSH (Herdr)",
+      "onAutoForward": "silent"
+    }
+  },
+  "containerEnv": {
+    "CARGO_TARGET_DIR": "/home/vscode/target",
+    "HERDR_SSH_KEY": "${localEnv:HERDR_SSH_KEY}"
+  },
+  "remoteEnv": {
+    "PATH": "/home/vscode/.local/bin:${containerEnv:PATH}"
+  },
+  "mounts": [
+    "source=claude-code-config,target=/home/vscode/.claude,type=volume",
+    "source=codex-cli-config,target=/home/vscode/.codex,type=volume",
+    "source=herdr-config,target=/home/vscode/.config/herdr,type=volume",
+    "source=rust-cargo-cache,target=/usr/local/cargo/registry,type=volume",
+    "source=rust-cargo-git,target=/usr/local/cargo/git,type=volume",
+    "source=apeirogon-target,target=/home/vscode/target,type=volume",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/tmp/host-ssh,type=bind,readonly"
+  ],
+  "onCreateCommand": "bash .devcontainer/on-create.sh",
+  "updateContentCommand": "cargo fetch --locked",
+  "postCreateCommand": "bash .devcontainer/setup-ssh.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb",
+        "fill-labs.dependi",
+        "mhutchie.git-graph",
+        "donjayamanne.githistory",
+        "eamodio.gitlens",
+        "panicbit.cargo",
+        "washan.cargo-appraiser",
+        "fill-labs.dependi",
+        "redhat.vscode-yaml",
+      ],
+      "settings": {
+        "rust-analyzer.check.command": "clippy"
+      }
+    }
+  }
+}

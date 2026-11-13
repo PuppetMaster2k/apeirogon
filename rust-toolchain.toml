@@ -1,0 +1,5 @@
+# The same Rust for CI, the devcontainer and local builds, so clippy lints
+# do not change underneath us. Bump deliberately.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
