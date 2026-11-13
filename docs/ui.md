@@ -365,7 +365,7 @@ Replace the raw OS error with:
 
 The glyph is drawn on 16 px and 24 px pixel grids with 2 px strokes on whole pixels, so it stays crisp at every tray size. Swap the icon whenever the daemon reports a state change, and set the tooltip to match ("Apeirogon: controlling DE_JRR906W9J9").
 
-### Files (`icons/`)
+### Files (`crates/a7n-platform/icons/`)
 
 | Platform | Use | File | Sizes |
 |---|---|---|---|
@@ -411,7 +411,9 @@ let tray = TrayIconBuilder::new()
 
 Check the method names against the `tray-icon` version you use. On Linux, `tray-icon` writes the icon to a temporary file for the panel, so the PNG route above works on both KDE and GNOME.
 
-To regenerate every format after changing a color or the geometry, run `python3 icons/gen.py icons/out` (needs `cairosvg` and `Pillow`).
+To regenerate every format after changing a color or the geometry, run `python3 crates/a7n-platform/icons/gen.py out && cp -r out/{linux,macos,svg,windows} crates/a7n-platform/icons/` from the repo root (needs `cairosvg` and `Pillow`). Never point `gen.py` at the icons folder itself: it deletes its output folder first.
+
+In the code, `a7n_platform::APP_ICON_PNG` is the window/Dock icon and `tray::Tray::set_state` swaps the tray glyph (`tray/icon.rs` embeds the files). Linux packages install the scalable app icon; Linux has no tray yet, so the status icons are not installed and the published crate excludes them (drop that `exclude` entry before embedding one).
 
 ---
 

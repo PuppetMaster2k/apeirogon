@@ -38,11 +38,15 @@ windows_sha=$(checksum x86_64-pc-windows-msvc zip)
 gh api "https://raw.githubusercontent.com/$repo/$tag/packaging/linux/apeirogon.desktop" > "$downloads/apeirogon.desktop"
 desktop_sha=$(sha256sum "$downloads/apeirogon.desktop")
 desktop_sha=${desktop_sha%% *}
+gh api "https://raw.githubusercontent.com/$repo/$tag/crates/a7n-platform/icons/linux/hicolor/scalable/apps/apeirogon.svg" > "$downloads/apeirogon.svg"
+icon_sha=$(sha256sum "$downloads/apeirogon.svg")
+icon_sha=${icon_sha%% *}
 
 mkdir -p "$output"
 for template in homebrew/apeirogon.rb scoop/apeirogon.json aur/PKGBUILD aur/.SRCINFO; do
     sed -e "s/@TAG@/$tag/g" -e "s/@VERSION@/$version/g" \
         -e "s/@MAC_SHA256@/$mac_sha/g" -e "s/@LINUX_SHA256@/$linux_sha/g" \
         -e "s/@WINDOWS_SHA256@/$windows_sha/g" -e "s/@DESKTOP_SHA256@/$desktop_sha/g" \
+        -e "s/@ICON_SHA256@/$icon_sha/g" \
         "$templates/$template.in" > "$output/${template##*/}"
 done

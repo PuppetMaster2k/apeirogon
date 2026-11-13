@@ -10,6 +10,8 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 rust-version.workspace = true
+# Drop the icon sources and the Linux-only files nothing embeds.
+exclude = ["icons/gen.py", "icons/svg", "icons/macos/AppIcon.icns", "icons/linux/hicolor/scalable", "icons/linux/hicolor/[1-9]*x[1-9]*/status"]
 
 [dependencies]
 png = { workspace = true, optional = true }
@@ -58,7 +60,7 @@ workspace = true
 
 [features]
 fx-preview = ["dep:png"]
-tray = ["dep:tray-icon"]
+tray = ["dep:tray-icon", "dep:png"]
 
 [[example]]
 name = "fx_preview"

@@ -3,6 +3,6 @@
 Type=Application
 Name=Apeirogon
 Exec=a7n-gui
-Icon=input-keyboard
+Icon=apeirogon
 Terminal=false
 Categories=Utility;Settings;

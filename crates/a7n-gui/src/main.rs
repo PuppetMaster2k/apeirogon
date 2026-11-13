@@ -14,6 +14,8 @@ rust_i18n::i18n!("locales", fallback = "en");
 mod canvas;
 mod screens;
 mod theme;
+#[cfg(feature = "tray")]
+mod tray;
 mod update_check;
 mod worker;
 
@@ -257,71 +259,6 @@ impl App {
             self.send(Command::Request(Request::Status));
         }
     }
-
-    #[cfg(feature = "tray")]
-    fn tray(&mut self, ctx: &egui::Context) {
-        use a7n_platform::tray::Action;
-        let Some(tray) = &self.tray else {
-            return;
-        };
-        let (status, focused, paused) = self.status.as_ref().map_or(
-            (t!("Disconnected"), t!("unknown").into_owned(), false),
-            |s| {
-                let focused = if s.focused == s.machine {
-                    s.name.clone()
-                } else {
-                    s.peers
-                        .iter()
-                        .find(|p| p.id == s.focused)
-                        .map_or_else(|| s.focused.to_string(), |p| p.name.clone())
-                };
-                (
-                    if s.input.is_some() {
-                        t!("Input unavailable")
-                    } else {
-                        t!("Connected")
-                    },
-                    focused,
-                    s.paused,
-                )
-            },
-        );
-        let waiting = self
-            .status
-            .as_ref()
-            .and_then(|s| s.held_clipboard.as_ref())
-            .map(|held| t!("Clipboard waiting from %{name}", name = held.name));
-        tray.update(
-            waiting.as_deref().unwrap_or(&status),
-            &t!("Focus: %{name}", name = focused),
-            &if paused { t!("Resume") } else { t!("Pause") },
-            &t!("Settings"),
-            &t!("Quit"),
-        );
-        while let Some(action) = self
-            .tray
-            .as_ref()
-            .and_then(a7n_platform::tray::Tray::action)
-        {
-            match action {
-                Action::Pause => {
-                    self.send(Command::Request(Request::SetPaused { paused: !paused }));
-                }
-                Action::Settings => {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                }
-                Action::Quit => {
-                    self.quit = true;
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-            }
-        }
-        if !self.quit && ctx.input(|i| i.viewport().close_requested()) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-        }
-    }
 }
 
 impl eframe::App for App {
@@ -463,7 +400,11 @@ fn main() -> eframe::Result {
             renderer: eframe::Renderer::Glow,
             viewport: egui::ViewportBuilder::default()
                 .with_inner_size([900.0, 650.0])
-                .with_min_inner_size([720.0, 480.0]),
+                .with_min_inner_size([720.0, 480.0])
+                .with_icon(
+                    eframe::icon_data::from_png_bytes(a7n_platform::APP_ICON_PNG)
+                        .expect("embedded app icon is a valid PNG"),
+                ),
             ..Default::default()
         },
         Box::new(|cc| Ok(Box::new(App::new(cc)?))),

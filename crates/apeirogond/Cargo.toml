@@ -53,6 +53,7 @@ assets = [
     ["target/release/a7n-gui", "usr/bin/a7n-gui", "755"],
     ["../../LICENSE", "usr/share/doc/apeirogon/LICENSE", "644"],
     ["../../packaging/linux/apeirogon.desktop", "usr/share/applications/apeirogon.desktop", "644"],
+    ["../../crates/a7n-platform/icons/linux/hicolor/scalable/apps/apeirogon.svg", "usr/share/icons/hicolor/scalable/apps/apeirogon.svg", "644"],
 ]
 
 [package.metadata.generate-rpm]
@@ -63,4 +64,5 @@ assets = [
     { source = "target/release/a7n-gui", dest = "/usr/bin/a7n-gui", mode = "755" },
     { source = "../../LICENSE", dest = "/usr/share/licenses/apeirogon/LICENSE", mode = "644", doc = true },
     { source = "../../packaging/linux/apeirogon.desktop", dest = "/usr/share/applications/apeirogon.desktop", mode = "644" },
+    { source = "../../crates/a7n-platform/icons/linux/hicolor/scalable/apps/apeirogon.svg", dest = "/usr/share/icons/hicolor/scalable/apps/apeirogon.svg", mode = "644" },
 ]

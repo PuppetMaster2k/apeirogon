@@ -42,6 +42,13 @@ fn os_host_name() -> Option<String> {
 #[cfg(feature = "tray")]
 pub mod tray;
 
+/// The 256 px app icon PNG for the window and Dock (docs/ui.md section 6).
+pub const APP_ICON_PNG: &[u8] = if cfg!(target_os = "macos") {
+    include_bytes!("../icons/macos/AppIcon.iconset/icon_256x256.png")
+} else {
+    include_bytes!("../icons/linux/hicolor/256x256/apps/apeirogon.png")
+};
+
 /// The local platform advertised in the peer handshake.
 #[must_use]
 pub const fn platform() -> a7n_proto::v1::Platform {
