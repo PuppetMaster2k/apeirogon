@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.2](https://github.com/PuppetMaster2k/apeirogon/compare/v0.43.1...v0.43.2) (2026-11-13)
+
+
+### Bug Fixes
+
+* **gui:** correct german texts and drop the done status message ([#266](https://github.com/PuppetMaster2k/apeirogon/issues/266)) ([e3bb5f5](https://github.com/PuppetMaster2k/apeirogon/commit/e3bb5f5d3104b25da499b0a8848cae979e2d68ba))
+
 ## [0.43.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.43.0...v0.43.1) (2026-11-13)
 
 
