@@ -34,6 +34,6 @@ RUN cd /tmp/toolchain \
  && rustup toolchain install \
  && rustup target add x86_64-pc-windows-gnu aarch64-apple-darwin
 
-RUN curl -fsSL https://releases.herdr.dev/core/install.sh | sh \
+RUN curl -fsSL https://herdr.dev/install.sh | sh \
  && echo 'eval "$(starship init zsh)"' >> ~/.zshrc
 USER root
