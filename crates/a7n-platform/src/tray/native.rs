@@ -92,8 +92,13 @@ impl Tray {
             tooltip.clone_into(&mut shown.1);
         }
         if shown.0 != variant {
-            self.icon
-                .set_icon_with_as_template(Some(icon::load(variant)?), TEMPLATE)?;
+            let icon = Some(icon::load(variant)?);
+            // tray-icon ignores set_icon_with_as_template outside macOS.
+            if TEMPLATE {
+                self.icon.set_icon_with_as_template(icon, true)?;
+            } else {
+                self.icon.set_icon(icon)?;
+            }
             shown.0 = variant;
         }
         Ok(())
