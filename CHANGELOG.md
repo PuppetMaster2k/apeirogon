@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.3](https://github.com/PuppetMaster2k/apeirogon/compare/v0.43.2...v0.43.3) (2026-11-13)
+
+
+### Bug Fixes
+
+* **gui:** jump to the update result after a manual check ([#267](https://github.com/PuppetMaster2k/apeirogon/issues/267)) ([f0da0e3](https://github.com/PuppetMaster2k/apeirogon/commit/f0da0e3e556c3918d059ea5a4bfb4b67e68a06cf))
+
 ## [0.43.2](https://github.com/PuppetMaster2k/apeirogon/compare/v0.43.1...v0.43.2) (2026-11-13)
 
 
