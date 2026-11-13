@@ -59,6 +59,8 @@ impl Tray {
         let (sender, receiver) = std::sync::mpsc::channel();
         MenuEvent::set_event_handler(Some(move |event| {
             let _ = sender.send(event);
+            #[cfg(target_os = "windows")]
+            super::menu_dismiss::dismiss();
             wake();
         }));
         Ok(Self {

@@ -3,6 +3,8 @@
 //! Native tray integration; Linux uses the regular settings window.
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 mod icon;
+#[cfg(target_os = "windows")]
+mod menu_dismiss;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 mod native;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
