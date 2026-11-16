@@ -114,7 +114,6 @@ impl FeedbackSink {
 
     fn arrival_look(&self) -> a7n_platform::feedback::Look {
         a7n_platform::feedback::Look {
-            show_edge: self.config.edge,
             show_marker: self.config.landing,
             ..self.config.look
         }
