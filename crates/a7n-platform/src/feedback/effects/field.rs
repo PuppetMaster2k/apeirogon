@@ -53,7 +53,7 @@ pub(super) fn render(canvas: &mut Canvas<'_>, push: &Push, state: &mut State) {
             super::Edge::Top => y,
             super::Edge::Bottom => height as f32 - 1.0 - y,
             super::Edge::Right => width as f32 - 1.0 - x,
-            _ => x,
+            super::Edge::Left | super::Edge::Unspecified => x,
         };
         if dist > radius || edge_dist >= depth {
             continue;

@@ -63,7 +63,9 @@ mod windows_geometry;
 mod x11;
 
 /// Commands the daemon may queue before the backend catches up.
-const COMMAND_CAPACITY: usize = 16;
+pub(super) const COMMAND_CAPACITY: usize = 16;
+/// `Command::Edge::progress` once the resistance is fully built up.
+pub(super) const PROGRESS_FULL: u16 = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Command {

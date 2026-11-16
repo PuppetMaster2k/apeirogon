@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::f32::consts::FRAC_PI_2;
-
 use tiny_skia::{
     BlendMode, GradientStop, LinearGradient, PathBuilder, Point, SpreadMode, Transform,
 };
@@ -19,10 +17,7 @@ pub(super) fn render(canvas: &mut Canvas<'_>, push: &Push) {
     body.move_to(start, 0.0);
     for i in 0..=STEPS {
         let pos = start + (end - start) * f32::from(i) / f32::from(STEPS);
-        let pull = (((pos - push.pointer).abs() / half * FRAC_PI_2)
-            .cos()
-            .max(0.0))
-        .powf(2.2);
+        let pull = push.envelope(pos, half, 2.2);
         let arg =
             (pos - push.pointer) * 0.085 * push.look.frequency + (push.phase * 1.4).sin() * 0.9;
         let spike =

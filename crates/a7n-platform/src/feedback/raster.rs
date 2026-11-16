@@ -35,6 +35,14 @@ impl Frame {
         }
         self.pixels.fill(0);
     }
+
+    /// Whether the frame is non-empty and its pixels match its size, which
+    /// the native copies rely on before writing into OS-owned buffers.
+    pub fn is_drawable(&self) -> bool {
+        self.width > 0
+            && self.height > 0
+            && self.pixels.len() == self.width as usize * self.height as usize * CHANNELS
+    }
 }
 
 /// Positions along the whole pushed edge, in the same units as the frame.
@@ -74,14 +82,6 @@ impl Arrival {
             ),
         }
     }
-}
-
-pub(super) fn render_departure(frame: &mut Frame, effect: EdgeEffect, seconds: f32) {
-    super::effects::departure(frame, effect, seconds);
-}
-
-pub(super) fn render_landing(frame: &mut Frame, look: Look, elapsed: Duration, duration: Duration) {
-    super::effects::arrival(frame, look, elapsed, duration);
 }
 
 // Radial coverage gives both sides of the annulus the same soft transition.

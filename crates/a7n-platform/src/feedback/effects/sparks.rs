@@ -104,10 +104,7 @@ impl Emission {
                 let spread = (random.unit() - 0.5) * push.look.radius * 0.85;
                 let inward = (45.0 + random.unit() * 110.0) * push.look.depth / 55.0;
                 let tangent = (random.unit() - 0.5) * 80.0;
-                let x = (push.pointer + spread).clamp(
-                    2.0 - push.start,
-                    (push.length - push.start - 2.0).max(2.0 - push.start),
-                );
+                let x = push.clamp_along(push.pointer + spread);
                 (x, 2.0, tangent, inward)
             }
             Self::Arrival { radius } => {
@@ -160,7 +157,7 @@ fn advance(push: &Push, state: &mut State, random: &mut Random, dt: f32, emissio
                 super::Edge::Top => (swirl, -16.0 * dt),
                 super::Edge::Bottom => (swirl, 16.0 * dt),
                 super::Edge::Right => (-16.0 * dt, -swirl),
-                _ => (-16.0 * dt, swirl),
+                super::Edge::Left | super::Edge::Unspecified => (-16.0 * dt, swirl),
             },
         };
         s.vx = s.vx * 0.96 + ax;

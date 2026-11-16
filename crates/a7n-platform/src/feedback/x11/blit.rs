@@ -97,6 +97,9 @@ impl Argb {
         window: Window,
         frame: &Frame,
     ) -> Option<()> {
+        if !frame.is_drawable() {
+            return Some(());
+        }
         // PutImage requests are split into rows below the connection's request limit.
         let row_bytes = frame.width as usize * 4;
         let rows = (connection.maximum_request_bytes().saturating_sub(32) / row_bytes).max(1);

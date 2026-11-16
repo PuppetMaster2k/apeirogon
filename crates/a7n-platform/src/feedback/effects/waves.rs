@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::f32::consts::FRAC_PI_2;
-
 use tiny_skia::PathBuilder;
 
 use super::{Canvas, Push};
@@ -22,10 +20,7 @@ pub(super) fn render(canvas: &mut Canvas<'_>, push: &Push) {
         path.move_to(start, 0.0);
         for i in 0..=STEPS {
             let pos = start + (end - start) * f32::from(i) / f32::from(STEPS);
-            let envelope = (((pos - push.pointer).abs() / half * FRAC_PI_2)
-                .cos()
-                .max(0.0))
-            .powf(1.6);
+            let envelope = push.envelope(pos, half, 1.6);
             let wave = ((pos + push.start) * 0.045 * push.look.frequency
                 + push.phase * (1.4 + f32::from(l) * 0.3)
                 + f32::from(l) * 1.3)

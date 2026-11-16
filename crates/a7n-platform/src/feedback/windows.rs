@@ -56,14 +56,15 @@ const DEFAULT_FREQUENCY_MAX: u32 = 1;
 pub(super) fn start() -> Option<Feedback> {
     let (feedback, commands) = super::channel();
     let (ready_tx, ready_rx) = sync::channel();
+    let (queue_tx, queue_rx) = sync::channel();
     thread::Builder::new()
         .name("a7n-windows-feedback".into())
-        .spawn(move || run_ui_thread(&ready_tx))
+        .spawn(move || run_ui_thread(&ready_tx, queue_rx))
         .ok()?;
     let ui_thread = ready_rx.recv().ok()??;
     let relay = thread::Builder::new()
         .name("a7n-windows-feedback-relay".into())
-        .spawn(move || relay_commands(commands, ui_thread));
+        .spawn(move || relay_commands(commands, &queue_tx, ui_thread));
     if relay.is_err() {
         post_quit(ui_thread);
         return None;
@@ -71,16 +72,20 @@ pub(super) fn start() -> Option<Feedback> {
     Some(feedback)
 }
 
-fn relay_commands(mut commands: mpsc::Receiver<Command>, ui_thread: u32) {
+// Commands travel through a channel and WM_FEEDBACK only wakes the UI
+// thread: any process on the desktop can post thread messages, so a message
+// must never carry a pointer the receiver trusts.
+fn relay_commands(
+    mut commands: mpsc::Receiver<Command>,
+    queue: &sync::Sender<Command>,
+    ui_thread: u32,
+) {
     while let Some(command) = commands.blocking_recv() {
-        let raw = Box::into_raw(Box::new(command));
-        // SAFETY: The UI thread takes ownership of `raw` from lParam when the
-        // message is delivered; nothing else reads it.
-        if unsafe { PostThreadMessageW(ui_thread, WM_FEEDBACK, 0, raw as LPARAM) } == 0 {
-            // SAFETY: The post failed, so `raw` was never handed over and is
-            // still the unique owner of the allocation made above.
-            drop(unsafe { Box::from_raw(raw) });
+        if queue.send(command).is_err() {
+            break;
         }
+        // SAFETY: Posts a pointer-free wake-up; failure means the thread is gone.
+        unsafe { PostThreadMessageW(ui_thread, WM_FEEDBACK, 0, 0) };
     }
     post_quit(ui_thread);
 }
@@ -90,11 +95,11 @@ fn post_quit(ui_thread: u32) {
     unsafe { PostThreadMessageW(ui_thread, WM_QUIT, 0, 0) };
 }
 
-fn run_ui_thread(ready: &sync::Sender<Option<u32>>) {
+fn run_ui_thread(ready: &sync::Sender<Option<u32>>, queue: sync::Receiver<Command>) {
     // SAFETY: Only changes this thread's DPI mode; failure keeps the default,
     // which merely scales the strips.
     unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
-    let Some(mut ui) = Ui::new() else {
+    let Some(mut ui) = Ui::new(queue) else {
         let _ = ready.send(None);
         return;
     };
@@ -106,6 +111,7 @@ fn run_ui_thread(ready: &sync::Sender<Option<u32>>) {
 }
 
 struct Ui {
+    queue: sync::Receiver<Command>,
     glow: HWND,
     glow_frame: Frame,
     timeline: Timeline,
@@ -124,11 +130,12 @@ struct Ui {
 }
 
 impl Ui {
-    fn new() -> Option<Self> {
+    fn new(queue: sync::Receiver<Command>) -> Option<Self> {
         // SAFETY: Requests the current module, which outlives the window class.
         let module = unsafe { GetModuleHandleW(null()) };
         register_class(module);
         Some(Self {
+            queue,
             glow: create_overlay(module)?,
             glow_frame: Frame::default(),
             timeline: Timeline::default(),
@@ -152,10 +159,9 @@ impl Ui {
         // SAFETY: message is writable storage; this thread owns the message queue.
         while unsafe { GetMessageW(&raw mut message, null_mut(), 0, 0) } > 0 {
             if message.hwnd.is_null() && message.message == WM_FEEDBACK {
-                // SAFETY: Only `relay_commands` posts WM_FEEDBACK to this
-                // thread, always with a pointer from `Box::into_raw`.
-                let command = *unsafe { Box::from_raw(message.lParam as *mut Command) };
-                self.handle(command);
+                while let Ok(command) = self.queue.try_recv() {
+                    self.handle(command);
+                }
             } else if message.hwnd == self.landing
                 && message.message == WM_TIMER
                 && message.wParam == FADE_TIMER_ID
@@ -183,18 +189,9 @@ impl Ui {
                 look,
             } => self.show_glow(Rect::from_bounds(display), edge, progress, look),
             Command::Clear | Command::Crossed => {
-                self.timeline.end(
-                    if command == Command::Crossed {
-                        End::Crossed
-                    } else {
-                        End::Abandoned
-                    },
-                    self.edge_started.elapsed(),
-                );
-                self.edge_timer(
-                    self.timeline
-                        .edge_playing(self.glow_frame.animate, self.edge_started.elapsed()),
-                );
+                self.timeline
+                    .end(End::for_command(command), self.edge_started.elapsed());
+                self.edge_timer(self.timeline.edge_playing(self.glow_frame.animate));
             }
             Command::Landing { x, y, look } => self.show_landing((x, y), look),
             Command::LandingAtCursor { look } => {
@@ -220,7 +217,7 @@ impl Ui {
         let rect = glow_rect(
             area,
             edge,
-            1000,
+            super::PROGRESS_FULL,
             depth.min(area.width()).min(area.height()),
             pointer,
         );
@@ -268,10 +265,7 @@ impl Ui {
             self.edge_started.elapsed(),
         );
         self.animate_edge_at(rect);
-        self.edge_timer(
-            self.timeline
-                .edge_playing(self.glow_frame.animate, self.edge_started.elapsed()),
-        );
+        self.edge_timer(self.timeline.edge_playing(self.glow_frame.animate));
     }
 
     fn edge_timer(&mut self, running: bool) {
@@ -305,10 +299,7 @@ impl Ui {
         } else {
             hide(self.glow);
         }
-        self.edge_timer(
-            self.timeline
-                .edge_playing(self.glow_frame.animate, self.edge_started.elapsed()),
-        );
+        self.edge_timer(self.timeline.edge_playing(self.glow_frame.animate));
     }
 
     fn show_landing(&mut self, point: (i32, i32), look: Look) {

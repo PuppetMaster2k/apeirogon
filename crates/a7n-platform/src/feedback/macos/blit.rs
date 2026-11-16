@@ -33,7 +33,7 @@ impl Bitmap {
         }
         let rep = self.rep.as_ref()?;
         let pixels = rep.bitmapData();
-        if pixels.is_null() {
+        if pixels.is_null() || !frame.is_drawable() {
             return None;
         }
         // SAFETY: The representation owns exactly this many writable RGBA bytes;
