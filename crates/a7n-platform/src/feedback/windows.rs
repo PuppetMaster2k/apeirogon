@@ -37,7 +37,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 use windows_sys::core::{BOOL, PCWSTR, w};
 
-use self::geometry::{Rect, glow_rect};
+use self::geometry::Rect;
 use super::look;
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
 use super::timeline::{End, Timeline, frame_interval};
@@ -214,13 +214,8 @@ impl Ui {
             .unwrap_or(display);
         let dpi = monitor.map_or(BASE_DPI, |m| m.dpi);
         let depth = scale_dip(i32::try_from(raster::OVERLAY_DEPTH).unwrap_or(1), dpi);
-        let rect = glow_rect(
-            area,
-            edge,
-            super::PROGRESS_FULL,
-            depth.min(area.width()).min(area.height()),
-            pointer,
-        );
+        let rect = look::edge_strip(area.as_rect(), edge, f64::from(depth))
+            .map(|strip| Rect::from_bounds(strip.bounds()));
         let Some(rect) = rect else {
             self.edge_timer(false);
             self.timeline

@@ -254,26 +254,7 @@ impl Panels {
             screen.width = f64::from(display.width);
             screen.height = top - screen.y;
         }
-        let thickness = f64::from(raster::OVERLAY_DEPTH)
-            .min(screen.width)
-            .min(screen.height);
-        let rect = geometry::glow_rect(screen, edge, super::PROGRESS_FULL, super::Size::Medium)
-            .map(|mut rect| {
-                match edge {
-                    a7n_proto::v1::Edge::Top => {
-                        rect.height = thickness;
-                        rect.y = screen.y + screen.height - thickness;
-                    }
-                    a7n_proto::v1::Edge::Bottom => rect.height = thickness,
-                    a7n_proto::v1::Edge::Left => rect.width = thickness,
-                    a7n_proto::v1::Edge::Right => {
-                        rect.width = thickness;
-                        rect.x = screen.x + screen.width - thickness;
-                    }
-                    a7n_proto::v1::Edge::Unspecified => {}
-                }
-                rect
-            });
+        let rect = geometry::glow_rect(screen, edge, f64::from(raster::OVERLAY_DEPTH));
         let Some(rect) = rect else {
             self.timeline
                 .end(End::Abandoned, self.edge_started.elapsed());
@@ -340,11 +321,7 @@ impl Panels {
         let primary_height = screen_frames(self.mtm)
             .first()
             .map_or(0.0, |frame| frame.height);
-        let rect = geometry::landing_rect(x, y, primary_height);
-        self.show_landing_at(
-            (rect.x + rect.width / 2.0, rect.y + rect.height / 2.0),
-            look,
-        );
+        self.show_landing_at(geometry::desktop_to_appkit(x, y, primary_height), look);
     }
 
     fn show_landing_at(&mut self, center: (f64, f64), look: Look) {
