@@ -219,12 +219,9 @@ impl Overlay {
         }
     }
 
-    fn show_landing(&mut self, x: i32, y: i32, mut look: Look) -> Option<()> {
-        if self.argb.is_none() {
-            if !look.show_marker {
-                return Some(());
-            }
-            look.show_edge = false;
+    fn show_landing(&mut self, x: i32, y: i32, look: Look) -> Option<()> {
+        if self.argb.is_none() && !look.show_marker {
+            return Some(());
         }
         self.timeline.land(look, self.edge_started.elapsed());
         let diameter = if self.argb.is_some() {

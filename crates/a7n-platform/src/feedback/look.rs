@@ -149,8 +149,6 @@ pub struct Look {
     pub frequency: f32,
     pub intensity: f32,
     #[serde(skip)]
-    pub show_edge: bool,
-    #[serde(skip)]
     pub show_marker: bool,
 }
 
@@ -174,7 +172,6 @@ impl Default for Look {
             speed: parameters::SPEED.default,
             frequency: parameters::FREQUENCY.default,
             intensity: parameters::INTENSITY.default,
-            show_edge: true,
             show_marker: true,
         }
     }

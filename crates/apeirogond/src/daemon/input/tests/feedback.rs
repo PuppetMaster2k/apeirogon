@@ -185,10 +185,7 @@ async fn input_actions_driven_landing_sends_landing_and_edge_off_sends_no_edge()
         [Command::Landing {
             x: 0,
             y: 49,
-            look: feedback::Look {
-                show_edge: false,
-                ..config.look
-            }
+            look: config.look
         }]
     );
 }
@@ -292,10 +289,7 @@ async fn input_actions_bbox_landing_projects_warp_and_mark_onto_monitor() {
         [Command::Landing {
             x: 1920,
             y: 1295,
-            look: feedback::Look {
-                show_edge: false,
-                ..feedback::Look::default()
-            }
+            look: feedback::Look::default()
         }]
     );
 }
