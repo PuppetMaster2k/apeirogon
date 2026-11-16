@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.2](https://github.com/PuppetMaster2k/apeirogon/compare/v0.44.1...v0.44.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* **gui:** say the daemon is not running instead of the raw os error ([#288](https://github.com/PuppetMaster2k/apeirogon/issues/288)) ([bed0f54](https://github.com/PuppetMaster2k/apeirogon/commit/bed0f544bc1d921fb8a0500c8c1e76dd5cf72cfc))
+
 ## [0.44.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.44.0...v0.44.1) (2026-11-16)
 
 
