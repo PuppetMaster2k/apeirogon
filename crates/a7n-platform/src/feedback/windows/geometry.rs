@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Pure shapes and fade levels for the Windows feedback windows, in physical
+//! Pure shapes for the Windows feedback windows, in physical
 //! desktop pixels. Kept free of Win32 so the decisions run in any test build.
 
 #![cfg_attr(
     not(windows),
     allow(dead_code, reason = "off Windows only the tests compile this module")
 )]
-
-#[cfg(test)]
-use std::time::Duration;
 
 use a7n_proto::v1::Edge;
 
@@ -18,11 +15,6 @@ use crate::input::Bounds;
 const PROGRESS_FULL: i32 = 1000;
 /// Share of the edge the glow covers before any resistance has built up.
 const GLOW_MIN_PERMILLE: i32 = 250;
-
-#[cfg(test)]
-pub(super) const LANDING_DURATION: Duration = Duration::from_millis(400);
-#[cfg(test)]
-const LANDING_ALPHA: u8 = 220;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Rect {
@@ -123,17 +115,6 @@ pub(super) fn glow_rect(
     })
 }
 
-/// Opacity of the landing marker `elapsed` after it appeared. Without
-/// animation it stays solid for the whole duration instead of fading.
-#[cfg(test)]
-pub(super) fn landing_alpha(elapsed: Duration, animate: bool) -> u8 {
-    let (_, alpha) = crate::feedback::Landing::Ring.frame(elapsed, LANDING_DURATION, animate);
-    // The shared opacity is bounded to 0..=1 before converting to a byte.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let alpha = (f64::from(LANDING_ALPHA) * alpha) as u8;
-    alpha
-}
-
 fn scale(value: i32, permille: i32) -> i32 {
     i32::try_from(i64::from(value) * i64::from(permille) / i64::from(PROGRESS_FULL))
         .unwrap_or(value)
@@ -177,27 +158,6 @@ mod tests {
 
             // Assert
             assert_eq!(result, Some(expected), "{edge:?} at {progress}");
-        }
-    }
-
-    #[test]
-    fn landing_alpha_elapsed_fades_or_holds_then_ends() {
-        // Arrange
-        let cases = [
-            (0, true, 220),
-            (200, true, 110),
-            (0, false, 220),
-            (399, false, 220),
-            (400, true, 0),
-            (400, false, 0),
-        ];
-
-        for (millis, animate, expected) in cases {
-            // Act
-            let alpha = landing_alpha(Duration::from_millis(millis), animate);
-
-            // Assert
-            assert_eq!(alpha, expected, "{millis} ms, animate {animate}");
         }
     }
 }

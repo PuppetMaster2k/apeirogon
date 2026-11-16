@@ -12,7 +12,7 @@ use tiny_skia::{Pixmap, PixmapPaint, PixmapRef, Transform};
 
 use super::look::{self, Rect};
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
-use super::timeline::{End, Timeline, arrival_duration, departure_duration};
+use super::timeline::{DEPARTURE_DURATION, End, Timeline, arrival_duration};
 use super::{Color, Landing, Look, Size, Style};
 
 const WIDTH: u32 = 1600;
@@ -191,7 +191,7 @@ fn snapshot(look: Look, dark: bool, index: u32, arrival: bool) -> io::Result<Pix
         let mut frame = frame(rect, dark);
         frame.arrival = Some(Arrival::at(rect, point, 1.0));
         timeline.land(look, Duration::ZERO);
-        let now = arrival_duration(look.style, true) * index / (FRAMES - 1);
+        let now = arrival_duration(true) * index / (FRAMES - 1);
         let steps = if matches!(look.style, Style::Sparks | Style::Arcs) {
             0..=120_u32
         } else {
@@ -220,7 +220,7 @@ fn departure_frame(timeline: &mut Timeline, look: Look, dark: bool, index: u32) 
     let now = if index < 6 {
         PUSH_STEP * (index + 1)
     } else {
-        crossed + departure_duration(look.style, true) * (index - 6) / 2
+        crossed + DEPARTURE_DURATION * (index - 6) / 2
     };
     if !matches!(look.style, Style::Sparks | Style::Arcs) {
         timeline.push(effect, Duration::ZERO);

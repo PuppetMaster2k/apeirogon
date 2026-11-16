@@ -54,14 +54,16 @@ const LANDING_DURATION: Duration = Duration::from_millis(600);
 pub(super) fn start() -> Option<Feedback> {
     let overlay = Overlay::new()?;
     let (feedback, mut receiver) = channel();
-    let (forward, commands) = mpsc::channel();
+    let (forward, commands) = mpsc::sync_channel(super::COMMAND_CAPACITY);
     // The tokio receiver cannot time out, so this thread only forwards; the
     // X thread waits on the std channel with the landing deadline.
     thread::Builder::new()
         .name("a7n-feedback-recv".into())
         .spawn(move || {
             while let Some(command) = receiver.blocking_recv() {
-                if forward.send(command).is_err() {
+                // A stalled X thread drops commands rather than queueing them
+                // without bound, like the sender side of the channel does.
+                if let Err(mpsc::TrySendError::Disconnected(_)) = forward.try_send(command) {
                     break;
                 }
             }
@@ -159,10 +161,7 @@ impl Overlay {
     }
 
     fn animating_edge(&self) -> bool {
-        self.argb.is_some()
-            && self
-                .timeline
-                .edge_playing(self.animate, self.edge_started.elapsed())
+        self.argb.is_some() && self.timeline.edge_playing(self.animate)
     }
 
     fn animate_edge(&mut self) -> Option<()> {
@@ -199,14 +198,8 @@ impl Overlay {
                 look,
             } => self.show_glow(display, edge, progress, look),
             Command::Clear | Command::Crossed => {
-                self.timeline.end(
-                    if command == Command::Crossed {
-                        End::Crossed
-                    } else {
-                        End::Abandoned
-                    },
-                    self.edge_started.elapsed(),
-                );
+                self.timeline
+                    .end(End::for_command(command), self.edge_started.elapsed());
                 if self.argb.is_none() {
                     self.unmap(self.glow)?;
                 }
@@ -342,7 +335,7 @@ impl Overlay {
                 .ok()?;
         }
         let rect = if self.argb.is_some() {
-            glow_rect(monitor, edge, along, 1000, look.size).map(|mut rect| {
+            glow_rect(monitor, edge, along, super::PROGRESS_FULL, look.size).map(|mut rect| {
                 let depth = raster::OVERLAY_DEPTH.min(monitor.width).min(monitor.height);
                 match edge {
                     Edge::Top => rect.height = depth,

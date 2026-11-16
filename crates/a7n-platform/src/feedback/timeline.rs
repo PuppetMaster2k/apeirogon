@@ -7,7 +7,9 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::time::Duration;
 
-use super::raster::{self, EdgeEffect, Frame};
+use super::Command;
+use super::effects;
+use super::raster::{EdgeEffect, Frame};
 use super::{Look, Style};
 
 pub(super) const MARKER_DURATION: Duration = Duration::from_millis(650);
@@ -16,10 +18,9 @@ const DEFAULT_REFRESH_HZ: f64 = 60.0;
 const MIN_REFRESH_HZ: f64 = 30.0;
 const MAX_REFRESH_HZ: f64 = 240.0;
 
-pub(super) fn departure_duration(_style: Style, _animate: bool) -> Duration {
-    Duration::from_millis(150)
-}
-pub(super) fn arrival_duration(_style: Style, animate: bool) -> Duration {
+/// How long a departing edge effect takes to fade out after it ends.
+pub(super) const DEPARTURE_DURATION: Duration = Duration::from_millis(150);
+pub(super) fn arrival_duration(animate: bool) -> Duration {
     if animate {
         MARKER_DURATION
     } else {
@@ -41,6 +42,17 @@ pub(super) fn frame_interval(refresh_hz: Option<f64>) -> Duration {
 pub(super) enum End {
     Crossed,
     Abandoned,
+}
+
+impl End {
+    /// How an edge effect ends for a `Clear` or `Crossed` command.
+    pub fn for_command(command: Command) -> Self {
+        if command == Command::Crossed {
+            Self::Crossed
+        } else {
+            Self::Abandoned
+        }
+    }
 }
 
 struct Departure {
@@ -84,7 +96,7 @@ impl Timeline {
             if departure.ended.is_none() {
                 departure.ended = Some(now);
                 if matches!(end, End::Crossed) {
-                    departure.effect.progress = 1000;
+                    departure.effect.progress = super::PROGRESS_FULL;
                 }
             }
         }
@@ -95,7 +107,7 @@ impl Timeline {
         self.arrival_pending = true;
     }
 
-    pub fn edge_playing(&self, animate: bool, _now: Duration) -> bool {
+    pub fn edge_playing(&self, animate: bool) -> bool {
         !self.fallback
             && self
                 .departure
@@ -119,7 +131,7 @@ impl Timeline {
         let seconds = now.saturating_sub(departure.started).as_secs_f32();
         let opacity = frame.opacity;
         if let Some(started) = departure.ended {
-            let duration = departure_duration(effect.look.style, frame.animate);
+            let duration = DEPARTURE_DURATION;
             let phase = now.saturating_sub(started).as_secs_f32() / duration.as_secs_f32();
             if phase >= 1.0 {
                 self.departure = None;
@@ -128,7 +140,7 @@ impl Timeline {
             frame.opacity *= f64::from(1.0 - phase);
         }
         self.guarded(effect.look.style, || {
-            raster::render_departure(frame, effect, seconds);
+            effects::departure(frame, effect, seconds);
         });
         frame.opacity = opacity;
         true
@@ -143,7 +155,7 @@ impl Timeline {
             frame.pixels.fill(0);
             return false;
         }
-        let duration = arrival_duration(look.style, frame.animate);
+        let duration = arrival_duration(frame.animate);
         let elapsed = now.saturating_sub(started);
         if elapsed >= duration {
             self.arrival = None;
@@ -154,7 +166,7 @@ impl Timeline {
         }
         self.arrival_pending = false;
         self.guarded(look.style, || {
-            raster::render_landing(frame, look, elapsed, duration);
+            effects::arrival(frame, look, elapsed, duration);
         });
         true
     }
@@ -173,7 +185,7 @@ impl Timeline {
 mod tests {
     use a7n_proto::v1::Edge;
 
-    use super::raster::Along;
+    use super::super::raster::Along;
     use super::*;
 
     #[test]

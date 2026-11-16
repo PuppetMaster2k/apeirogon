@@ -69,10 +69,13 @@ impl Bitmap {
     }
 
     pub fn show(&mut self, window: HWND, rect: Rect, frame: &Frame) {
-        if self.resize(frame.width, frame.height).is_none() {
+        if !frame.is_drawable()
+            || self.resize(frame.width, frame.height).is_none()
+            || self.bits.is_null()
+        {
             return;
         }
-        // SAFETY: The DIB has exactly frame.pixels.len() bytes, is uniquely owned,
+        // SAFETY: bits is non-null and the DIB has exactly frame.pixels.len() bytes, is uniquely owned,
         // and remains selected into this DC throughout UpdateLayeredWindow.
         unsafe {
             copy_nonoverlapping(frame.pixels.as_ptr(), self.bits.cast(), frame.pixels.len());

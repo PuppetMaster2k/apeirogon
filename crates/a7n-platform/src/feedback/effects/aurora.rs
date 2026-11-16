@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::f32::consts::FRAC_PI_2;
-
 use tiny_skia::{GradientStop, LinearGradient, PathBuilder, Point, SpreadMode, Transform};
 
 use super::{Canvas, Push};
@@ -17,10 +15,7 @@ pub(super) fn render(canvas: &mut Canvas<'_>, push: &Push) {
         let i = f32::from(i);
         let base = start + i * step;
         let ratio = i / f32::from(count);
-        let envelope = (((base - push.pointer).abs() / half * FRAC_PI_2)
-            .cos()
-            .max(0.0))
-        .powf(1.4);
+        let envelope = push.envelope(base, half, 1.4);
         if envelope < 0.02 {
             continue;
         }

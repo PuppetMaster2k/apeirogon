@@ -5,7 +5,7 @@ use interprocess::{
     local_socket::{GenericNamespaced, ListenerOptions, tokio::prelude::*},
     os::windows::{local_socket::ListenerOptionsExt, security_descriptor::SecurityDescriptor},
 };
-use widestring::U16CString;
+use widestring::u16cstr;
 
 use super::{Listener, SocketError, SocketLocation, Stream};
 
@@ -23,9 +23,7 @@ pub(super) fn default_location() -> Result<SocketLocation, SocketError> {
 )]
 pub(super) async fn bind_user_only(location: &SocketLocation) -> Result<Listener, SocketError> {
     // OW grants rights to the object's owner, with no inherited allow entries.
-    let sddl =
-        U16CString::from_str("D:P(A;;GA;;;OW)").expect("the static SDDL contains no interior NUL");
-    let descriptor = SecurityDescriptor::deserialize(&sddl)?;
+    let descriptor = SecurityDescriptor::deserialize(u16cstr!("D:P(A;;GA;;;OW)"))?;
     let name = location
         .as_path()
         .as_os_str()

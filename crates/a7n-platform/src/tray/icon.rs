@@ -79,20 +79,18 @@ fn light_taskbar() -> bool {
 #[cfg(target_os = "windows")]
 fn light_taskbar() -> bool {
     use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+    use windows_sys::core::w;
 
     const DWORD_BYTES: u32 = 4;
-    let wide = |text: &str| -> Vec<u16> { text.encode_utf16().chain(Some(0)).collect() };
-    let key = wide("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
-    let value = wide("SystemUsesLightTheme");
     let mut data = 0u32;
     let mut size = DWORD_BYTES;
-    // SAFETY: key and value are NUL terminated; data and size point to a
+    // SAFETY: the w! key and value are NUL terminated; data and size point to a
     // writable DWORD and its byte length, as RRF_RT_REG_DWORD requires.
     let status = unsafe {
         RegGetValueW(
             HKEY_CURRENT_USER,
-            key.as_ptr(),
-            value.as_ptr(),
+            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+            w!("SystemUsesLightTheme"),
             RRF_RT_REG_DWORD,
             std::ptr::null_mut(),
             (&raw mut data).cast(),

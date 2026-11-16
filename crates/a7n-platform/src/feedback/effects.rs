@@ -9,6 +9,7 @@
     clippy::cast_sign_loss
 )]
 
+use std::f32::consts::FRAC_PI_2;
 use std::time::Duration;
 
 use a7n_proto::v1::Edge;
@@ -19,7 +20,7 @@ use tiny_skia::{
 
 use super::parameters;
 use super::raster::{self, EdgeEffect, Frame};
-use super::{Look, Style};
+use super::{Look, PROGRESS_FULL, Style};
 
 mod arcs;
 mod aurora;
@@ -85,6 +86,38 @@ impl Push {
     }
     fn gain(&self) -> f32 {
         self.proximity * self.look.intensity
+    }
+
+    /// Cosine falloff around the pointer: 1 at the pointer, 0 from `half` on.
+    fn envelope(&self, pos: f32, half: f32, power: f32) -> f32 {
+        ((pos - self.pointer).abs() / half * FRAC_PI_2)
+            .cos()
+            .max(0.0)
+            .powf(power)
+    }
+
+    /// Keeps `pos` on the pushed edge, `EDGE_INSET` away from either end.
+    fn clamp_along(&self, pos: f32) -> f32 {
+        let first = EDGE_INSET - self.start;
+        pos.clamp(first, (self.length - self.start - EDGE_INSET).max(first))
+    }
+}
+
+const EDGE_INSET: f32 = 2.0;
+/// Animation phase advanced per second at speed 1.
+const PHASE_RATE: f32 = 1.6;
+/// Time step for the first frame, before a previous frame time exists.
+const DEFAULT_STEP: f32 = 1.0 / 60.0;
+/// Longest time step, so particles do not jump after a stalled frame.
+const MAX_STEP: f32 = 0.05;
+/// Brightest edge pixel, so additive glow never saturates to white.
+const MAX_EDGE_ALPHA: u8 = 235;
+
+fn phase(speed: f32, seconds: f32, animate: bool) -> f32 {
+    if animate {
+        seconds * speed * PHASE_RATE
+    } else {
+        0.0
     }
 }
 
@@ -157,12 +190,8 @@ pub(super) fn departure(frame: &mut Frame, effect: EdgeEffect, seconds: f32) {
     let scale = frame.scale.max(1.0) as f32;
     let p = Push {
         look: effect.look,
-        phase: if frame.animate {
-            seconds * effect.look.speed * 1.6
-        } else {
-            0.0
-        },
-        proximity: (f32::from(effect.progress) / 1000.0).clamp(0.0, 1.0),
+        phase: phase(effect.look.speed, seconds, frame.animate),
+        proximity: (f32::from(effect.progress) / f32::from(PROGRESS_FULL)).clamp(0.0, 1.0),
         pointer: effect.along.push as f32 / scale,
         length: effect.along.span as f32 / scale,
         start: effect.along.start as f32 / scale,
@@ -173,7 +202,7 @@ pub(super) fn departure(frame: &mut Frame, effect: EdgeEffect, seconds: f32) {
         Edge::Top => Transform::from_scale(scale, scale),
         Edge::Bottom => Transform::from_row(scale, 0.0, 0.0, -scale, 0.0, frame.height as f32),
         Edge::Right => Transform::from_row(0.0, scale, -scale, 0.0, frame.width as f32, 0.0),
-        _ => Transform::from_row(0.0, scale, scale, 0.0, 0.0, 0.0),
+        Edge::Left | Edge::Unspecified => Transform::from_row(0.0, scale, scale, 0.0, 0.0, 0.0),
     };
     render(frame, &p, transform, seconds);
 }
@@ -187,7 +216,7 @@ fn render(frame: &mut Frame, p: &Push, transform: Transform, seconds: f32) {
     }
     let dt = state
         .last
-        .map_or(1.0 / 60.0, |last| (seconds - last).clamp(0.0, 0.05));
+        .map_or(DEFAULT_STEP, |last| (seconds - last).clamp(0.0, MAX_STEP));
     state.last = Some(seconds);
     let Some(pixmap) = PixmapMut::from_bytes(&mut frame.pixels, frame.width, frame.height) else {
         return;
@@ -217,7 +246,7 @@ fn render(frame: &mut Frame, p: &Push, transform: Transform, seconds: f32) {
     for px in frame.pixels.chunks_exact_mut(4) {
         if p.look.style != Style::Ferrofluid {
             let max = px[0].max(px[1]).max(px[2]);
-            let alpha = max.min(235);
+            let alpha = max.min(MAX_EDGE_ALPHA);
             if max > alpha {
                 for channel in &mut px[..3] {
                     *channel = (u16::from(*channel) * u16::from(alpha) / u16::from(max)) as u8;
@@ -253,11 +282,7 @@ pub(super) fn arrival(frame: &mut Frame, look: Look, elapsed: Duration, duration
             depth: (radius * ARRIVAL_EXTENT * look.depth / parameters::DEPTH.default).max(radius),
             ..look
         },
-        phase: if frame.animate {
-            seconds * look.speed * 1.6
-        } else {
-            0.0
-        },
+        phase: phase(look.speed, seconds, frame.animate),
         proximity: 1.0,
         pointer: frame.width as f32 / (2.0 * scale),
         length: frame.width as f32 / scale,

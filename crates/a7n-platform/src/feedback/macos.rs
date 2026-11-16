@@ -66,7 +66,7 @@ struct Panels {
     landing_center: (f64, f64),
     landing_look: Look,
     animate: bool,
-    hide_landing: CFRetained<CFRunLoopTimer>,
+    frame_timer: CFRetained<CFRunLoopTimer>,
     timer_info: *mut c_void,
 }
 
@@ -130,12 +130,16 @@ unsafe extern "C-unwind" fn drain_commands(info: *mut c_void) {
     });
 }
 
-unsafe extern "C-unwind" fn hide_landing(_: *mut CFRunLoopTimer, info: *mut c_void) {
+unsafe extern "C-unwind" fn on_frame_timer(_: *mut CFRunLoopTimer, info: *mut c_void) {
     // SAFETY: Same contract as drain_commands.
     let ui = unsafe { &mut *info.cast::<Ui>() };
-    if let Some(panels) = &mut ui.panels {
-        panels.animate_frame();
-    }
+    // The main thread runs a bare CFRunLoop, so nothing else drains objects
+    // autoreleased while painting each frame.
+    autoreleasepool(|_| {
+        if let Some(panels) = &mut ui.panels {
+            panels.animate_frame();
+        }
+    });
 }
 
 impl Ui {
@@ -144,14 +148,9 @@ impl Ui {
             Command::Tick => tick_haptics(),
             Command::Clear | Command::Crossed => {
                 if let Some(panels) = &mut self.panels {
-                    panels.timeline.end(
-                        if command == Command::Crossed {
-                            End::Crossed
-                        } else {
-                            End::Abandoned
-                        },
-                        panels.edge_started.elapsed(),
-                    );
+                    panels
+                        .timeline
+                        .end(End::for_command(command), panels.edge_started.elapsed());
                     panels.arm_timer();
                 }
             }
@@ -191,7 +190,7 @@ impl Ui {
         self.hide_glow();
         if let Some(panels) = &self.panels {
             panels.landing.orderOut(None);
-            panels.hide_landing.invalidate();
+            panels.frame_timer.invalidate();
         }
     }
 
@@ -211,7 +210,7 @@ impl Panels {
         let glow = make_panel(mtm, &glow_fill);
         let landing_fill = image_view(mtm);
         let landing = make_panel(mtm, &landing_fill);
-        let hide_landing = frame_timer(timer_info, frame_interval(None).as_secs_f64())?;
+        let timer = frame_timer(timer_info, frame_interval(None).as_secs_f64())?;
         Some(Self {
             mtm,
             glow,
@@ -228,7 +227,7 @@ impl Panels {
             landing_center: (0.0, 0.0),
             landing_look: Look::default(),
             animate: true,
-            hide_landing,
+            frame_timer: timer,
             timer_info,
         })
     }
@@ -258,22 +257,23 @@ impl Panels {
         let thickness = f64::from(raster::OVERLAY_DEPTH)
             .min(screen.width)
             .min(screen.height);
-        let rect = geometry::glow_rect(screen, edge, 1000, super::Size::Medium).map(|mut rect| {
-            match edge {
-                a7n_proto::v1::Edge::Top => {
-                    rect.height = thickness;
-                    rect.y = screen.y + screen.height - thickness;
+        let rect = geometry::glow_rect(screen, edge, super::PROGRESS_FULL, super::Size::Medium)
+            .map(|mut rect| {
+                match edge {
+                    a7n_proto::v1::Edge::Top => {
+                        rect.height = thickness;
+                        rect.y = screen.y + screen.height - thickness;
+                    }
+                    a7n_proto::v1::Edge::Bottom => rect.height = thickness,
+                    a7n_proto::v1::Edge::Left => rect.width = thickness,
+                    a7n_proto::v1::Edge::Right => {
+                        rect.width = thickness;
+                        rect.x = screen.x + screen.width - thickness;
+                    }
+                    a7n_proto::v1::Edge::Unspecified => {}
                 }
-                a7n_proto::v1::Edge::Bottom => rect.height = thickness,
-                a7n_proto::v1::Edge::Left => rect.width = thickness,
-                a7n_proto::v1::Edge::Right => {
-                    rect.width = thickness;
-                    rect.x = screen.x + screen.width - thickness;
-                }
-                a7n_proto::v1::Edge::Unspecified => {}
-            }
-            rect
-        });
+                rect
+            });
         let Some(rect) = rect else {
             self.timeline
                 .end(End::Abandoned, self.edge_started.elapsed());
@@ -377,21 +377,19 @@ impl Panels {
     }
 
     fn arm_timer(&mut self) {
-        let running = self
-            .timeline
-            .edge_playing(self.glow_frame.animate, self.edge_started.elapsed())
-            || self.timeline.landing_visible();
+        let running =
+            self.timeline.edge_playing(self.glow_frame.animate) || self.timeline.landing_visible();
         if running && self.timer_running {
             return;
         }
         self.timer_running = running;
         let delay = if running {
             self.pace_timer();
-            self.hide_landing.interval()
+            self.frame_timer.interval()
         } else {
             TIMER_DISARMED_SECONDS
         };
-        self.hide_landing
+        self.frame_timer
             .set_next_fire_date(CFAbsoluteTimeGetCurrent() + delay);
     }
 
@@ -399,12 +397,12 @@ impl Panels {
     /// refresh rate gets a new timer. `arm_timer` calls it once per effect, when it starts.
     fn pace_timer(&mut self) {
         let seconds = frame_interval(self.refresh_hz()).as_secs_f64();
-        if (self.hide_landing.interval() - seconds).abs() < f64::EPSILON {
+        if (self.frame_timer.interval() - seconds).abs() < f64::EPSILON {
             return;
         }
         if let Some(timer) = frame_timer(self.timer_info, seconds) {
-            self.hide_landing.invalidate();
-            self.hide_landing = timer;
+            self.frame_timer.invalidate();
+            self.frame_timer = timer;
         }
     }
 
@@ -473,7 +471,7 @@ fn frame_timer(info: *mut c_void, seconds: f64) -> Option<CFRetained<CFRunLoopTi
         copyDescription: None,
     };
     // SAFETY: The default allocator accepts None; `info` is the leaked Ui
-    // that `hide_landing` expects and the context is copied.
+    // that `on_frame_timer` expects and the context is copied.
     let timer = unsafe {
         CFRunLoopTimer::new(
             None,
@@ -481,7 +479,7 @@ fn frame_timer(info: *mut c_void, seconds: f64) -> Option<CFRetained<CFRunLoopTi
             seconds,
             0,
             0,
-            Some(hide_landing),
+            Some(on_frame_timer),
             &raw mut context,
         )
     }?;

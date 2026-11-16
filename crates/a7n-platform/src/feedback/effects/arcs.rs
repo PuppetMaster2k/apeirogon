@@ -4,7 +4,9 @@ use tiny_skia::{PathBuilder, Point, Shader};
 
 use super::{Canvas, Push, Random};
 
-const MAX_POINTS: usize = 33;
+/// Each subdivision doubles the segments, so the point buffer bounds the depth.
+const MAX_DEPTH: usize = 5;
+const MAX_POINTS: usize = (1 << MAX_DEPTH) + 1;
 fn bolt(
     canvas: &mut Canvas<'_>,
     ends: [Point; 2],
@@ -19,7 +21,7 @@ fn bolt(
     points[1] = ends[1];
     let mut count = 2;
     let mut displacement = displace;
-    for _ in 0..depth {
+    for _ in 0..depth.min(MAX_DEPTH) {
         for i in (0..count - 1).rev() {
             let a = points[i];
             let b = points[i + 1];
@@ -73,26 +75,20 @@ pub(super) fn render(canvas: &mut Canvas<'_>, push: &Push, random: &mut Random) 
         }
         let color = (f32::from(i) / f32::from(count) + push.phase * 0.2) % 1.0;
         let alpha = ((0.55 + 0.45 * pulse) * push.gain()).min(1.0);
-        let clamp = |pos: f32| {
-            pos.clamp(
-                2.0 - push.start,
-                (push.length - push.start - 2.0).max(2.0 - push.start),
-            )
-        };
         let (a, b, displacement, depth) = if i % 2 == 0 {
             let offset = (random.unit() - 0.5) * half * 1.4;
             let direction = if random.unit() > 0.5 { 1.0 } else { -1.0 };
             let other = offset + direction * (35.0 + random.unit() * half * 0.7);
             (
-                Point::from_xy(clamp(push.pointer + offset), 2.0),
-                Point::from_xy(clamp(push.pointer + other), 2.0),
+                Point::from_xy(push.clamp_along(push.pointer + offset), 2.0),
+                Point::from_xy(push.clamp_along(push.pointer + other), 2.0),
                 push.look.depth * 0.55,
                 5,
             )
         } else {
             let offset = (random.unit() - 0.5) * half * 0.9;
             (
-                Point::from_xy(clamp(push.pointer + offset), 1.0),
+                Point::from_xy(push.clamp_along(push.pointer + offset), 1.0),
                 Point::from_xy(
                     push.pointer + (random.unit() - 0.5) * 14.0,
                     (random.unit() - 0.5) * 14.0,
