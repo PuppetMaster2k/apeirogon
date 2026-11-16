@@ -332,23 +332,8 @@ impl Overlay {
                 .ok()?;
         }
         let rect = if self.argb.is_some() {
-            glow_rect(monitor, edge, along, super::PROGRESS_FULL, look.size).map(|mut rect| {
-                let depth = raster::OVERLAY_DEPTH.min(monitor.width).min(monitor.height);
-                match edge {
-                    Edge::Top => rect.height = depth,
-                    Edge::Bottom => {
-                        rect.height = depth;
-                        rect.y = monitor.y.saturating_add_unsigned(monitor.height - depth);
-                    }
-                    Edge::Left => rect.width = depth,
-                    Edge::Right => {
-                        rect.width = depth;
-                        rect.x = monitor.x.saturating_add_unsigned(monitor.width - depth);
-                    }
-                    Edge::Unspecified => {}
-                }
-                rect
-            })
+            let depth = f64::from(raster::OVERLAY_DEPTH);
+            look::edge_strip(Rect::from_bounds(monitor), edge, depth).map(Rect::bounds)
         } else {
             glow_rect(monitor, edge, along, progress, look.size)
         };

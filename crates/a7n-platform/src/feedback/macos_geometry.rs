@@ -7,18 +7,9 @@
 //! unless a name says `desktop`. It compiles on every platform so the
 //! decisions can be tested without a Mac.
 
-use super::Size;
 pub(super) use super::look::Rect;
+use super::look::edge_strip;
 use a7n_proto::v1::Edge;
-
-/// `Command::Edge::progress` at full resistance, per-mille.
-const PROGRESS_FULL: u16 = 1000;
-/// Glow thickness in points at the first push.
-const GLOW_MIN_THICKNESS: f64 = 3.0;
-/// Glow thickness in points at full resistance.
-const GLOW_MAX_THICKNESS: f64 = 28.0;
-/// Outer diameter of the landing ring in points.
-pub(super) const LANDING_DIAMETER: f64 = 64.0;
 
 impl Rect {
     fn contains(&self, x: f64, y: f64) -> bool {
@@ -35,57 +26,20 @@ pub(super) fn screen_containing(screens: &[Rect], x: f64, y: f64) -> Option<Rect
         .copied()
 }
 
-/// The strip along `edge` of `screen`, thicker the more of the resistance is
-/// built up. `None` for an unspecified edge.
-pub(super) fn glow_rect(screen: Rect, edge: Edge, progress: u16, size: Size) -> Option<Rect> {
-    let fraction = f64::from(progress.min(PROGRESS_FULL)) / f64::from(PROGRESS_FULL);
-    let thickness = (GLOW_MIN_THICKNESS + (GLOW_MAX_THICKNESS - GLOW_MIN_THICKNESS) * fraction)
-        * size.multiplier();
-    let Rect {
-        x,
-        y,
-        width,
-        height,
-    } = screen;
-    match edge {
-        Edge::Left => Some(Rect {
-            x,
-            y,
-            width: thickness,
-            height,
-        }),
-        Edge::Right => Some(Rect {
-            x: x + width - thickness,
-            y,
-            width: thickness,
-            height,
-        }),
-        Edge::Top => Some(Rect {
-            x,
-            y: y + height - thickness,
-            width,
-            height: thickness,
-        }),
-        Edge::Bottom => Some(Rect {
-            x,
-            y,
-            width,
-            height: thickness,
-        }),
-        Edge::Unspecified => None,
-    }
+/// The glow strip `depth` points thick along `edge` of `screen`. `AppKit`'s y
+/// axis points up, so the top edge lies at the far end of y.
+pub(super) fn glow_rect(screen: Rect, edge: Edge, depth: f64) -> Option<Rect> {
+    let edge = match edge {
+        Edge::Top => Edge::Bottom,
+        Edge::Bottom => Edge::Top,
+        other => other,
+    };
+    edge_strip(screen, edge, depth)
 }
 
-/// The landing ring centred on a desktop point.
-pub(super) fn landing_rect(desktop_x: i32, desktop_y: i32, primary_height: f64) -> Rect {
-    let centre_x = f64::from(desktop_x);
-    let centre_y = primary_height - f64::from(desktop_y);
-    Rect {
-        x: centre_x - LANDING_DIAMETER / 2.0,
-        y: centre_y - LANDING_DIAMETER / 2.0,
-        width: LANDING_DIAMETER,
-        height: LANDING_DIAMETER,
-    }
+/// A top-left desktop point in `AppKit` space.
+pub(super) fn desktop_to_appkit(x: i32, y: i32, primary_height: f64) -> (f64, f64) {
+    (f64::from(x), primary_height - f64::from(y))
 }
 
 #[cfg(test)]
@@ -100,58 +54,17 @@ mod tests {
     };
 
     #[test]
-    fn glow_rect_edges_hug_their_side_and_grow_with_progress() {
+    fn glow_rect_top_and_bottom_follow_appkit_y_up() {
         // Arrange
-        let cases = [
-            (
-                Edge::Left,
-                0,
-                Rect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: GLOW_MIN_THICKNESS,
-                    height: 600.0,
-                },
-            ),
-            (
-                Edge::Right,
-                PROGRESS_FULL,
-                Rect {
-                    x: 1000.0 - GLOW_MAX_THICKNESS,
-                    y: 0.0,
-                    width: GLOW_MAX_THICKNESS,
-                    height: 600.0,
-                },
-            ),
-            (
-                Edge::Top,
-                PROGRESS_FULL * 2,
-                Rect {
-                    x: 0.0,
-                    y: 600.0 - GLOW_MAX_THICKNESS,
-                    width: 1000.0,
-                    height: GLOW_MAX_THICKNESS,
-                },
-            ),
-            (
-                Edge::Bottom,
-                0,
-                Rect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: 1000.0,
-                    height: GLOW_MIN_THICKNESS,
-                },
-            ),
-        ];
+        let depth = 10.0;
 
-        for (edge, progress, expected) in cases {
-            // Act
-            let rect = glow_rect(SCREEN, edge, progress, Size::Medium);
+        // Act
+        let top = glow_rect(SCREEN, Edge::Top, depth);
+        let bottom = glow_rect(SCREEN, Edge::Bottom, depth);
 
-            // Assert
-            assert_eq!(rect, Some(expected), "{edge:?} at {progress}");
-        }
+        // Assert
+        assert_eq!(top.map(|rect| rect.y), Some(590.0));
+        assert_eq!(bottom.map(|rect| rect.y), Some(0.0));
     }
 
     #[test]
@@ -172,15 +85,14 @@ mod tests {
     }
 
     #[test]
-    fn landing_rect_desktop_point_is_flipped_into_appkit_space() {
+    fn desktop_to_appkit_point_is_flipped_against_primary_height() {
         // Arrange
         let primary_height = 900.0;
 
         // Act
-        let rect = landing_rect(100, 200, primary_height);
+        let point = desktop_to_appkit(100, 200, primary_height);
 
         // Assert
-        let half = LANDING_DIAMETER / 2.0;
-        assert_eq!((rect.x, rect.y), (100.0 - half, 700.0 - half));
+        assert_eq!(point, (100.0, 700.0));
     }
 }

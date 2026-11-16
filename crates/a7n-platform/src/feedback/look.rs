@@ -4,6 +4,7 @@
 
 use std::time::Duration;
 
+use a7n_proto::v1::Edge;
 use serde::{Deserialize, Serialize};
 
 use super::parameters;
@@ -209,6 +210,36 @@ impl Rect {
     }
 }
 
+/// The strip `depth` thick that hugs `edge` of `area` along its whole length,
+/// in top-left coordinates. `None` for an unspecified edge or an empty strip.
+pub(super) fn edge_strip(area: Rect, edge: Edge, depth: f64) -> Option<Rect> {
+    let thickness = depth.min(area.width).min(area.height);
+    if thickness.is_nan() || thickness <= 0.0 {
+        return None;
+    }
+    match edge {
+        Edge::Top => Some(Rect {
+            height: thickness,
+            ..area
+        }),
+        Edge::Bottom => Some(Rect {
+            y: area.y + area.height - thickness,
+            height: thickness,
+            ..area
+        }),
+        Edge::Left => Some(Rect {
+            width: thickness,
+            ..area
+        }),
+        Edge::Right => Some(Rect {
+            x: area.x + area.width - thickness,
+            width: thickness,
+            ..area
+        }),
+        Edge::Unspecified => None,
+    }
+}
+
 /// Keep expanding arrivals on the landing monitor, including points at its edge.
 pub(super) fn landing_rect(area: Rect, point: (f64, f64), diameter: f64) -> Rect {
     let width = diameter.min(area.width);
@@ -224,6 +255,40 @@ pub(super) fn landing_rect(area: Rect, point: (f64, f64), diameter: f64) -> Rect
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edge_strip_each_edge_hugs_its_side() {
+        // Arrange
+        let area = Rect {
+            x: -100.0,
+            y: 50.0,
+            width: 400.0,
+            height: 300.0,
+        };
+        let rect = |x, y, width, height| Rect {
+            x,
+            y,
+            width,
+            height,
+        };
+        let cases = [
+            (Edge::Top, 10.0, Some(rect(-100.0, 50.0, 400.0, 10.0))),
+            (Edge::Bottom, 10.0, Some(rect(-100.0, 340.0, 400.0, 10.0))),
+            (Edge::Left, 10.0, Some(rect(-100.0, 50.0, 10.0, 300.0))),
+            (Edge::Right, 10.0, Some(rect(290.0, 50.0, 10.0, 300.0))),
+            (Edge::Left, 1000.0, Some(rect(-100.0, 50.0, 300.0, 300.0))),
+            (Edge::Top, 0.0, None),
+            (Edge::Unspecified, 10.0, None),
+        ];
+
+        for (edge, depth, expected) in cases {
+            // Act
+            let strip = edge_strip(area, edge, depth);
+
+            // Assert
+            assert_eq!(strip, expected, "{edge:?} at depth {depth}");
+        }
+    }
 
     #[test]
     fn frame_elapsed_pulse_grows_and_dot_shrinks() {
