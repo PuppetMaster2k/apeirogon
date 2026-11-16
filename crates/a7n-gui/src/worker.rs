@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::io;
 use std::sync::mpsc;
 use std::time::Duration;
 
 use a7n_ipc::config::Config;
 use a7n_ipc::{IpcClient, IpcError, MachineId, Request, Response};
+use a7n_platform::local_socket::SocketError;
 use eframe::egui;
 use rust_i18n::t;
 use tokio::sync::mpsc as async_mpsc;
@@ -130,12 +132,28 @@ async fn unpair(
     ))
 }
 
+/// A missing socket or named pipe means the daemon is not running, which
+/// the start screen should say plainly instead of showing the raw OS error.
+fn connect_error(error: &IpcError) -> String {
+    match error {
+        IpcError::Socket(SocketError::Io(io))
+            if matches!(
+                io.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+            ) =>
+        {
+            t!("The daemon is not running.").into_owned()
+        }
+        error => error.to_string(),
+    }
+}
+
 async fn request_daemon(
     client: &mut Option<IpcClient>,
     request: &Request,
 ) -> Result<Response, String> {
     if client.is_none() {
-        *client = Some(IpcClient::connect().await.map_err(|e| e.to_string())?);
+        *client = Some(IpcClient::connect().await.map_err(|e| connect_error(&e))?);
     }
     let timeout = match request {
         Request::RecordHotkey { .. } => RECORD_HOTKEY_TIMEOUT,
@@ -177,4 +195,27 @@ fn save_config(values: &[(String, String)]) -> Result<Config, String> {
         .map_err(|e| e.to_string())?;
     config.save(&path).map_err(|e| e.to_string())?;
     Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connect_error_missing_socket_says_daemon_is_not_running() {
+        // Arrange
+        let missing = [io::ErrorKind::NotFound, io::ErrorKind::ConnectionRefused];
+
+        for kind in missing {
+            let error = IpcError::Socket(SocketError::Io(io::Error::from(kind)));
+
+            // Act
+            let message = connect_error(&error);
+
+            // Assert
+            // Compared against the raw error, as another test switches the
+            // global locale while this one runs.
+            assert_ne!(message, error.to_string(), "{kind:?}");
+        }
+    }
 }
