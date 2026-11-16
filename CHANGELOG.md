@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.1](https://github.com/PuppetMaster2k/apeirogon/compare/v0.44.0...v0.44.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* **platform:** stop trusting pointers in windows feedback thread messages ([#283](https://github.com/PuppetMaster2k/apeirogon/issues/283)) ([70acc9f](https://github.com/PuppetMaster2k/apeirogon/commit/70acc9f2e9c8ff3ca041a2fd13eecb5a0ed9d54f))
+
 ## [0.44.0](https://github.com/PuppetMaster2k/apeirogon/compare/v0.43.3...v0.44.0) (2026-11-13)
 
 
