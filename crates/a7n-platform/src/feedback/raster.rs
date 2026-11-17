@@ -8,7 +8,7 @@ use a7n_proto::v1::Edge;
 
 use tiny_skia::{Mask, PixmapMut};
 
-use super::{Landing, Look};
+use super::{Landing, Look, look};
 
 const CHANNELS: usize = 4;
 #[derive(Default)]
@@ -36,6 +36,14 @@ impl Frame {
         self.pixels.fill(0);
     }
 
+    pub(super) fn prepare(&mut self, width: u32, height: u32, scale: f64, animate: bool) {
+        self.resize(width, height);
+        self.dark = true;
+        self.opacity = 1.0;
+        self.scale = scale;
+        self.animate = animate;
+    }
+
     /// Whether the frame is non-empty and its pixels match its size, which
     /// the native copies rely on before writing into OS-owned buffers.
     pub fn is_drawable(&self) -> bool {
@@ -52,6 +60,32 @@ pub(super) struct Along {
     pub start: f64,
     pub span: f64,
     pub push: f64,
+}
+
+impl Along {
+    pub(super) fn across(
+        area: look::Rect,
+        strip: look::Rect,
+        pointer: (f64, f64),
+        edge: Edge,
+        scale: f64,
+    ) -> Self {
+        let horizontal = matches!(edge, Edge::Top | Edge::Bottom);
+        Self {
+            origin: (area.x, area.y),
+            start: if horizontal {
+                (strip.x - area.x) * scale
+            } else {
+                (strip.y - area.y) * scale
+            },
+            span: if horizontal { area.width } else { area.height } * scale,
+            push: if horizontal {
+                (pointer.0 - strip.x) * scale
+            } else {
+                (pointer.1 - strip.y) * scale
+            },
+        }
+    }
 }
 
 /// The last absolute edge command, reused for timer frames without querying the OS.
@@ -124,5 +158,44 @@ pub(super) fn mask_landing(frame: &mut Frame, look: Look, elapsed: Duration, dur
     }
     if let Some(mut pixmap) = PixmapMut::from_bytes(&mut frame.pixels, frame.width, frame.height) {
         pixmap.apply_mask(&mask);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn across_all_edges_outside_pointer_preserves_scaled_positions() {
+        // Arrange
+        let area = look::Rect {
+            x: -100.0,
+            y: 50.0,
+            width: 400.0,
+            height: 300.0,
+        };
+        let strip = look::Rect {
+            x: -80.0,
+            y: 80.0,
+            width: 200.0,
+            height: 100.0,
+        };
+        let pointer = (-120.0, 400.0);
+        let scale = 2.0;
+        let cases = [
+            (Edge::Top, (40.0, 800.0, -80.0)),
+            (Edge::Bottom, (40.0, 800.0, -80.0)),
+            (Edge::Left, (60.0, 600.0, 640.0)),
+            (Edge::Right, (60.0, 600.0, 640.0)),
+        ];
+
+        for (edge, expected) in cases {
+            // Act
+            let along = Along::across(area, strip, pointer, edge, scale);
+
+            // Assert
+            assert_eq!(along.origin, (area.x, area.y), "{edge:?}");
+            assert_eq!((along.start, along.span, along.push), expected, "{edge:?}");
+        }
     }
 }

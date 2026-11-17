@@ -275,34 +275,26 @@ impl Panels {
     ) {
         self.glow.setFrame_display(ns_rect(rect), false);
         let scale = self.glow.backingScaleFactor();
-        self.glow_frame.resize(
+        self.glow_frame.prepare(
             pixel_size(rect.width * scale),
             pixel_size(rect.height * scale),
+            scale,
+            !reduce_motion(),
         );
-        self.glow_frame.dark = true;
-        self.glow_frame.opacity = 1.0;
-        self.glow_frame.scale = scale;
         let pointer = NSEvent::mouseLocation();
-        let horizontal = matches!(edge, a7n_proto::v1::Edge::Top | a7n_proto::v1::Edge::Bottom);
-        let along = Along {
-            origin: (screen.x, -screen.y - screen.height),
-            start: if horizontal {
-                (rect.x - screen.x) * scale
-            } else {
-                (screen.y + screen.height - rect.y - rect.height) * scale
+        let along = Along::across(
+            Rect {
+                y: -screen.y - screen.height,
+                ..screen
             },
-            span: if horizontal {
-                screen.width * scale
-            } else {
-                screen.height * scale
+            Rect {
+                y: -rect.y - rect.height,
+                ..rect
             },
-            push: if horizontal {
-                (pointer.x - rect.x) * scale
-            } else {
-                (rect.y + rect.height - pointer.y) * scale
-            },
-        };
-        self.glow_frame.animate = !reduce_motion();
+            (pointer.x, -pointer.y),
+            edge,
+            scale,
+        );
         self.timeline.push(
             EdgeEffect {
                 look,
@@ -417,15 +409,13 @@ impl Panels {
             false,
         );
         let scale = self.landing.backingScaleFactor();
-        self.landing_frame.resize(
+        self.landing_frame.prepare(
             pixel_size(rect.width * scale),
             pixel_size(rect.height * scale),
+            scale,
+            self.animate,
         );
         self.landing_frame.arrival = Some(Arrival::at(rect, point, scale));
-        self.landing_frame.animate = self.animate;
-        self.landing_frame.dark = true;
-        self.landing_frame.opacity = 1.0;
-        self.landing_frame.scale = scale;
         if !self
             .timeline
             .render_landing(&mut self.landing_frame, self.edge_started.elapsed())
