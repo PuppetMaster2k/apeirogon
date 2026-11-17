@@ -109,7 +109,7 @@ impl Overlay {
             edge_frame: Frame::default(),
             timeline: Timeline::default(),
             edge_started: Instant::now(),
-            animate: blit::animations_enabled(),
+            animate: animations_enabled(),
             landing_frame: Frame::default(),
             frame_interval: frame_interval(None),
         })
@@ -386,4 +386,43 @@ impl Overlay {
         self.connection.unmap_window(window).ok()?;
         self.connection.flush().ok()
     }
+}
+
+/// Unknown desktops conservatively use static frames, as the old backend did.
+fn animations_enabled() -> bool {
+    use std::process::Command;
+
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if desktop.contains("gnome") {
+        return Command::new("gsettings")
+            .args(["get", "org.gnome.desktop.interface", "enable-animations"])
+            .output()
+            .is_ok_and(|output| output.status.success() && output.stdout.trim_ascii() == b"true");
+    }
+    if desktop.contains("kde") {
+        for executable in ["kreadconfig6", "kreadconfig5"] {
+            if let Ok(output) = Command::new(executable)
+                .args([
+                    "--file",
+                    "kdeglobals",
+                    "--group",
+                    "KDE",
+                    "--key",
+                    "AnimationDurationFactor",
+                    "--default",
+                    "1",
+                ])
+                .output()
+                && output.status.success()
+            {
+                return std::str::from_utf8(&output.stdout)
+                    .ok()
+                    .and_then(|text| text.trim().parse::<f64>().ok())
+                    .is_some_and(|factor| factor > 0.0);
+            }
+        }
+    }
+    false
 }
