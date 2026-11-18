@@ -110,22 +110,29 @@ fn run_ui_thread(ready: &sync::Sender<Option<u32>>, queue: sync::Receiver<Comman
     }
 }
 
+struct Glow {
+    window: HWND,
+    frame: Frame,
+    bitmap: Bitmap,
+    rect: Option<Rect>,
+}
+
+struct LandingMark {
+    window: HWND,
+    frame: Frame,
+    bitmap: Bitmap,
+    look: Look,
+    point: (i32, i32),
+    dpi: u32,
+}
+
 struct Ui {
     queue: sync::Receiver<Command>,
-    glow: HWND,
-    glow_frame: Frame,
+    glow: Glow,
+    landing: LandingMark,
     timeline: Timeline,
-    glow_rect: Option<Rect>,
     edge_started: Instant,
     edge_timer: bool,
-    glow_bitmap: Bitmap,
-    landing_frame: Frame,
-    landing_bitmap: Bitmap,
-    landing: HWND,
-    animate: bool,
-    landing_look: Look,
-    landing_point: (i32, i32),
-    landing_dpi: u32,
     frame_ms: u32,
 }
 
@@ -134,22 +141,29 @@ impl Ui {
         // SAFETY: Requests the current module, which outlives the window class.
         let module = unsafe { GetModuleHandleW(null()) };
         register_class(module);
+        let glow = Glow {
+            window: create_overlay(module)?,
+            frame: Frame::default(),
+            bitmap: Bitmap::default(),
+            rect: None,
+        };
+        let timeline = Timeline::default();
+        let edge_started = Instant::now();
+        let landing = LandingMark {
+            frame: Frame::default(),
+            bitmap: Bitmap::default(),
+            window: create_overlay(module)?,
+            look: Look::default(),
+            point: (0, 0),
+            dpi: BASE_DPI,
+        };
         Some(Self {
             queue,
-            glow: create_overlay(module)?,
-            glow_frame: Frame::default(),
-            timeline: Timeline::default(),
-            glow_rect: None,
-            edge_started: Instant::now(),
+            glow,
+            landing,
+            timeline,
+            edge_started,
             edge_timer: false,
-            glow_bitmap: Bitmap::default(),
-            landing_frame: Frame::default(),
-            landing_bitmap: Bitmap::default(),
-            landing: create_overlay(module)?,
-            animate: true,
-            landing_look: Look::default(),
-            landing_point: (0, 0),
-            landing_dpi: BASE_DPI,
             frame_ms: frame_ms(None),
         })
     }
@@ -162,13 +176,13 @@ impl Ui {
                 while let Ok(command) = self.queue.try_recv() {
                     self.handle(command);
                 }
-            } else if message.hwnd == self.landing
+            } else if message.hwnd == self.landing.window
                 && message.message == WM_TIMER
                 && message.wParam == FADE_TIMER_ID
                 && self.timeline.landing_visible()
             {
                 self.fade_landing();
-            } else if message.hwnd == self.glow
+            } else if message.hwnd == self.glow.window
                 && message.message == WM_TIMER
                 && message.wParam == EDGE_TIMER_ID
             {
@@ -191,7 +205,7 @@ impl Ui {
             Command::Clear | Command::Crossed => {
                 self.timeline
                     .end(End::for_command(command), self.edge_started.elapsed());
-                self.edge_timer(self.timeline.edge_playing(self.glow_frame.animate));
+                self.edge_timer(self.timeline.edge_playing(self.glow.frame.animate));
             }
             Command::Landing { x, y, look } => self.show_landing((x, y), look),
             Command::LandingAtCursor { look } => {
@@ -220,10 +234,10 @@ impl Ui {
             self.edge_timer(false);
             self.timeline
                 .end(End::Abandoned, self.edge_started.elapsed());
-            hide(self.glow);
+            hide(self.glow.window);
             return;
         };
-        self.glow_frame.prepare(
+        self.glow.frame.prepare(
             u32::try_from(rect.width()).unwrap_or(1),
             u32::try_from(rect.height()).unwrap_or(1),
             f64::from(dpi) / f64::from(BASE_DPI),
@@ -246,7 +260,7 @@ impl Ui {
             self.edge_started.elapsed(),
         );
         self.animate_edge_at(rect);
-        self.edge_timer(self.timeline.edge_playing(self.glow_frame.animate));
+        self.edge_timer(self.timeline.edge_playing(self.glow.frame.animate));
     }
 
     fn edge_timer(&mut self, running: bool) {
@@ -257,56 +271,58 @@ impl Ui {
         // SAFETY: This thread owns the glow window and its timer.
         unsafe {
             if running {
-                SetTimer(self.glow, EDGE_TIMER_ID, self.frame_ms, None);
+                SetTimer(self.glow.window, EDGE_TIMER_ID, self.frame_ms, None);
             } else {
-                KillTimer(self.glow, EDGE_TIMER_ID);
+                KillTimer(self.glow.window, EDGE_TIMER_ID);
             }
         }
     }
 
     fn animate_edge(&mut self) {
-        if let Some(rect) = self.glow_rect {
+        if let Some(rect) = self.glow.rect {
             self.animate_edge_at(rect);
         }
     }
 
     fn animate_edge_at(&mut self, rect: Rect) {
-        self.glow_rect = Some(rect);
+        self.glow.rect = Some(rect);
         if self
             .timeline
-            .render_edge(&mut self.glow_frame, self.edge_started.elapsed())
+            .render_edge(&mut self.glow.frame, self.edge_started.elapsed())
         {
-            self.glow_bitmap.show(self.glow, rect, &self.glow_frame);
+            self.glow
+                .bitmap
+                .show(self.glow.window, rect, &self.glow.frame);
         } else {
-            hide(self.glow);
+            hide(self.glow.window);
         }
-        self.edge_timer(self.timeline.edge_playing(self.glow_frame.animate));
+        self.edge_timer(self.timeline.edge_playing(self.glow.frame.animate));
     }
 
     fn show_landing(&mut self, point: (i32, i32), look: Look) {
         let monitor = monitor_at(point);
-        self.landing_dpi = monitor.map_or(BASE_DPI, |monitor| monitor.dpi);
+        self.landing.dpi = monitor.map_or(BASE_DPI, |monitor| monitor.dpi);
         self.frame_ms = frame_ms(monitor.as_ref().and_then(MonitorGeometry::refresh_hz));
-        self.landing_point = point;
-        self.landing_look = look;
-        self.animate = animations_enabled();
+        self.landing.point = point;
+        self.landing.look = look;
+        self.landing.frame.animate = animations_enabled();
         self.timeline.land(look, self.edge_started.elapsed());
         self.fade_landing();
         // SAFETY: The window belongs to this thread; the timer is killed in
         // `fade_landing` and replaced if a new landing arrives first.
-        unsafe { SetTimer(self.landing, FADE_TIMER_ID, self.frame_ms, None) };
+        unsafe { SetTimer(self.landing.window, FADE_TIMER_ID, self.frame_ms, None) };
     }
 
     fn fade_landing(&mut self) {
-        let look = self.landing_look;
-        let scale = f64::from(self.landing_dpi) / f64::from(BASE_DPI);
+        let look = self.landing.look;
+        let scale = f64::from(self.landing.dpi) / f64::from(BASE_DPI);
         let diameter = look.arrival_diameter() * scale;
-        let area = monitor_at(self.landing_point).map_or_else(
+        let area = monitor_at(self.landing.point).map_or_else(
             || {
                 let half = diameter / 2.0;
                 look::Rect {
-                    x: f64::from(self.landing_point.0) - half,
-                    y: f64::from(self.landing_point.1) - half,
+                    x: f64::from(self.landing.point.0) - half,
+                    y: f64::from(self.landing.point.1) - half,
                     width: diameter,
                     height: diameter,
                 }
@@ -314,26 +330,31 @@ impl Ui {
             |monitor| monitor.rect.as_rect(),
         );
         let point = (
-            f64::from(self.landing_point.0),
-            f64::from(self.landing_point.1),
+            f64::from(self.landing.point.0),
+            f64::from(self.landing.point.1),
         );
         let geometry = look::landing_rect(area, point, diameter);
         let bounds = geometry.bounds();
         let rect = Rect::from_bounds(bounds);
-        self.landing_frame
-            .prepare(bounds.width, bounds.height, scale, self.animate);
-        self.landing_frame.arrival = Some(Arrival::at(geometry, point, 1.0));
+        self.landing.frame.prepare(
+            bounds.width,
+            bounds.height,
+            scale,
+            self.landing.frame.animate,
+        );
+        self.landing.frame.arrival = Some(Arrival::at(geometry, point, 1.0));
         if !self
             .timeline
-            .render_landing(&mut self.landing_frame, self.edge_started.elapsed())
+            .render_landing(&mut self.landing.frame, self.edge_started.elapsed())
         {
             // SAFETY: Stops the timer set on this thread's landing window.
-            unsafe { KillTimer(self.landing, FADE_TIMER_ID) };
-            hide(self.landing);
+            unsafe { KillTimer(self.landing.window, FADE_TIMER_ID) };
+            hide(self.landing.window);
             return;
         }
-        self.landing_bitmap
-            .show(self.landing, rect, &self.landing_frame);
+        self.landing
+            .bitmap
+            .show(self.landing.window, rect, &self.landing.frame);
     }
 }
 
@@ -466,7 +487,7 @@ fn center(area: Rect) -> (i32, i32) {
 }
 
 fn scale_dip(dip: i32, dpi: u32) -> i32 {
-    dip * i32::try_from(dpi).unwrap_or(i32::MAX) / i32::try_from(BASE_DPI).unwrap_or(i32::MAX)
+    i32::try_from(i64::from(dip) * i64::from(dpi) / i64::from(BASE_DPI)).unwrap_or(dip)
 }
 
 /// The Windows "Animation effects" setting; assume on when it cannot be read.
