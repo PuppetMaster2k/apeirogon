@@ -3,7 +3,7 @@
 //! A reusable top-down premultiplied BGRA DIB for a layered window.
 
 use std::ffi::c_void;
-use std::ptr::{copy_nonoverlapping, null_mut};
+use std::ptr::null_mut;
 
 use windows_sys::Win32::Foundation::{HWND, POINT, SIZE};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -78,11 +78,8 @@ impl Bitmap {
         // SAFETY: bits is non-null and the DIB has exactly frame.pixels.len() bytes, is uniquely owned,
         // and remains selected into this DC throughout UpdateLayeredWindow.
         unsafe {
-            copy_nonoverlapping(frame.pixels.as_ptr(), self.bits.cast(), frame.pixels.len());
             let bytes = std::slice::from_raw_parts_mut(self.bits.cast::<u8>(), frame.pixels.len());
-            for pixel in bytes.chunks_exact_mut(4) {
-                pixel.swap(0, 2);
-            }
+            frame.copy_bgra_into(bytes);
             let point = POINT {
                 x: rect.x,
                 y: rect.y,
