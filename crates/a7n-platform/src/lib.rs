@@ -39,7 +39,6 @@ fn os_host_name() -> Option<String> {
     std::env::var("COMPUTERNAME").ok()
 }
 
-#[cfg(feature = "tray")]
 pub mod tray;
 
 /// The 256 px app icon PNG for the window and Dock (docs/ui.md section 6).

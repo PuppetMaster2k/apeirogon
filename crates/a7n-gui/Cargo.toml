@@ -11,10 +11,6 @@ repository.workspace = true
 homepage.workspace = true
 rust-version = "1.95"
 
-[features]
-default = ["tray"]
-tray = ["a7n-platform/tray"]
-
 [dependencies]
 rust-i18n.workspace = true
 sys-locale.workspace = true
