@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use tiny_skia::{GradientStop, LinearGradient, PathBuilder, Point, SpreadMode, Transform};
+use tiny_skia::{GradientStop, PathBuilder, Point};
 
 use super::{Canvas, Push};
 
@@ -38,10 +38,7 @@ pub(super) fn render(canvas: &mut Canvas<'_>, push: &Push) {
             GradientStop::new(0.45, canvas.color((t + 0.35) % 1.0, alpha * 0.55)),
             GradientStop::new(1.0, canvas.color((t + 0.35) % 1.0, 0.0)),
         ];
-        if let Some(shader) =
-            LinearGradient::new(a, b, stops, SpreadMode::Pad, Transform::identity())
-        {
-            canvas.paint.shader = shader;
+        if canvas.linear(a, b, stops) {
             let mut path = PathBuilder::new();
             path.move_to(a.x, a.y);
             path.line_to(b.x, b.y);
