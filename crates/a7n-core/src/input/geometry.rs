@@ -26,6 +26,29 @@ impl Bounds {
             && x < i64::from(self.x) + i64::from(self.width)
             && y < i64::from(self.y) + i64::from(self.height)
     }
+
+    /// The nonempty overlap of two desktop rectangles.
+    #[must_use]
+    pub fn intersect(self, other: Self) -> Option<Self> {
+        let left = self.x.max(other.x);
+        let top = self.y.max(other.y);
+        let right = (i64::from(self.x) + i64::from(self.width))
+            .min(i64::from(other.x) + i64::from(other.width));
+        let bottom = (i64::from(self.y) + i64::from(self.height))
+            .min(i64::from(other.y) + i64::from(other.height));
+        let width = u32::try_from(right - i64::from(left))
+            .ok()
+            .filter(|width| *width > 0)?;
+        let height = u32::try_from(bottom - i64::from(top))
+            .ok()
+            .filter(|height| *height > 0)?;
+        Some(Self {
+            x: left,
+            y: top,
+            width,
+            height,
+        })
+    }
 }
 
 impl From<(i32, i32, u32, u32)> for Bounds {
@@ -119,5 +142,47 @@ pub fn landing_point(bounds: Bounds, monitors: &[Bounds], landing: &Landing) -> 
                 .saturating_add_unsigned(monitor.height.saturating_sub(1)),
         ),
         Edge::Unspecified => (x, y),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn intersect_rectangles_returns_nonempty_overlap() {
+        // Arrange
+        let bounds = Bounds::from;
+        let area = bounds((-10, -20, 100, 80));
+        let cases = [
+            (
+                area,
+                bounds((40, 30, 100, 80)),
+                Some(bounds((40, 30, 50, 30))),
+            ),
+            (area, bounds((90, -20, 100, 80)), None),
+            (area, bounds((-10, 60, 100, 80)), None),
+            (area, bounds((100, 100, 10, 10)), None),
+            (area, bounds((0, 0, 10, 20)), Some(bounds((0, 0, 10, 20)))),
+            (area, bounds((0, 0, 0, 20)), None),
+            (
+                bounds((i32::MIN, i32::MIN, u32::MAX, u32::MAX)),
+                bounds((0, 0, u32::MAX, u32::MAX)),
+                Some(bounds((0, 0, i32::MAX as u32, i32::MAX as u32))),
+            ),
+            (
+                bounds((i32::MAX, i32::MAX, u32::MAX, u32::MAX)),
+                bounds((i32::MAX, i32::MAX, u32::MAX, u32::MAX)),
+                Some(bounds((i32::MAX, i32::MAX, u32::MAX, u32::MAX))),
+            ),
+        ];
+
+        for (area, other, expected) in cases {
+            // Act
+            let overlap = area.intersect(other);
+
+            // Assert
+            assert_eq!(overlap, expected, "{area:?} intersect {other:?}");
+        }
     }
 }

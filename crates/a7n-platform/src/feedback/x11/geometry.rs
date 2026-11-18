@@ -17,8 +17,8 @@ const GLOW_THICKNESS: u32 = 6;
 pub(super) fn pick_monitor(monitors: &[Bounds], display: Bounds, x: i32, y: i32) -> Bounds {
     monitors
         .iter()
-        .find(|monitor| contains(**monitor, x, y))
-        .and_then(|monitor| intersect(*monitor, display))
+        .find(|monitor| monitor.contains(i64::from(x), i64::from(y)))
+        .and_then(|monitor| monitor.intersect(display))
         .unwrap_or(display)
 }
 
@@ -75,32 +75,6 @@ fn strip(start: i32, span: u32, along: i32, progress: u16) -> (i32, u32) {
     let last = start.saturating_add_unsigned(span.saturating_sub(length));
     let from = along.saturating_sub_unsigned(length / 2).clamp(start, last);
     (from, length)
-}
-
-fn contains(bounds: Bounds, x: i32, y: i32) -> bool {
-    x >= bounds.x
-        && y >= bounds.y
-        && i64::from(x) < i64::from(bounds.x) + i64::from(bounds.width)
-        && i64::from(y) < i64::from(bounds.y) + i64::from(bounds.height)
-}
-
-fn intersect(a: Bounds, b: Bounds) -> Option<Bounds> {
-    let left = a.x.max(b.x);
-    let top = a.y.max(b.y);
-    let right = (i64::from(a.x) + i64::from(a.width)).min(i64::from(b.x) + i64::from(b.width));
-    let bottom = (i64::from(a.y) + i64::from(a.height)).min(i64::from(b.y) + i64::from(b.height));
-    let width = u32::try_from(right - i64::from(left))
-        .ok()
-        .filter(|width| *width > 0)?;
-    let height = u32::try_from(bottom - i64::from(top))
-        .ok()
-        .filter(|height| *height > 0)?;
-    Some(Bounds {
-        x: left,
-        y: top,
-        width,
-        height,
-    })
 }
 
 #[cfg(test)]
