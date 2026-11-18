@@ -223,33 +223,19 @@ impl Ui {
             hide(self.glow);
             return;
         };
-        self.glow_frame.resize(
+        self.glow_frame.prepare(
             u32::try_from(rect.width()).unwrap_or(1),
             u32::try_from(rect.height()).unwrap_or(1),
+            f64::from(dpi) / f64::from(BASE_DPI),
+            animations_enabled(),
         );
-        self.glow_frame.dark = true;
-        self.glow_frame.opacity = 1.0;
-        self.glow_frame.scale = f64::from(dpi) / f64::from(BASE_DPI);
-        let horizontal = matches!(edge, Edge::Top | Edge::Bottom);
-        let along = Along {
-            origin: (f64::from(area.left), f64::from(area.top)),
-            start: f64::from(if horizontal {
-                rect.left - area.left
-            } else {
-                rect.top - area.top
-            }),
-            span: f64::from(if horizontal {
-                area.width()
-            } else {
-                area.height()
-            }),
-            push: f64::from(if horizontal {
-                pointer.0 - rect.left
-            } else {
-                pointer.1 - rect.top
-            }),
-        };
-        self.glow_frame.animate = animations_enabled();
+        let along = Along::across(
+            area.as_rect(),
+            rect.as_rect(),
+            (f64::from(pointer.0), f64::from(pointer.1)),
+            edge,
+            1.0,
+        );
         self.timeline.push(
             EdgeEffect {
                 look,
@@ -334,12 +320,9 @@ impl Ui {
         let geometry = look::landing_rect(area, point, diameter);
         let bounds = geometry.bounds();
         let rect = Rect::from_bounds(bounds);
-        self.landing_frame.resize(bounds.width, bounds.height);
+        self.landing_frame
+            .prepare(bounds.width, bounds.height, scale, self.animate);
         self.landing_frame.arrival = Some(Arrival::at(geometry, point, 1.0));
-        self.landing_frame.dark = true;
-        self.landing_frame.animate = self.animate;
-        self.landing_frame.opacity = 1.0;
-        self.landing_frame.scale = f64::from(self.landing_dpi) / f64::from(BASE_DPI);
         if !self
             .timeline
             .render_landing(&mut self.landing_frame, self.edge_started.elapsed())

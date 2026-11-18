@@ -248,13 +248,11 @@ impl Overlay {
         let point = (f64::from(x), f64::from(y));
         let geometry = look::landing_rect(area, point, diameter);
         let rect = geometry.bounds();
-        self.landing_frame.resize(rect.width, rect.height);
         self.landing_frame.arrival = Some(Arrival::at(geometry, point, 1.0));
         self.landing_frame.animate = self.animate && self.argb.is_some();
         if self.argb.is_some() {
-            self.landing_frame.dark = true;
-            self.landing_frame.opacity = 1.0;
-            self.landing_frame.scale = 1.0;
+            self.landing_frame
+                .prepare(rect.width, rect.height, 1.0, self.animate);
             self.timeline
                 .render_landing(&mut self.landing_frame, self.edge_started.elapsed());
             self.show(self.landing, rect)?;
@@ -263,6 +261,7 @@ impl Overlay {
                 .as_mut()?
                 .blit(&self.connection, self.landing, &self.landing_frame);
         }
+        self.landing_frame.resize(rect.width, rect.height);
         let (radius, _) = look.landing.frame(Duration::ZERO, LANDING_DURATION, false);
         let diameter = f64::from(LANDING_SIZE) * look.size.multiplier() * radius;
         let mark = Rect {
@@ -344,26 +343,15 @@ impl Overlay {
         };
         self.show(self.glow, rect)?;
         if let Some(argb) = &mut self.argb {
-            self.edge_frame.resize(rect.width, rect.height);
-            self.edge_frame.dark = true;
-            self.edge_frame.animate = self.animate;
-            self.edge_frame.opacity = 1.0;
-            self.edge_frame.scale = 1.0;
-            let horizontal = matches!(edge, Edge::Top | Edge::Bottom);
-            let along = Along {
-                origin: (f64::from(monitor.x), f64::from(monitor.y)),
-                start: f64::from(if horizontal {
-                    rect.x - monitor.x
-                } else {
-                    rect.y - monitor.y
-                }),
-                span: f64::from(if horizontal {
-                    monitor.width
-                } else {
-                    monitor.height
-                }),
-                push: f64::from(if horizontal { x - rect.x } else { y - rect.y }),
-            };
+            self.edge_frame
+                .prepare(rect.width, rect.height, 1.0, self.animate);
+            let along = Along::across(
+                Rect::from_bounds(monitor),
+                Rect::from_bounds(rect),
+                (f64::from(x), f64::from(y)),
+                edge,
+                1.0,
+            );
             let effect = EdgeEffect {
                 look,
                 edge,

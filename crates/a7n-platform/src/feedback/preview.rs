@@ -145,12 +145,7 @@ fn frame(rect: Rect, dark: bool) -> Frame {
 
 fn departure(look: Look, dark: bool, progress: u16, edge: Edge) -> (Frame, Rect, EdgeEffect) {
     let horizontal = edge == Edge::Top;
-    let span = if horizontal { WIDTH } else { HEIGHT };
-    let push = if horizontal {
-        f64::from(WIDTH) * 0.4
-    } else {
-        f64::from(PUSH_Y)
-    };
+    let pointer = (f64::from(WIDTH) * 0.4, f64::from(PUSH_Y));
     let depth = f64::from(raster::OVERLAY_DEPTH);
     let rect = if horizontal {
         Rect {
@@ -167,17 +162,11 @@ fn departure(look: Look, dark: bool, progress: u16, edge: Edge) -> (Frame, Rect,
             height: f64::from(HEIGHT),
         }
     };
-    let start = if horizontal { rect.x } else { rect.y };
     let effect = EdgeEffect {
         look,
         edge,
         progress,
-        along: Along {
-            origin: (0.0, 0.0),
-            start,
-            span: f64::from(span),
-            push: push - start,
-        },
+        along: Along::across(area(), rect, pointer, edge, 1.0),
     };
     (frame(rect, dark), rect, effect)
 }
