@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::io;
-use std::sync::mpsc;
+use std::sync::{Mutex, MutexGuard, PoisonError, mpsc};
 use std::time::Duration;
 
 use a7n_ipc::config::Config;
@@ -153,7 +153,10 @@ async fn request_daemon(
     request: &Request,
 ) -> Result<Response, String> {
     if client.is_none() {
-        *client = Some(IpcClient::connect().await.map_err(|e| connect_error(&e))?);
+        *client = Some(IpcClient::connect().await.map_err(|e| {
+            log_failure(&e);
+            connect_error(&e)
+        })?);
     }
     let timeout = match request {
         Request::RecordHotkey { .. } => RECORD_HOTKEY_TIMEOUT,
@@ -171,10 +174,32 @@ async fn request_daemon(
     )
     .await
     .unwrap_or(Err(IpcError::Timeout));
-    if result.is_err() {
-        *client = None;
+    match &result {
+        Ok(_) => *last_failure() = None,
+        Err(error) => {
+            log_failure(error);
+            *client = None;
+        }
     }
     result.map_err(|e| e.to_string())
+}
+
+static LAST_FAILURE: Mutex<Option<String>> = Mutex::new(None);
+
+fn last_failure() -> MutexGuard<'static, Option<String>> {
+    LAST_FAILURE.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The raw error carries the OS code that the user-facing text hides. It is
+/// logged once per distinct failure, as the status poll repeats every second.
+fn log_failure(error: &IpcError) {
+    let detail = format!("{error:?}");
+    let mut last = last_failure();
+    if last.as_deref() == Some(detail.as_str()) {
+        return;
+    }
+    eprintln!("kind=gui_ipc_failed error={detail}");
+    *last = Some(detail);
 }
 
 fn load_config() -> Result<Config, String> {
