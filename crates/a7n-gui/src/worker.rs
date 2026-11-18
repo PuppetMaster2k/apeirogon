@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::io;
-use std::sync::{Mutex, MutexGuard, PoisonError, mpsc};
+use std::sync::mpsc;
 use std::time::Duration;
 
 use a7n_ipc::config::Config;
@@ -58,6 +58,7 @@ impl Worker {
             };
             runtime.block_on(async {
                 let mut client = None;
+                let mut failure_log = FailureLog::default();
                 let mut poll = tokio::time::interval(STATUS_INTERVAL);
                 poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 loop {
@@ -76,25 +77,25 @@ impl Worker {
                             continue;
                         }
                         Command::Request(Request::RecordHotkey { kind }) => {
-                            Update::Recorded(match request_daemon(&mut client, &Request::RecordHotkey { kind }).await {
+                            Update::Recorded(match request_daemon(&mut client, &mut failure_log, &Request::RecordHotkey { kind }).await {
                                 Ok(Response::Recorded { value }) => Ok(value),
                                 Ok(Response::Error { message, .. }) | Err(message) => Err(message),
                                 Ok(_) => Err(t!("Unexpected daemon response").into()),
                             })
                         }
                         Command::Request(Request::Unpair { machine }) => {
-                            let Some(update) = unpair(&mut client, machine, &publish).await else {
+                            let Some(update) = unpair(&mut client, &mut failure_log, machine, &publish).await else {
                                 break;
                             };
                             update
                         }
-                        Command::Request(request) => Update::Response(request_daemon(&mut client, &request).await),
+                        Command::Request(request) => Update::Response(request_daemon(&mut client, &mut failure_log, &request).await),
                         Command::Config => Update::Config(load_config().map(Box::new)),
                         Command::SaveConfig(values) => {
                             match save_config(&values) {
                                 Ok(config) => {
                                     if !publish(Update::Config(Ok(Box::new(config)))) { break; }
-                                    match request_daemon(&mut client, &Request::ReloadConfig).await {
+                                    match request_daemon(&mut client, &mut failure_log, &Request::ReloadConfig).await {
                                         Ok(response) => Update::Response(Ok(response)),
                                         Err(error) => Update::Notice(t!("Saved; reload failed: %{error}. Applies at next start.", error = error).into_owned()),
                                     }
@@ -103,7 +104,7 @@ impl Worker {
                             }
                         }
                         Command::Start => match a7n_ipc::daemon::start().await {
-                            Ok(_) => Update::Response(request_daemon(&mut client, &Request::Status).await),
+                            Ok(_) => Update::Response(request_daemon(&mut client, &mut failure_log, &Request::Status).await),
                             Err(error) => Update::Notice(t!("Could not start daemon: %{error}", error = error).into_owned()),
                         },
                     };
@@ -117,10 +118,11 @@ impl Worker {
 
 async fn unpair(
     client: &mut Option<IpcClient>,
+    failure_log: &mut FailureLog,
     machine: MachineId,
     publish: &impl Fn(Update) -> bool,
 ) -> Option<Update> {
-    let response = request_daemon(client, &Request::Unpair { machine }).await;
+    let response = request_daemon(client, failure_log, &Request::Unpair { machine }).await;
     if !matches!(response, Ok(Response::Done)) {
         return Some(Update::Response(response));
     }
@@ -128,7 +130,7 @@ async fn unpair(
         return None;
     }
     Some(Update::Response(
-        request_daemon(client, &Request::Status).await,
+        request_daemon(client, failure_log, &Request::Status).await,
     ))
 }
 
@@ -150,11 +152,12 @@ fn connect_error(error: &IpcError) -> String {
 
 async fn request_daemon(
     client: &mut Option<IpcClient>,
+    failure_log: &mut FailureLog,
     request: &Request,
 ) -> Result<Response, String> {
     if client.is_none() {
         *client = Some(IpcClient::connect().await.map_err(|e| {
-            log_failure(&e);
+            log_failure(failure_log, &e);
             connect_error(&e)
         })?);
     }
@@ -175,31 +178,41 @@ async fn request_daemon(
     .await
     .unwrap_or(Err(IpcError::Timeout));
     match &result {
-        Ok(_) => *last_failure() = None,
+        Ok(_) => failure_log.clear(),
         Err(error) => {
-            log_failure(error);
+            log_failure(failure_log, error);
             *client = None;
         }
     }
     result.map_err(|e| e.to_string())
 }
 
-static LAST_FAILURE: Mutex<Option<String>> = Mutex::new(None);
+#[derive(Default)]
+struct FailureLog {
+    last: Option<String>,
+}
 
-fn last_failure() -> MutexGuard<'static, Option<String>> {
-    LAST_FAILURE.lock().unwrap_or_else(PoisonError::into_inner)
+impl FailureLog {
+    fn record(&mut self, error: &IpcError) -> bool {
+        let detail = format!("{error:?}");
+        if self.last.as_deref() == Some(detail.as_str()) {
+            return false;
+        }
+        self.last = Some(detail);
+        true
+    }
+
+    fn clear(&mut self) {
+        self.last = None;
+    }
 }
 
 /// The raw error carries the OS code that the user-facing text hides. It is
 /// logged once per distinct failure, as the status poll repeats every second.
-fn log_failure(error: &IpcError) {
-    let detail = format!("{error:?}");
-    let mut last = last_failure();
-    if last.as_deref() == Some(detail.as_str()) {
-        return;
+fn log_failure(log: &mut FailureLog, error: &IpcError) {
+    if log.record(error) {
+        eprintln!("kind=gui_ipc_failed error={error:?}");
     }
-    eprintln!("kind=gui_ipc_failed error={detail}");
-    *last = Some(detail);
 }
 
 fn load_config() -> Result<Config, String> {
@@ -225,6 +238,29 @@ fn save_config(values: &[(String, String)]) -> Result<Config, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn record_repeated_failure_logs_once_until_cleared() {
+        // Arrange
+        let mut log = FailureLog::default();
+        let first = IpcError::Socket(SocketError::Io(io::Error::from(io::ErrorKind::NotFound)));
+        let different = IpcError::Socket(SocketError::Io(io::Error::from(
+            io::ErrorKind::ConnectionRefused,
+        )));
+
+        // Act
+        let recorded = [
+            log.record(&first),
+            log.record(&first),
+            log.record(&different),
+        ];
+        log.clear();
+        let after_clear = log.record(&first);
+
+        // Assert
+        assert_eq!(recorded, [true, false, true]);
+        assert!(after_clear);
+    }
 
     #[test]
     fn connect_error_missing_socket_says_daemon_is_not_running() {
