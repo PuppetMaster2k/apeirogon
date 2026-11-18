@@ -11,6 +11,7 @@
 //! run loop and [`start`] returns `None`, so tests never touch `AppKit`.
 
 mod blit;
+mod window;
 
 use std::ffi::c_void;
 use std::sync::mpsc as sync;
@@ -20,16 +21,13 @@ use std::time::Instant;
 use objc2::MainThreadMarker;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2_app_kit::{
-    NSBackingStoreType, NSColor, NSEvent, NSHapticFeedbackManager, NSHapticFeedbackPattern,
-    NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer, NSImageView, NSPanel, NSScreen,
-    NSStatusWindowLevel, NSWindowCollectionBehavior, NSWindowSharingType, NSWindowStyleMask,
-    NSWorkspace,
+    NSEvent, NSHapticFeedbackManager, NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime,
+    NSHapticFeedbackPerformer, NSImageView, NSPanel, NSWorkspace,
 };
 use objc2_core_foundation::{
     CFAbsoluteTimeGetCurrent, CFRetained, CFRunLoop, CFRunLoopTimer, CFRunLoopTimerContext,
     kCFRunLoopDefaultMode,
 };
-use objc2_foundation::{NSPoint, NSRect, NSSize};
 use tokio::sync::mpsc;
 
 use super::look;
@@ -39,6 +37,7 @@ use super::timeline::{End, Timeline, frame_interval};
 use super::{Command, Feedback, Look};
 use crate::main_thread::{self, Waker};
 use blit::Bitmap;
+use window::{image_view, make_panel, ns_rect, pixel_size, screen_frames};
 
 /// Never fires on its own; every landing re-arms it.
 const TIMER_DISARMED_SECONDS: f64 = 1.0e12;
@@ -50,22 +49,29 @@ struct Ui {
     panels: Option<Panels>,
 }
 
+struct Glow {
+    window: Retained<NSPanel>,
+    fill: Retained<NSImageView>,
+    frame: Frame,
+    bitmap: Bitmap,
+}
+
+struct LandingMark {
+    window: Retained<NSPanel>,
+    fill: Retained<NSImageView>,
+    frame: Frame,
+    bitmap: Bitmap,
+    center: (f64, f64),
+    look: Look,
+}
+
 struct Panels {
     mtm: MainThreadMarker,
-    glow: Retained<NSPanel>,
-    glow_fill: Retained<NSImageView>,
-    glow_frame: Frame,
+    glow: Glow,
+    landing: LandingMark,
     timeline: Timeline,
     edge_started: Instant,
     timer_running: bool,
-    glow_bitmap: Bitmap,
-    landing_frame: Frame,
-    landing_bitmap: Bitmap,
-    landing: Retained<NSPanel>,
-    landing_fill: Retained<NSImageView>,
-    landing_center: (f64, f64),
-    landing_look: Look,
-    animate: bool,
     frame_timer: CFRetained<CFRunLoopTimer>,
     timer_info: *mut c_void,
 }
@@ -181,7 +187,7 @@ impl Ui {
     fn hide_glow(&mut self) {
         if let Some(panels) = &mut self.panels {
             panels.timeline = Timeline::default();
-            panels.glow.orderOut(None);
+            panels.glow.window.orderOut(None);
             panels.arm_timer();
         }
     }
@@ -189,7 +195,7 @@ impl Ui {
     fn hide_all(&mut self) {
         self.hide_glow();
         if let Some(panels) = &self.panels {
-            panels.landing.orderOut(None);
+            panels.landing.window.orderOut(None);
             panels.frame_timer.invalidate();
         }
     }
@@ -213,20 +219,23 @@ impl Panels {
         let timer = frame_timer(timer_info, frame_interval(None).as_secs_f64())?;
         Some(Self {
             mtm,
-            glow,
-            glow_fill,
-            glow_frame: Frame::default(),
+            glow: Glow {
+                window: glow,
+                fill: glow_fill,
+                frame: Frame::default(),
+                bitmap: Bitmap::default(),
+            },
+            landing: LandingMark {
+                window: landing,
+                fill: landing_fill,
+                frame: Frame::default(),
+                bitmap: Bitmap::default(),
+                center: (0.0, 0.0),
+                look: Look::default(),
+            },
             timeline: Timeline::default(),
             edge_started: Instant::now(),
             timer_running: false,
-            glow_bitmap: Bitmap::default(),
-            landing_frame: Frame::default(),
-            landing_bitmap: Bitmap::default(),
-            landing,
-            landing_fill,
-            landing_center: (0.0, 0.0),
-            landing_look: Look::default(),
-            animate: true,
             frame_timer: timer,
             timer_info,
         })
@@ -258,7 +267,7 @@ impl Panels {
         let Some(rect) = rect else {
             self.timeline
                 .end(End::Abandoned, self.edge_started.elapsed());
-            self.glow.orderOut(None);
+            self.glow.window.orderOut(None);
             self.arm_timer();
             return;
         };
@@ -273,9 +282,9 @@ impl Panels {
         progress: u16,
         look: Look,
     ) {
-        self.glow.setFrame_display(ns_rect(rect), false);
-        let scale = self.glow.backingScaleFactor();
-        self.glow_frame.prepare(
+        self.glow.window.setFrame_display(ns_rect(rect), false);
+        let scale = self.glow.window.backingScaleFactor();
+        self.glow.frame.prepare(
             pixel_size(rect.width * scale),
             pixel_size(rect.height * scale),
             scale,
@@ -306,7 +315,7 @@ impl Panels {
         );
         self.render_edge();
         self.arm_timer();
-        self.glow.orderFrontRegardless();
+        self.glow.window.orderFrontRegardless();
     }
 
     fn show_landing(&mut self, x: i32, y: i32, look: Look) {
@@ -317,23 +326,23 @@ impl Panels {
     }
 
     fn show_landing_at(&mut self, center: (f64, f64), look: Look) {
-        self.landing_center = center;
+        self.landing.center = center;
         self.timeline.land(look, self.edge_started.elapsed());
-        self.landing_look = look;
-        self.animate = !reduce_motion();
+        self.landing.look = look;
+        self.landing.frame.animate = !reduce_motion();
         self.fade_landing();
-        self.landing.orderFrontRegardless();
+        self.landing.window.orderFrontRegardless();
         self.arm_timer();
     }
 
     fn render_edge(&mut self) {
         if self
             .timeline
-            .render_edge(&mut self.glow_frame, self.edge_started.elapsed())
+            .render_edge(&mut self.glow.frame, self.edge_started.elapsed())
         {
-            self.glow_bitmap.show(&self.glow_fill, &self.glow_frame);
+            self.glow.bitmap.show(&self.glow.fill, &self.glow.frame);
         } else {
-            self.glow.orderOut(None);
+            self.glow.window.orderOut(None);
         }
     }
 
@@ -347,7 +356,7 @@ impl Panels {
 
     fn arm_timer(&mut self) {
         let running =
-            self.timeline.edge_playing(self.glow_frame.animate) || self.timeline.landing_visible();
+            self.timeline.edge_playing(self.glow.frame.animate) || self.timeline.landing_visible();
         if running && self.timer_running {
             return;
         }
@@ -378,21 +387,21 @@ impl Panels {
     /// The refresh rate of the screen the playing effect is on.
     fn refresh_hz(&self) -> Option<f64> {
         let panel = if self.timeline.landing_visible() {
-            &self.landing
+            &self.landing.window
         } else {
-            &self.glow
+            &self.glow.window
         };
         let frames = panel.screen()?.maximumFramesPerSecond();
         i32::try_from(frames).ok().map(f64::from)
     }
 
     fn fade_landing(&mut self) {
-        let look = self.landing_look;
+        let look = self.landing.look;
         let diameter = look.arrival_diameter();
-        let point = (self.landing_center.0, -self.landing_center.1);
+        let point = (self.landing.center.0, -self.landing.center.1);
         let screens = screen_frames(self.mtm);
         let Some(screen) =
-            geometry::screen_containing(&screens, self.landing_center.0, self.landing_center.1)
+            geometry::screen_containing(&screens, self.landing.center.0, self.landing.center.1)
         else {
             return;
         };
@@ -401,30 +410,31 @@ impl Panels {
             ..screen
         };
         let rect = look::landing_rect(area, point, diameter);
-        self.landing.setFrame_display(
+        self.landing.window.setFrame_display(
             ns_rect(Rect {
                 y: -rect.y - rect.height,
                 ..rect
             }),
             false,
         );
-        let scale = self.landing.backingScaleFactor();
-        self.landing_frame.prepare(
+        let scale = self.landing.window.backingScaleFactor();
+        self.landing.frame.prepare(
             pixel_size(rect.width * scale),
             pixel_size(rect.height * scale),
             scale,
-            self.animate,
+            self.landing.frame.animate,
         );
-        self.landing_frame.arrival = Some(Arrival::at(rect, point, scale));
+        self.landing.frame.arrival = Some(Arrival::at(rect, point, scale));
         if !self
             .timeline
-            .render_landing(&mut self.landing_frame, self.edge_started.elapsed())
+            .render_landing(&mut self.landing.frame, self.edge_started.elapsed())
         {
-            self.landing.orderOut(None);
+            self.landing.window.orderOut(None);
             return;
         }
-        self.landing_bitmap
-            .show(&self.landing_fill, &self.landing_frame);
+        self.landing
+            .bitmap
+            .show(&self.landing.fill, &self.landing.frame);
     }
 }
 
@@ -455,44 +465,6 @@ fn frame_timer(info: *mut c_void, seconds: f64) -> Option<CFRetained<CFRunLoopTi
     Some(timer)
 }
 
-/// A borderless panel that cannot become key, ignores the mouse, floats over
-/// every Space and full-screen app, and is excluded from screen capture.
-fn make_panel(mtm: MainThreadMarker, content: &NSImageView) -> Retained<NSPanel> {
-    let style = NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel;
-    let panel = NSPanel::initWithContentRect_styleMask_backing_defer(
-        mtm.alloc::<NSPanel>(),
-        NSRect::ZERO,
-        style,
-        NSBackingStoreType::Buffered,
-        false,
-    );
-    panel.setOpaque(false);
-    panel.setBackgroundColor(Some(&NSColor::clearColor()));
-    panel.setHasShadow(false);
-    panel.setIgnoresMouseEvents(true);
-    panel.setLevel(NSStatusWindowLevel);
-    panel.setSharingType(NSWindowSharingType::None);
-    panel.setHidesOnDeactivate(false);
-    panel.setCollectionBehavior(
-        NSWindowCollectionBehavior::CanJoinAllSpaces
-            | NSWindowCollectionBehavior::Stationary
-            | NSWindowCollectionBehavior::IgnoresCycle
-            | NSWindowCollectionBehavior::FullScreenAuxiliary,
-    );
-    panel.setContentView(Some(content));
-    panel
-}
-
-fn image_view(mtm: MainThreadMarker) -> Retained<NSImageView> {
-    NSImageView::initWithFrame(mtm.alloc::<NSImageView>(), NSRect::ZERO)
-}
-
-// Screen dimensions are finite, positive OS values in points.
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-fn pixel_size(value: f64) -> u32 {
-    value.round().max(1.0) as u32
-}
-
 fn reduce_motion() -> bool {
     NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion()
 }
@@ -502,27 +474,4 @@ fn tick_haptics() {
         NSHapticFeedbackPattern::Alignment,
         NSHapticFeedbackPerformanceTime::Now,
     );
-}
-
-/// All screen frames in `AppKit` space, the primary screen first.
-fn screen_frames(mtm: MainThreadMarker) -> Vec<Rect> {
-    NSScreen::screens(mtm)
-        .iter()
-        .map(|screen| {
-            let frame = screen.frame();
-            Rect {
-                x: frame.origin.x,
-                y: frame.origin.y,
-                width: frame.size.width,
-                height: frame.size.height,
-            }
-        })
-        .collect()
-}
-
-fn ns_rect(rect: Rect) -> NSRect {
-    NSRect::new(
-        NSPoint::new(rect.x, rect.y),
-        NSSize::new(rect.width, rect.height),
-    )
 }
