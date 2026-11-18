@@ -11,6 +11,7 @@ use x11rb::protocol::xproto::{
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
+use super::blit::ARGB_DEPTH;
 use super::{Argb, Atoms, rgb_pixel};
 use crate::feedback::Color;
 
@@ -67,7 +68,7 @@ pub(super) fn create_overlay_window(
     connection
         .create_window(
             if argb.is_some() {
-                32
+                ARGB_DEPTH
             } else {
                 screen.root_depth
             },
