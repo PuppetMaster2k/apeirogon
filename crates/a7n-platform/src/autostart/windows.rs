@@ -59,6 +59,10 @@ pub(super) fn enable(exe: &Path) -> io::Result<Option<&'static str>> {
     let bytes = u32::try_from(command.len() * size_of::<u16>()).map_err(io::Error::other)?;
     // SAFETY: key is live, VALUE_NAME is terminated, command holds bytes UTF-16 data including NUL.
     check(unsafe { RegSetValueExW(key.0, VALUE_NAME, 0, REG_SZ, command.as_ptr().cast(), bytes) })?;
+    // The Run key only fires at the next login, so start the daemon now as
+    // the service managers do on the other platforms. A daemon that is
+    // already running keeps the pipe and the new one exits.
+    super::start(exe)?;
     Ok(None)
 }
 
