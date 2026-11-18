@@ -59,11 +59,11 @@ impl Argb {
         let row_bytes = frame.width as usize * 4;
         let rows = (connection.maximum_request_bytes().saturating_sub(32) / row_bytes).max(1);
         self.upload.resize(frame.pixels.len(), 0);
-        self.upload.copy_from_slice(&frame.pixels);
-        for pixel in self.upload.chunks_exact_mut(4) {
-            if self.little_endian {
-                pixel.swap(0, 2);
-            } else {
+        if self.little_endian {
+            frame.copy_bgra_into(&mut self.upload);
+        } else {
+            self.upload.copy_from_slice(&frame.pixels);
+            for pixel in self.upload.chunks_exact_mut(4) {
                 pixel.rotate_right(1);
             }
         }

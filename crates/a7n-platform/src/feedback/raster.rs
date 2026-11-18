@@ -26,6 +26,18 @@ pub(super) struct Frame {
 }
 
 impl Frame {
+    #[cfg(any(test, windows, all(unix, not(target_os = "macos"))))]
+    pub(super) fn copy_bgra_into(&self, dst: &mut [u8]) {
+        debug_assert_eq!(dst.len(), self.pixels.len());
+        for (src, dst) in self
+            .pixels
+            .chunks_exact(CHANNELS)
+            .zip(dst.chunks_exact_mut(CHANNELS))
+        {
+            dst.copy_from_slice(&[src[2], src[1], src[0], src[3]]);
+        }
+    }
+
     pub fn resize(&mut self, width: u32, height: u32) {
         if (self.width, self.height) != (width, height) {
             self.width = width;
@@ -164,6 +176,24 @@ pub(super) fn mask_landing(frame: &mut Frame, look: Look, elapsed: Duration, dur
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_bgra_into_rgba_frame_writes_bgra() {
+        // Arrange
+        let frame = Frame {
+            width: 2,
+            height: 1,
+            pixels: vec![10, 20, 30, 40, 50, 60, 70, 80],
+            ..Frame::default()
+        };
+        let mut dst = [0; 8];
+
+        // Act
+        frame.copy_bgra_into(&mut dst);
+
+        // Assert
+        assert_eq!(dst, [30, 20, 10, 40, 70, 60, 50, 80]);
+    }
 
     #[test]
     fn across_all_edges_outside_pointer_preserves_scaled_positions() {
