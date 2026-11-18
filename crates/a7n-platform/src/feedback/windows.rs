@@ -8,7 +8,6 @@
 //! touches tokio.
 
 mod blit;
-mod geometry;
 
 use std::ptr::{null, null_mut};
 use std::sync::mpsc as sync;
@@ -37,11 +36,11 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 use windows_sys::core::{BOOL, PCWSTR, w};
 
-use self::geometry::Rect;
 use super::look;
 use super::raster::{self, Along, Arrival, EdgeEffect, Frame};
 use super::timeline::{End, Timeline, frame_interval};
 use super::{Command, Feedback, Look};
+use crate::input::Bounds;
 use blit::Bitmap;
 
 /// Carries a boxed [`Command`] in `lParam` from the relay to the UI thread.
@@ -114,7 +113,7 @@ struct Glow {
     window: HWND,
     frame: Frame,
     bitmap: Bitmap,
-    rect: Option<Rect>,
+    rect: Option<Bounds>,
 }
 
 struct LandingMark {
@@ -201,7 +200,7 @@ impl Ui {
                 edge,
                 progress,
                 look,
-            } => self.show_glow(Rect::from_bounds(display), edge, progress, look),
+            } => self.show_glow(display, edge, progress, look),
             Command::Clear | Command::Crossed => {
                 self.timeline
                     .end(End::for_command(command), self.edge_started.elapsed());
@@ -217,7 +216,7 @@ impl Ui {
         }
     }
 
-    fn show_glow(&mut self, display: Rect, edge: Edge, progress: u16, look: Look) {
+    fn show_glow(&mut self, display: Bounds, edge: Edge, progress: u16, look: Look) {
         let pointer = cursor_position().unwrap_or_else(|| center(display));
         let monitor = monitor_at(pointer);
         if !self.edge_timer {
@@ -228,8 +227,8 @@ impl Ui {
             .unwrap_or(display);
         let dpi = monitor.map_or(BASE_DPI, |m| m.dpi);
         let depth = scale_dip(i32::try_from(raster::OVERLAY_DEPTH).unwrap_or(1), dpi);
-        let rect = look::edge_strip(area.as_rect(), edge, f64::from(depth))
-            .map(|strip| Rect::from_bounds(strip.bounds()));
+        let rect = look::edge_strip(look::Rect::from_bounds(area), edge, f64::from(depth))
+            .map(look::Rect::bounds);
         let Some(rect) = rect else {
             self.edge_timer(false);
             self.timeline
@@ -238,14 +237,14 @@ impl Ui {
             return;
         };
         self.glow.frame.prepare(
-            u32::try_from(rect.width()).unwrap_or(1),
-            u32::try_from(rect.height()).unwrap_or(1),
+            rect.width,
+            rect.height,
             f64::from(dpi) / f64::from(BASE_DPI),
             animations_enabled(),
         );
         let along = Along::across(
-            area.as_rect(),
-            rect.as_rect(),
+            look::Rect::from_bounds(area),
+            look::Rect::from_bounds(rect),
             (f64::from(pointer.0), f64::from(pointer.1)),
             edge,
             1.0,
@@ -284,7 +283,7 @@ impl Ui {
         }
     }
 
-    fn animate_edge_at(&mut self, rect: Rect) {
+    fn animate_edge_at(&mut self, rect: Bounds) {
         self.glow.rect = Some(rect);
         if self
             .timeline
@@ -327,7 +326,7 @@ impl Ui {
                     height: diameter,
                 }
             },
-            |monitor| monitor.rect.as_rect(),
+            |monitor| look::Rect::from_bounds(monitor.rect),
         );
         let point = (
             f64::from(self.landing.point.0),
@@ -335,7 +334,6 @@ impl Ui {
         );
         let geometry = look::landing_rect(area, point, diameter);
         let bounds = geometry.bounds();
-        let rect = Rect::from_bounds(bounds);
         self.landing.frame.prepare(
             bounds.width,
             bounds.height,
@@ -354,7 +352,7 @@ impl Ui {
         }
         self.landing
             .bitmap
-            .show(self.landing.window, rect, &self.landing.frame);
+            .show(self.landing.window, bounds, &self.landing.frame);
     }
 }
 
@@ -410,7 +408,7 @@ fn hide(hwnd: HWND) {
 
 #[derive(Clone, Copy)]
 struct MonitorGeometry {
-    rect: Rect,
+    rect: Bounds,
     dpi: u32,
     device: [u16; CCHDEVICENAME],
 }
@@ -465,11 +463,19 @@ fn monitor_at(point: (i32, i32)) -> Option<MonitorGeometry> {
     // SAFETY: Both outputs are writable; on failure they keep the base value.
     unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &raw mut dpi_x, &raw mut dpi_y) };
     Some(MonitorGeometry {
-        rect: Rect {
-            left: info.monitorInfo.rcMonitor.left,
-            top: info.monitorInfo.rcMonitor.top,
-            right: info.monitorInfo.rcMonitor.right,
-            bottom: info.monitorInfo.rcMonitor.bottom,
+        rect: Bounds {
+            x: info.monitorInfo.rcMonitor.left,
+            y: info.monitorInfo.rcMonitor.top,
+            width: u32::try_from(
+                i64::from(info.monitorInfo.rcMonitor.right)
+                    - i64::from(info.monitorInfo.rcMonitor.left),
+            )
+            .ok()?,
+            height: u32::try_from(
+                i64::from(info.monitorInfo.rcMonitor.bottom)
+                    - i64::from(info.monitorInfo.rcMonitor.top),
+            )
+            .ok()?,
         },
         dpi: dpi_x,
         device: info.szDevice,
@@ -482,8 +488,11 @@ fn cursor_position() -> Option<(i32, i32)> {
     (unsafe { GetCursorPos(&raw mut point) } != 0).then_some((point.x, point.y))
 }
 
-fn center(area: Rect) -> (i32, i32) {
-    (area.left + area.width() / 2, area.top + area.height() / 2)
+fn center(area: Bounds) -> (i32, i32) {
+    (
+        area.x.saturating_add_unsigned(area.width / 2),
+        area.y.saturating_add_unsigned(area.height / 2),
+    )
 }
 
 fn scale_dip(dip: i32, dpi: u32) -> i32 {

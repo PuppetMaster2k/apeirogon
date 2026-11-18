@@ -16,7 +16,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use super::super::raster::Frame;
-use super::geometry::Rect;
+use crate::input::Bounds;
 
 #[derive(Default)]
 pub(super) struct Bitmap {
@@ -68,7 +68,7 @@ impl Bitmap {
         Some(())
     }
 
-    pub fn show(&mut self, window: HWND, rect: Rect, frame: &Frame) {
+    pub fn show(&mut self, window: HWND, rect: Bounds, frame: &Frame) {
         if !frame.is_drawable()
             || self.resize(frame.width, frame.height).is_none()
             || self.bits.is_null()
@@ -84,13 +84,13 @@ impl Bitmap {
                 pixel.swap(0, 2);
             }
             let point = POINT {
-                x: rect.left,
-                y: rect.top,
+                x: rect.x,
+                y: rect.y,
             };
             let source = POINT::default();
             let size = SIZE {
-                cx: rect.width(),
-                cy: rect.height(),
+                cx: i32::try_from(rect.width).unwrap_or(i32::MAX),
+                cy: i32::try_from(rect.height).unwrap_or(i32::MAX),
             };
             let blend = BLENDFUNCTION {
                 BlendOp: u8::try_from(AC_SRC_OVER).unwrap_or(0),

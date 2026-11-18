@@ -44,7 +44,9 @@ pub(super) fn bounding_box(zones: &[Bounds]) -> Option<Bounds> {
 }
 
 pub(super) fn contains(zones: &[Bounds], x: i32, y: i32) -> bool {
-    zones.iter().any(|zone| zone_contains(*zone, x, y))
+    zones
+        .iter()
+        .any(|zone| zone.contains(i64::from(x), i64::from(y)))
 }
 
 /// The point of the zone union closest to `(x, y)`, which is `(x, y)` itself
@@ -87,14 +89,6 @@ fn right_edge(zone: Bounds) -> i64 {
 
 fn bottom_edge(zone: Bounds) -> i64 {
     i64::from(zone.y) + i64::from(zone.height)
-}
-
-fn zone_contains(zone: Bounds, x: i32, y: i32) -> bool {
-    let (x, y) = (i64::from(x), i64::from(y));
-    x >= i64::from(zone.x)
-        && x < right_edge(zone)
-        && y >= i64::from(zone.y)
-        && y < bottom_edge(zone)
 }
 
 fn clamp_into(zone: Bounds, x: i32, y: i32) -> (i32, i32) {
