@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.3](https://github.com/PuppetMaster2k/apeirogon/compare/v0.44.2...v0.44.3) (2026-11-18)
+
+
+### Bug Fixes
+
+* **platform:** start the daemon when enabling autostart on windows ([#298](https://github.com/PuppetMaster2k/apeirogon/issues/298)) ([85abdd7](https://github.com/PuppetMaster2k/apeirogon/commit/85abdd7a339a4fe4a978fb81203852314c76c4cc))
+
 ## [0.44.2](https://github.com/PuppetMaster2k/apeirogon/compare/v0.44.1...v0.44.2) (2026-11-16)
 
 
