@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use tiny_skia::{
-    BlendMode, GradientStop, LinearGradient, PathBuilder, Point, SpreadMode, Transform,
-};
+use tiny_skia::{BlendMode, GradientStop, PathBuilder, Point};
 
 use super::{Canvas, Push};
 
@@ -47,14 +45,11 @@ pub(super) fn render(canvas: &mut Canvas<'_>, push: &Push) {
         GradientStop::new(0.65, tint(0.45, 0.9 * push.proximity, 0.45)),
         GradientStop::new(1.0, tint(0.15, 0.95 * push.proximity, 1.0)),
     ];
-    if let Some(shader) = LinearGradient::new(
+    if canvas.linear(
         Point::from_xy(push.pointer, 0.0),
         Point::from_xy(push.pointer, push.look.depth * 1.35),
         stops,
-        SpreadMode::Pad,
-        Transform::identity(),
     ) {
-        canvas.paint.shader = shader;
         canvas.paint.blend_mode = BlendMode::SourceOver;
         if let Some(body) = body.finish() {
             canvas.fill(&body);

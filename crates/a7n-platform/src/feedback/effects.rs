@@ -14,8 +14,8 @@ use std::time::Duration;
 
 use a7n_proto::v1::Edge;
 use tiny_skia::{
-    BlendMode, FillRule, GradientStop, LineCap, LineJoin, Paint, Path, PathBuilder, PixmapMut,
-    Point, RadialGradient, Shader, SpreadMode, Stroke, Transform,
+    BlendMode, FillRule, GradientStop, LineCap, LineJoin, LinearGradient, Paint, Path, PathBuilder,
+    PixmapMut, Point, RadialGradient, Shader, SpreadMode, Stroke, Transform,
 };
 
 use super::parameters;
@@ -161,6 +161,15 @@ impl Canvas<'_> {
         if let Some(p) = PathBuilder::from_circle(x, y, radius) {
             self.fill(&p);
         }
+    }
+    fn linear(&mut self, start: Point, end: Point, stops: Vec<GradientStop>) -> bool {
+        let Some(shader) =
+            LinearGradient::new(start, end, stops, SpreadMode::Pad, Transform::identity())
+        else {
+            return false;
+        };
+        self.paint.shader = shader;
+        true
     }
     fn radial(&mut self, center: Point, inner: f32, radius: f32, stops: Vec<GradientStop>) {
         if let Some(shader) = RadialGradient::new(
