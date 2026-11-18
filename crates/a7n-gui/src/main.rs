@@ -14,7 +14,6 @@ rust_i18n::i18n!("locales", fallback = "en");
 mod canvas;
 mod screens;
 mod theme;
-#[cfg(feature = "tray")]
 mod tray;
 mod update_check;
 mod worker;
@@ -47,9 +46,7 @@ struct App {
     config: Option<Config>,
     edits: Vec<(String, String)>,
     update_check: update_check::State,
-    #[cfg(feature = "tray")]
     quit: bool,
-    #[cfg(feature = "tray")]
     tray: Option<a7n_platform::tray::Tray>,
 }
 
@@ -58,9 +55,6 @@ impl App {
         set_language(Language::System);
         theme::install(&cc.egui_ctx);
         let worker = Worker::new(cc.egui_ctx.clone())?;
-        #[cfg(not(feature = "tray"))]
-        let message = String::new();
-        #[cfg(feature = "tray")]
         let (tray, message) = {
             let ctx = cc.egui_ctx.clone();
             match a7n_platform::tray::Tray::new(move || ctx.request_repaint()) {
@@ -88,12 +82,9 @@ impl App {
             config: None,
             edits: Vec::new(),
             update_check: update_check::State::default(),
-            #[cfg(feature = "tray")]
             quit: false,
-            #[cfg(feature = "tray")]
             tray,
         };
-        #[cfg(feature = "tray")]
         app.tray(&cc.egui_ctx);
         app.send(Command::Config);
         Ok(app)
@@ -265,7 +256,6 @@ impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.updates(ctx);
         self.check_updates(false);
-        #[cfg(feature = "tray")]
         self.tray(ctx);
         // Keeps the pairing expiry and native tray responsive while idle.
         ctx.request_repaint_after(Duration::from_secs(1));

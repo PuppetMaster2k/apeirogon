@@ -39,10 +39,13 @@ wayland-protocols-wlr.workspace = true
 x11rb.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-png.workspace = true
 widestring.workspace = true
 windows.workspace = true
 windows-sys.workspace = true
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+png.workspace = true
+tray-icon.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2.workspace = true
@@ -60,12 +63,7 @@ workspace = true
 
 [features]
 fx-preview = ["dep:png"]
-tray = ["dep:tray-icon", "dep:png"]
 
 [[example]]
 name = "fx_preview"
 required-features = ["fx-preview"]
-
-[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies.tray-icon]
-workspace = true
-optional = true
