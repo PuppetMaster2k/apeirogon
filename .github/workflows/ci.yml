@@ -1,8 +1,13 @@
 name: CI
 on:
     pull_request:
-    push:
-        branches: [main]
+
+# Strict up-to-date PR checks already tested the merge; do not repeat on main.
+# This trades cross-PR cache warming for fewer builds (PR caches are merge-scoped).
+# In particular, the release lockfile push supersedes the initial opened run.
+concurrency:
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+    cancel-in-progress: true
 
 jobs:
     check:
@@ -17,21 +22,44 @@ jobs:
             RELEASE_PR: ${{ github.head_ref == 'release-please--branches--main' }}
         steps:
             - uses: actions/checkout@v7
-            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  fetch-depth: 0
+            # Keep required matrix checks green for docs; never skip the job.
+            # Code/config paths take precedence over documentation patterns.
+            - name: Detect docs-only changes
+              id: changes
+              shell: bash
+              env:
+                  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+              run: |
+                  set -euo pipefail
+                  git diff --name-only --no-renames -z "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/changed-files"
+                  docs_only=true
+                  while IFS= read -r -d '' path; do
+                      case "$path" in
+                          .github/*|Cargo.*|*.rs|*.toml|*.yml|*.yaml) docs_only=false; break ;;
+                          *.md|docs/*|*.png|*.svg|LICENSE) ;;
+                          *) docs_only=false; break ;;
+                      esac
+                  done < "$RUNNER_TEMP/changed-files"
+                  echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+            - if: steps.changes.outputs.docs_only != 'true'
+              uses: dtolnay/rust-toolchain@stable
               with:
                   components: rustfmt, clippy
             # --locked fails on a stale Cargo.lock, as the release build does,
             # so a release PR without its lockfile commit cannot merge.
-            - if: env.RELEASE_PR == 'true'
+            - if: steps.changes.outputs.docs_only != 'true' && env.RELEASE_PR == 'true'
               shell: bash
               run: cargo metadata --locked --format-version 1 > /dev/null
-            - if: env.RELEASE_PR != 'true'
+            - if: steps.changes.outputs.docs_only != 'true' && env.RELEASE_PR != 'true'
               uses: Swatinem/rust-cache@v2
-            - if: env.RELEASE_PR != 'true'
+            - if: steps.changes.outputs.docs_only != 'true' && env.RELEASE_PR != 'true'
               run: cargo fmt --all --check
-            - if: env.RELEASE_PR != 'true'
+            - if: steps.changes.outputs.docs_only != 'true' && env.RELEASE_PR != 'true'
               run: cargo clippy --workspace --all-targets --locked -- -D warnings
-            - if: env.RELEASE_PR != 'true'
+            - if: steps.changes.outputs.docs_only != 'true' && env.RELEASE_PR != 'true'
               run: cargo test --workspace --locked
 
     pr-title:

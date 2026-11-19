@@ -1,4 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# A push to main (or manual dispatch) runs release-please with GITHUB_TOKEN:
+# ordinary merges update the release PR; a release PR merge creates the draft
+# release/tag, then build -> optional publish -> finalize -> channels runs here.
+# Opening the PR can trigger CI even with GITHUB_TOKEN. The RELEASE_TOKEN
+# lockfile push triggers synchronize CI on the complete release; CI cancels an
+# earlier run if still active. Keep --locked checks on both to block stale locks.
+# RELEASE_TOKEN also uploads assets, finalizes the release and updates channels;
+# crates.io publishing uses CARGO_REGISTRY_TOKEN, and AUR uses AUR_SSH_KEY.
 name: Release
 
 on:
@@ -24,13 +32,13 @@ jobs:
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
               run: echo "enabled=${{ env.CARGO_REGISTRY_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
-            # Runs with github.token on purpose: its version-bump commit lacks the
-            # Cargo.lock update and must not trigger CI (it would fail --locked).
-            # The lockfile commit below is pushed with RELEASE_TOKEN, so CI runs
-            # once, on the commit that is actually merged.
             - uses: googleapis/release-please-action@v5
               id: release
-            # GenericToml tags scalar values, so filters on package names cannot match.
+            # Keep simple + extra-files: cargo-workspace rejects inherited
+            # package versions, and Rust's CargoToml updater requires [package].
+            # https://github.com/googleapis/release-please/blob/v17.6.0/src/plugins/cargo-workspace.ts#L137-L149
+            # GenericToml cannot filter lockfile packages by name (scalar tags),
+            # so Cargo must update the lockfile in a second commit.
             - uses: actions/checkout@v7
               if: steps.release.outputs.prs_created == 'true'
               with:
