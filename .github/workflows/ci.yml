@@ -36,7 +36,7 @@ jobs:
             rust: ${{ steps.filter.outputs.rust == 'true' || steps.filter.outputs.code == 'true' }}
             release_pr: ${{ github.head_ref == 'release-please--branches--main' }}
         steps:
-            - uses: dorny/paths-filter@v3
+            - uses: dorny/paths-filter@v4
               id: filter
               with:
                   predicate-quantifier: every
