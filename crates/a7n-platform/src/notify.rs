@@ -40,10 +40,8 @@ fn show(notification: &mut Notification) {
         let _ = tokio::time::timeout(
             ACTION_TIMEOUT,
             handle.wait_for_action_async(|action| {
-                if let notify_rust::ActionResponse::Custom(action) = action {
-                    if *action == "default" {
-                        open_gui();
-                    }
+                if action.is_default_action() {
+                    open_gui();
                 }
             }),
         )
