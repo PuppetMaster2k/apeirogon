@@ -12,7 +12,7 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 tiny-skia = { version = "=0.12.0", default-features = false, features = ["std", "simd"] }
-rust-i18n = "=3.1.5"
+rust-i18n = "=4.2.4"
 sys-locale = "=0.3.2"
 ureq = { version = "=3.5.1", default-features = false, features = ["rustls"] }
 netdev = { version = "=0.47.0", default-features = false }
