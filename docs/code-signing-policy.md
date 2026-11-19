@@ -1,12 +1,9 @@
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
-
 # Code signing policy
 
-Windows code signing is being set up. Releases are currently unsigned.
+Windows releases are currently unsigned. This policy describes how signed
+releases will be produced once a code signing certificate is in place.
 The signing scope is the Windows release binaries `apeirogond.exe`, `a7n.exe`
 and `a7n-gui.exe` built by the [release workflow](../.github/workflows/release.yml).
-The certificate is issued to SignPath Foundation, which will appear as the
-publisher of signed binaries.
 
 ## Team roles
 
@@ -14,7 +11,7 @@ publisher of signed binaries.
 - Approvers: [PuppetMaster2k](https://github.com/PuppetMaster2k).
 
 Only approvers can approve a signing request. Contributors with signing access
-must use multi-factor authentication on both GitHub and SignPath.
+must use multi-factor authentication on GitHub and on the signing service.
 
 ## Build and release process
 
