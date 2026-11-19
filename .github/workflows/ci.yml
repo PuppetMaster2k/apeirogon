@@ -1,16 +1,31 @@
 name: CI
 on:
     pull_request:
+    push:
+        branches: [main]
 
-# Strict up-to-date PR checks already tested the merge; do not repeat on main.
-# This trades cross-PR cache warming for fewer builds (PR caches are merge-scoped).
-# In particular, the release lockfile push supersedes the initial opened run.
+# Strict up-to-date PR checks already tested the merge; main only warms the
+# Rust cache, because PRs can read main's cache but not each other's.
+# The release lockfile push supersedes the initial opened run.
 concurrency:
-    group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
     cancel-in-progress: true
 
 jobs:
+    cache-warm:
+        if: github.event_name == 'push'
+        strategy:
+            matrix:
+                os: [ubuntu-latest, macos-latest, windows-latest]
+        runs-on: ${{ matrix.os }}
+        steps:
+            - uses: actions/checkout@v7
+            - uses: dtolnay/rust-toolchain@stable
+            - uses: Swatinem/rust-cache@v2
+            - run: cargo build --workspace --all-targets --locked
+
     check:
+        if: github.event_name == 'pull_request'
         strategy:
             matrix:
                 os: [ubuntu-latest, macos-latest, windows-latest]
@@ -55,6 +70,8 @@ jobs:
               run: cargo metadata --locked --format-version 1 > /dev/null
             - if: steps.changes.outputs.docs_only != 'true' && env.RELEASE_PR != 'true'
               uses: Swatinem/rust-cache@v2
+              with:
+                  save-if: false
             - if: steps.changes.outputs.docs_only != 'true' && env.RELEASE_PR != 'true'
               run: cargo fmt --all --check
             - if: steps.changes.outputs.docs_only != 'true' && env.RELEASE_PR != 'true'

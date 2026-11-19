@@ -394,6 +394,8 @@ fn validate_manifest_path_unsafe_paths_are_rejected() {
   Standard Conventional Commits determine the version: `feat` bumps minor,
   `fix` or `perf` bumps patch, and breaking changes (`!` or `BREAKING CHANGE`)
   bump major. Merging the release PR publishes `vX.Y.Z` and binary archives.
+  The release PR collects changes; merge it when a user would notice the
+  change, and right away for security or crash fixes.
 - Every PR links its issue (`Closes #12`). Features are tracked as GitHub
   issues grouped by milestone (`v1`, `v2`, ...).
 
