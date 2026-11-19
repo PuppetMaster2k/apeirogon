@@ -55,6 +55,8 @@ jobs:
         needs: changes
         if: needs.changes.outputs.rust == 'true'
         strategy:
+            # One OS failing must not hide the other results.
+            fail-fast: false
             matrix:
                 os: [ubuntu-latest, macos-latest, windows-latest]
         runs-on: ${{ matrix.os }}
@@ -83,15 +85,35 @@ jobs:
             - if: env.RELEASE_PR != 'true'
               run: cargo test --workspace --locked
 
-    # Always report a stable required check, including when the matrix skips.
+    # Read individual jobs: the matrix aggregate can hide cancelled legs.
     ci-ok:
         needs: [changes, check]
         if: always() && github.event_name == 'pull_request'
         runs-on: ubuntu-latest
+        permissions:
+            actions: read
         steps:
-            - run: exit "$FAILED"
+            - shell: bash
               env:
-                  FAILED: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && '1' || '0' }}
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  # Partial reruns retain successful jobs from earlier attempts.
+                  jobs=$(for ((attempt = 1; attempt <= GITHUB_RUN_ATTEMPT; attempt++)); do
+                      gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$attempt/jobs" --paginate || exit 1
+                  done)
+                  failed=$(jq -sr '
+                      [.[].jobs[] | select(.name == "changes" or .name == "check" or (.name | startswith("check (")))]
+                      | if length == 0 then error("no prerequisite jobs found") else . end
+                      | group_by(.name)
+                      | map(max_by([.run_attempt // 0, .id]))
+                      | .[]
+                      | select(.conclusion != "success" and .conclusion != "skipped")
+                      | "\(.name): \(.conclusion // "pending")"
+                  ' <<< "$jobs")
+                  if [[ -n "$failed" ]]; then
+                      printf '%s\n' "$failed"
+                      exit 1
+                  fi
 
     pr-title:
         if: github.event_name == 'pull_request'
