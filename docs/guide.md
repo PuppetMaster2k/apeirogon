@@ -242,7 +242,7 @@ under `peers.<id>` to adjust how input from that peer feels on this machine.
 `peers.<id>.drive_peer` allows this machine to drive it. Both default to `true`.
 These per-peer settings stay local.
 
-Open `a7n-gui` or the installed desktop launcher. **Machines** handles
+Open `a7n-gui`. **Machines** handles
 pairing, connections, pause and file transfers. **Layout** arranges the desk.
 **Hotkeys** contains shortcuts and input options. **Feedback & theming**
 controls indicators and appearance. **Peer permissions** controls each peer's
