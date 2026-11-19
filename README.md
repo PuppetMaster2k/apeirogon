@@ -114,6 +114,7 @@ settings, autostart and troubleshooting.
 - [Design](docs/design.md): behaviour and architecture.
 - [Protocol](docs/PROTOCOL.md): wire format and security rules.
 - [UI specification](docs/ui.md): interface design.
+- [Code signing policy](docs/code-signing-policy.md).
 - [Changelog](CHANGELOG.md): release history.
 
 ## Contributing
