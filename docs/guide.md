@@ -38,6 +38,10 @@ For GUI pairing, open `a7n-gui` on each machine. On **Machines**, click
 **Pairing code**, then click **Join**. The code's remaining lifetime is
 shown on the host. Generate a new code if it expires.
 
+![Machines page showing this machine, paired and nearby machines](guide/machines.png)
+
+Screenshots show the Linux GUI; the tray is available on Windows and macOS only.
+
 Use `a7n status` or **Machines** to check that the peer is connected.
 Pairing remembers the peer's certificate pin for later connections.
 
@@ -54,6 +58,8 @@ lines the machines up again; review the draft before clicking **Save**.
 **Fit** fits the canvas to the view, and **Reload** fetches the saved layout.
 Click an edge third on a rectangle to toggle whether leaving through that
 third is blocked, then save.
+
+![Layout canvas with machine rectangles](guide/layout.png)
 
 For the terminal editor:
 
@@ -89,6 +95,8 @@ Default shortcuts on the machine whose keyboard and mouse you are using:
 Alt is Option on macOS. Shaking the mouse left and right while driving a peer
 also returns home. Change these bindings in **Hotkeys** or through the
 `hotkeys` settings. The trigger can use double-tap, hold or both.
+
+![Hotkeys page with shortcut bindings](guide/hotkeys.png)
 
 To switch explicitly, use a peer name, full machine id or unique hex prefix
 of at least four digits:
@@ -241,6 +249,10 @@ controls indicators and appearance. **Peer permissions** controls each peer's
 input, clipboard and file permissions. Click **Save** after editing settings;
 **Reload** discards pending edits and reloads the config.
 
+![Feedback and theming settings](guide/feedback-theming.png)
+
+![Peer permissions page with the receive directory](guide/peer-permissions.png)
+
 ## Autostart
 
 Enable the per-user daemon at login:
@@ -272,6 +284,8 @@ If the CLI reports that the daemon is not running, run `a7n daemon start`
 in the same user's desktop session. The GUI shows **Daemon isn't running**
 and a **Start** button. Check `a7n daemon status` and `a7n logs` if it fails.
 Make sure the daemon binary is installed beside the CLI or available on PATH.
+
+![Daemon not running screen with Start button](guide/start.png)
 
 ### OS permissions and desktop support
 

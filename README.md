@@ -97,6 +97,8 @@ For GUI pairing, open `a7n-gui` on both machines. On **Machines**, click
 **Host** on the first. On the second, enter the first machine's **Address**
 and **Pairing code**, then click **Join**.
 
+![Machines page showing this machine, paired and nearby machines](docs/guide/machines.png)
+
 ### Arrange the layout and move across
 
 Open **Layout** in the GUI. Drag the machine rectangles to match your desk,
