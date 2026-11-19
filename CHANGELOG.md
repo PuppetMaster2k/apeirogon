@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.4](https://github.com/PuppetMaster2k/apeirogon/compare/v0.44.3...v0.44.4) (2026-11-19)
+
+
+### Bug Fixes
+
+* **ci:** fail ci-ok when a check matrix job is cancelled ([#318](https://github.com/PuppetMaster2k/apeirogon/issues/318)) ([c120b43](https://github.com/PuppetMaster2k/apeirogon/commit/c120b43f38f511c3f992b8247c4e8480424655e0))
+
 ## [0.44.3](https://github.com/PuppetMaster2k/apeirogon/compare/v0.44.2...v0.44.3) (2026-11-18)
 
 
