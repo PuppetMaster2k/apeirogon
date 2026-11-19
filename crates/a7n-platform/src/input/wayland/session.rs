@@ -85,7 +85,7 @@ pub(super) async fn open_capture(
 ) -> Result<CaptureSession, InputError> {
     let fail = |error| portal_error(CAPTURE_PERMISSION, error);
     let portal = InputCapture::new().await.map_err(fail)?;
-    let capabilities = Capabilities::Keyboard | Capabilities::Pointer;
+    let capabilities = Capabilities::KEYBOARD | Capabilities::POINTER;
     let session = match portal
         .create_session2(CreateSession2Options::default())
         .await
@@ -142,7 +142,7 @@ pub(super) async fn open_desktop(
     let requested = clipboard_portal::request(&session).await;
     let token = restore_token(tokens.as_ref(), TokenKind::RemoteDesktop);
     let options = SelectDevicesOptions::default()
-        .set_devices(DeviceType::Keyboard | DeviceType::Pointer)
+        .set_devices(DeviceType::KEYBOARD | DeviceType::POINTER)
         .set_persist_mode(PersistMode::ExplicitlyRevoked)
         .set_restore_token(token.as_deref());
     portal
@@ -159,7 +159,7 @@ pub(super) async fn open_desktop(
     let clipboard = connect_clipboard(requested, &session, granted.is_clipboard_enabled()).await;
     if !granted
         .devices()
-        .contains(DeviceType::Keyboard | DeviceType::Pointer)
+        .contains(DeviceType::KEYBOARD | DeviceType::POINTER)
     {
         return Err(InputError::MissingPermission(INJECT_PERMISSION));
     }
