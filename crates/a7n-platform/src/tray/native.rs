@@ -6,9 +6,6 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 use super::icon::{self, IconError, Variant};
 use super::{Action, State};
 
-// macOS menu bar icons must be template images (docs/ui.md section 6).
-const TEMPLATE: bool = cfg!(target_os = "macos");
-
 #[derive(Debug, thiserror::Error)]
 pub enum TrayError {
     #[error(transparent)]
@@ -49,12 +46,15 @@ impl Tray {
         let quit = MenuItem::new("", true, None);
         menu.append_items(&[&status, &focused, &pause, &settings, &quit])?;
         let shown = Variant::current(State::Error);
-        let icon = TrayIconBuilder::new()
+        let builder = TrayIconBuilder::new()
             .with_tooltip("Apeirogon")
-            .with_menu(Box::new(menu))
-            .with_icon(icon::load(shown)?)
-            .with_icon_as_template(TEMPLATE)
-            .build()?;
+            .with_menu(Box::new(menu));
+        // macOS menu bar icons must be template images (docs/ui.md section 6).
+        #[cfg(target_os = "macos")]
+        let builder = builder.with_icon_templated(icon::load(shown)?);
+        #[cfg(target_os = "windows")]
+        let builder = builder.with_icon(icon::load(shown)?);
+        let icon = builder.build()?;
         // The default event channel is bypassed when a handler is installed.
         let (sender, receiver) = std::sync::mpsc::channel();
         MenuEvent::set_event_handler(Some(move |event| {
@@ -95,12 +95,10 @@ impl Tray {
         }
         if shown.0 != variant {
             let icon = Some(icon::load(variant)?);
-            // tray-icon ignores set_icon_with_as_template outside macOS.
-            if TEMPLATE {
-                self.icon.set_icon_with_as_template(icon, true)?;
-            } else {
-                self.icon.set_icon(icon)?;
-            }
+            #[cfg(target_os = "macos")]
+            self.icon.set_icon_templated(icon)?;
+            #[cfg(target_os = "windows")]
+            self.icon.set_icon(icon)?;
             shown.0 = variant;
         }
         Ok(())
