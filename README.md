@@ -38,22 +38,6 @@ scoop bucket add apeirogon https://github.com/PuppetMaster2k/scoop-bucket
 scoop install apeirogon
 ```
 
-On Arch Linux (x86_64), use the AUR package:
-
-```sh
-yay -S apeirogon-bin
-```
-
-Download the x86_64 `.deb` or `.rpm` package from the
-[latest release](https://github.com/PuppetMaster2k/apeirogon/releases/latest).
-Each package includes the daemon, CLI, GUI and a desktop launcher.
-
-```sh
-sudo apt install ./apeirogon_*.deb
-# Fedora and other RPM-based distributions:
-sudo dnf install ./apeirogon-*.rpm
-```
-
 Or install from crates.io with a recent stable Rust toolchain:
 
 ```sh
