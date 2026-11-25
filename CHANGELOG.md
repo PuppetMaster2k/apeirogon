@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.5](https://github.com/PuppetMaster2k/apeirogon/compare/v0.44.4...v0.44.5) (2026-11-25)
+
+
+### Bug Fixes
+
+* **ci:** build linux release for baseline x86-64 ([#337](https://github.com/PuppetMaster2k/apeirogon/issues/337)) ([8278d70](https://github.com/PuppetMaster2k/apeirogon/commit/8278d70e754207f637d5d0ee1e7c2c25876a5937))
+
 ## [0.44.4](https://github.com/PuppetMaster2k/apeirogon/compare/v0.44.3...v0.44.4) (2026-11-19)
 
 
