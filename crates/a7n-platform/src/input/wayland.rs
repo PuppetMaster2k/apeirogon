@@ -17,8 +17,9 @@
 //! Limits of the portal model:
 //!
 //! - Capture only starts at a barrier, never on demand. While a peer drives
-//!   this machine, local input is therefore not blocked unless the pointer
-//!   happens to push through a barrier, and local hotkeys are not seen.
+//!   this machine, local input is therefore not blocked, and local hotkeys
+//!   are not seen. A barrier hit while driven is released like any push into
+//!   an edge with no neighbour, so the injected cursor never freezes there.
 //! - Zone changes re-arm the barriers, but the bounds told to the daemon at
 //!   start stay as they were.
 //! - The clipboard portal shares the `RemoteDesktop` session; see
