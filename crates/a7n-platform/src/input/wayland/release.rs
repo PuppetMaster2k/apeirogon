@@ -84,9 +84,10 @@ impl CaptureFlow {
             position,
             since: now,
             reach: distance(origin, position),
-            // A daemon that already wants the grab (it is being driven) keeps
-            // every capture until it lets go.
-            crossed: self.grab_wanted,
+            // Only a fresh take keeps a capture. While driven, the injected
+            // cursor pushes into barriers at edges with no neighbour; holding
+            // those captures would freeze it.
+            crossed: false,
             left_zones: !zones::contains(&self.zones, position.0, position.1),
         });
     }
@@ -128,9 +129,12 @@ impl CaptureFlow {
             CaptureControl::Grab(true) => {
                 // A grab request is itself proof that the daemon is alive.
                 self.deadman.keepalive(now);
-                self.grab_wanted = true;
-                if let Some(active) = &mut self.active {
-                    active.crossed = true;
+                // A driven daemon repeats `Grab(true)`; only the change from
+                // not grabbing is a take.
+                if !std::mem::replace(&mut self.grab_wanted, true) {
+                    if let Some(active) = &mut self.active {
+                        active.crossed = true;
+                    }
                 }
             }
             CaptureControl::Grab(false) => {
@@ -296,6 +300,28 @@ mod tests {
             Some(ReleaseOrder {
                 activation_id: ACTIVATION,
                 cursor: None
+            })
+        );
+    }
+
+    #[test]
+    fn poll_activated_while_driven_releases_after_take_window() {
+        // Arrange
+        let now = Instant::now();
+        let mut flow = CaptureFlow::new(zones(), now);
+        flow.control(CaptureControl::Grab(true), now);
+        flow.activate(ACTIVATION, (1925.0, 500.0), now);
+        flow.control(CaptureControl::Grab(true), now);
+
+        // Act
+        let order = flow.poll(now + TAKE_WINDOW);
+
+        // Assert
+        assert_eq!(
+            order,
+            Some(ReleaseOrder {
+                activation_id: ACTIVATION,
+                cursor: Some((1919.0, 500.0))
             })
         );
     }
