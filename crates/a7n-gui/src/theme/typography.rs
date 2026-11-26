@@ -77,13 +77,9 @@ pub(super) fn fonts() -> FontDefinitions {
         "jbmono",
         include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf"),
     );
-    // Phosphor icon font. If your egui-phosphor version lacks `font_data()`, use
-    // `egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular)` and
-    // replace "phosphor" below with the key it inserts.
-    fonts.font_data.insert(
-        "phosphor".to_owned(),
-        Arc::new(egui_phosphor::Variant::Regular.font_data()),
-    );
+    // Raw bytes, because egui-phosphor's own FontData helpers are built against
+    // its egui version, which can lag behind ours.
+    add("phosphor", egui_phosphor::Variant::Regular.font_bytes());
 
     fonts.families.insert(
         FontFamily::Name(super::family::ICON.into()),

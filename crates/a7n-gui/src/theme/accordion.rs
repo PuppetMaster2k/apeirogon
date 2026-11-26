@@ -37,7 +37,7 @@ impl HeaderPaint {
 }
 
 fn headers_id() -> egui::Id {
-    egui::Id::new("accordion_header_paints")
+    egui::Id::unique("accordion_header_paints")
 }
 
 pub(crate) fn accordion_group<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
@@ -131,7 +131,7 @@ pub(crate) fn accordion<R>(
         );
         let rect = response.rect;
         response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::CollapsingHeader, ui.is_enabled(), title)
+            egui::WidgetInfo::labeled(egui::Role::DisclosureTriangle, ui.is_enabled(), title)
         });
         if response.clicked() {
             state.toggle(ui);
