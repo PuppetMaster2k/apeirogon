@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use eframe::egui;
-use eframe::egui::{Response, Sense, Stroke, Ui, WidgetInfo, WidgetType, vec2};
+use eframe::egui::{Response, Role, Sense, Stroke, Ui, WidgetInfo, vec2};
 
 use super::{Palette, font_medium, size};
 
@@ -50,6 +50,6 @@ pub(crate) fn badge(ui: &mut Ui, kind: BadgeKind, text: &str) -> Response {
         galley,
         fg,
     );
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, ui.is_enabled(), text));
+    response.widget_info(|| WidgetInfo::labeled(Role::Label, ui.is_enabled(), text));
     response
 }

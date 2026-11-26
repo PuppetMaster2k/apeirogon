@@ -96,10 +96,14 @@ impl Canvas {
             let mut placement = self.draft.placements[index];
             let name = &self.draft.names[index];
             let rect = transform.rect(&placement);
-            let response = ui.interact(rect, ui.id().with(index), egui::Sense::click_and_drag());
+            let response = ui.interact(
+                rect,
+                ui.scope_id().with(index),
+                egui::Sense::click_and_drag(),
+            );
             response.widget_info(|| {
                 egui::WidgetInfo::selected(
-                    egui::WidgetType::Button,
+                    egui::Role::Button,
                     ui.is_enabled(),
                     self.selected == index,
                     name,

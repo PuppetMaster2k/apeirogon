@@ -2,8 +2,8 @@
 
 use eframe::egui;
 use eframe::egui::{
-    Color32, CornerRadius, CursorIcon, Response, Sense, Stroke, StrokeKind, Ui, WidgetInfo,
-    WidgetType, vec2,
+    Color32, CornerRadius, CursorIcon, Response, Role, Sense, Stroke, StrokeKind, Ui, WidgetInfo,
+    vec2,
 };
 
 use super::paint::{fade, focus_ring};
@@ -127,7 +127,7 @@ pub(crate) fn button(
     let width = pad_left + icon_w + text.size().x + pad_x;
 
     let (rect, resp) = ui.allocate_exact_size(vec2(width, h), Sense::click());
-    resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, ui.is_enabled(), label));
+    resp.widget_info(|| WidgetInfo::labeled(Role::Button, ui.is_enabled(), label));
 
     if ui.is_rect_visible(rect) {
         let enabled = ui.is_enabled();

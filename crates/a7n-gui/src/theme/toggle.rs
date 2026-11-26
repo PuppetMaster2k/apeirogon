@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use eframe::egui;
-use eframe::egui::{Color32, CornerRadius, Response, Sense, Ui, WidgetInfo, WidgetType, vec2};
+use eframe::egui::{Color32, CornerRadius, Response, Role, Sense, Ui, WidgetInfo, vec2};
 
 use super::paint::{fade, focus_ring};
 use super::{Palette, size};
@@ -15,7 +15,7 @@ pub(crate) fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
         *on = !*on;
         resp.mark_changed();
     }
-    resp.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, ui.is_enabled(), *on, ""));
+    resp.widget_info(|| WidgetInfo::selected(Role::CheckBox, ui.is_enabled(), *on, ""));
     if ui.is_rect_visible(rect) {
         let t = ui.ctx().animate_bool_responsive(resp.id, *on);
         let track = egui::Rect::from_center_size(rect.center(), vec2(36.0, 20.0));

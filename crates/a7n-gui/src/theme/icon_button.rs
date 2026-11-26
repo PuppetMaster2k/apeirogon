@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use eframe::egui::{
-    Align2, Color32, CornerRadius, Response, Sense, Stroke, StrokeKind, Ui, Vec2, WidgetInfo,
-    WidgetType,
+    Align2, Color32, CornerRadius, Response, Role, Sense, Stroke, StrokeKind, Ui, Vec2, WidgetInfo,
 };
 
 use super::paint::{fade, focus_ring};
@@ -25,9 +24,7 @@ pub(crate) fn icon_button(
 ) -> Response {
     let p = Palette::of(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size::CONTROL_H), Sense::click());
-    resp.widget_info(|| {
-        WidgetInfo::selected(WidgetType::Button, ui.is_enabled(), selected, tooltip)
-    });
+    resp.widget_info(|| WidgetInfo::selected(Role::Button, ui.is_enabled(), selected, tooltip));
     if ui.is_rect_visible(rect) {
         let enabled = ui.is_enabled();
         let hovered = enabled && resp.hovered();

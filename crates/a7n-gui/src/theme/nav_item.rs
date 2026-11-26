@@ -2,7 +2,7 @@
 
 use eframe::egui;
 use eframe::egui::{
-    Align2, Color32, CornerRadius, CursorIcon, Response, Sense, Ui, WidgetInfo, WidgetType, vec2,
+    Align2, Color32, CornerRadius, CursorIcon, Response, Role, Sense, Ui, WidgetInfo, vec2,
 };
 
 use super::paint::focus_ring;
@@ -13,7 +13,7 @@ pub(crate) fn nav_item(ui: &mut Ui, icon: &str, label: &str, selected: bool) -> 
     let p = Palette::of(ui.ctx());
     let (rect, resp) =
         ui.allocate_exact_size(vec2(ui.available_width(), size::NAV_ITEM_H), Sense::click());
-    resp.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, selected, label));
+    resp.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, label));
     if ui.is_rect_visible(rect) {
         let hovered = resp.hovered();
         let (fill, fg) = if selected {

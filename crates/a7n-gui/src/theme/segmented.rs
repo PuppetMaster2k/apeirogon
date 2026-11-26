@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use eframe::egui::{
-    Align, Color32, CornerRadius, Frame, Layout, Margin, Response, Sense, Stroke, StrokeKind, Ui,
-    WidgetInfo, WidgetType, vec2,
+    Align, Color32, CornerRadius, Frame, Layout, Margin, Response, Role, Sense, Stroke, StrokeKind,
+    Ui, WidgetInfo, vec2,
 };
 
 use super::paint::focus_ring;
@@ -50,7 +50,7 @@ pub(crate) fn segmented<T: PartialEq + Copy>(
                             Sense::click(),
                         );
                         resp.widget_info(|| {
-                            WidgetInfo::selected(WidgetType::RadioButton, true, selected, *label)
+                            WidgetInfo::selected(Role::RadioButton, true, selected, *label)
                         });
                         if resp.clicked() && !selected {
                             *value = *opt;
