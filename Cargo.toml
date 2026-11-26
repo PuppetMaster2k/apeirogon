@@ -15,7 +15,7 @@ tiny-skia = { version = "=0.12.0", default-features = false, features = ["std", 
 rust-i18n = "=4.2.4"
 sys-locale = "=0.3.2"
 ureq = { version = "=3.5.2", default-features = false, features = ["rustls"] }
-netdev = { version = "=0.47.0", default-features = false }
+netdev = { version = "=0.48.0", default-features = false }
 egui-phosphor = { version = "=0.14.0", default-features = false, features = ["regular"] }
 eframe = { version = "=0.37.0", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
 tray-icon = { version = "=0.26.1", default-features = false }
@@ -33,7 +33,7 @@ protoc-bin-vendored = "3.3"
 rcgen               = "0.14"
 ring                = "0.17"
 sha2                = "0.11"
-curve25519-dalek    = "4.1"
+curve25519-dalek    = "5.0"
 hkdf                = "0.13"
 hmac                = "0.13"
 rand_core           = { version = "0.6", features = ["getrandom"] }
