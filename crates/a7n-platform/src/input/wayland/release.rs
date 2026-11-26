@@ -73,6 +73,14 @@ impl CaptureFlow {
         self.active.is_some()
     }
 
+    /// Whether the barriers should be armed. A wanted grab without a capture
+    /// of ours means a peer drives this machine: the injected cursor must not
+    /// hit a barrier then, because GNOME stops applying injected motion after
+    /// an activation.
+    pub(super) fn barriers_wanted(&self) -> bool {
+        !self.grab_wanted || self.active.is_some()
+    }
+
     /// The compositor started capturing at `cursor`, which is usually just
     /// outside the zones.
     pub(super) fn activate(&mut self, id: u32, cursor: (f64, f64), now: Instant) {
@@ -324,6 +332,27 @@ mod tests {
                 cursor: Some((1919.0, 500.0))
             })
         );
+    }
+
+    #[test]
+    fn barriers_wanted_grab_without_capture_disarms_until_let_go() {
+        // Arrange
+        let now = Instant::now();
+        let mut driven = CaptureFlow::new(zones(), now);
+        let mut driving = pushed_flow(now);
+
+        // Act
+        driven.control(CaptureControl::Grab(true), now);
+        let while_driven = driven.barriers_wanted();
+        driven.control(CaptureControl::Grab(false), now);
+        let after_driven = driven.barriers_wanted();
+        driving.control(CaptureControl::Grab(true), now);
+        let while_driving = driving.barriers_wanted();
+
+        // Assert
+        assert!(!while_driven);
+        assert!(after_driven);
+        assert!(while_driving);
     }
 
     #[test]

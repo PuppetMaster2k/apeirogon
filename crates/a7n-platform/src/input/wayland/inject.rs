@@ -166,6 +166,7 @@ impl Injecting {
     }
 
     fn set_resumed(&mut self, device: &Device, resumed: bool) {
+        eprintln!("kind=input_wayland_inject_device resumed={resumed}");
         for slot in self.slots.iter_mut().filter(|slot| &slot.device == device) {
             slot.resumed = resumed;
             // A pause ends the emulation sequence on the server's side too.

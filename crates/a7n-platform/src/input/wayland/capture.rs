@@ -41,6 +41,8 @@ pub(super) struct Capturer {
     flow: CaptureFlow,
     translator: Translator,
     bounds: Bounds,
+    /// Whether the portal session is enabled, so the barriers are armed.
+    armed: bool,
 }
 
 impl Capturer {
@@ -57,6 +59,7 @@ impl Capturer {
                 width: 0,
                 height: 0,
             },
+            armed: false,
         };
         capturer.bounds = capturer.place_barriers().await?;
         Ok(capturer)
@@ -83,7 +86,7 @@ impl Capturer {
         let mut deactivated = pin!(portal.receive_deactivated().await.map_err(fail)?);
         let mut disabled = pin!(portal.receive_disabled().await.map_err(fail)?);
         let mut zones_changed = pin!(portal.receive_zones_changed().await.map_err(fail)?);
-        self.enable().await?;
+        self.arm(true).await?;
         let mut tick = tokio::time::interval(WAKE_INTERVAL);
         loop {
             let mut order = None;
@@ -102,12 +105,12 @@ impl Capturer {
                     Step::Continue
                 }
                 Some(_) = disabled.next() => {
-                    self.enable().await?;
+                    self.armed = false;
                     Step::Continue
                 }
                 Some(_) = zones_changed.next() => {
                     self.place_barriers().await?;
-                    self.enable().await?;
+                    self.armed = false;
                     Step::Continue
                 }
                 command = control.recv() => match command {
@@ -124,6 +127,9 @@ impl Capturer {
             }
             if let Some(order) = order.or_else(|| self.flow.poll(Instant::now())) {
                 self.release(order).await?;
+            }
+            if self.armed != self.flow.barriers_wanted() {
+                self.arm(self.flow.barriers_wanted()).await?;
             }
         }
     }
@@ -157,6 +163,7 @@ impl Capturer {
             |(x, y)| (f64::from(x), f64::from(y)),
         );
         self.translator = Translator::default();
+        eprintln!("kind=input_wayland_capture_activated");
         self.flow.activate(id, cursor, Instant::now());
     }
 
@@ -207,9 +214,10 @@ impl Capturer {
 
     async fn release(&mut self, order: ReleaseOrder) -> Result<(), InputError> {
         self.release_capture(order).await?;
-        // Make sure the barriers are armed again. A compositor that stays
-        // enabled across a release may refuse a second `Enable`; that is fine.
-        if self.enable().await.is_err() {
+        // Make sure the barriers are armed again when wanted. A compositor
+        // that stays enabled across a release may refuse a second `Enable`;
+        // that is fine.
+        if self.flow.barriers_wanted() && self.enable().await.is_err() {
             eprintln!("kind=input_wayland_reenable_failed");
         }
         Ok(())
@@ -224,6 +232,23 @@ impl Capturer {
             .release(&self.session.session, options)
             .await
             .map_err(|error| portal_error(CAPTURE_PERMISSION, error))
+    }
+
+    /// Enables or disables the portal session, which arms or removes the
+    /// barriers.
+    async fn arm(&mut self, armed: bool) -> Result<(), InputError> {
+        if armed {
+            self.enable().await?;
+        } else {
+            self.session
+                .portal
+                .disable(&self.session.session, DisableOptions::default())
+                .await
+                .map_err(|error| portal_error(CAPTURE_PERMISSION, error))?;
+        }
+        eprintln!("kind=input_wayland_barriers armed={armed}");
+        self.armed = armed;
+        Ok(())
     }
 
     async fn enable(&self) -> Result<(), InputError> {

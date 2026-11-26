@@ -18,8 +18,8 @@
 //!
 //! - Capture only starts at a barrier, never on demand. While a peer drives
 //!   this machine, local input is therefore not blocked, and local hotkeys
-//!   are not seen. A barrier hit while driven is released like any push into
-//!   an edge with no neighbour, so the injected cursor never freezes there.
+//!   are not seen. The barriers are even removed while driven: GNOME stops
+//!   applying injected motion once the injected cursor activates a capture.
 //! - Zone changes re-arm the barriers, but the bounds told to the daemon at
 //!   start stay as they were.
 //! - The clipboard portal shares the `RemoteDesktop` session; see
