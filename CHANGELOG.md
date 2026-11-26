@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.6](https://github.com/PuppetMaster2k/apeirogon/compare/v0.44.5...v0.44.6) (2026-11-26)
+
+
+### Bug Fixes
+
+* **platform:** release wayland capture started while driven ([#340](https://github.com/PuppetMaster2k/apeirogon/issues/340)) ([c712397](https://github.com/PuppetMaster2k/apeirogon/commit/c7123974f0316511af452bf358f9dd2dc466ac5c))
+
 ## [0.44.5](https://github.com/PuppetMaster2k/apeirogon/compare/v0.44.4...v0.44.5) (2026-11-25)
 
 
